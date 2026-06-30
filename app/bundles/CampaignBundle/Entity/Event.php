@@ -1,143 +1,200 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\Common\Collections\Criteria;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\DateAddedTrait;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
+use Mautic\CoreBundle\Validator\EntityEvent;
 use Mautic\LeadBundle\Entity\Lead as Contact;
+use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\Validator\Mapping\ClassMetadata;
 
-/**
- * Class Event.
- */
-class Event implements ChannelInterface
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('campaign:campaigns:viewown')"),
+        new Post(security: "is_granted('campaign:campaigns:create')"),
+        new Get(security: "is_granted('campaign:campaigns:viewown', object)"),
+        new Put(security: "is_granted('campaign:campaigns:editown', object)"),
+        new Patch(security: "is_granted('campaign:campaigns:editother', object)"),
+        new Delete(security: "is_granted('campaign:campaigns:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['event:read'],
+        'swagger_definition_name' => 'Read',
+    ],
+    denormalizationContext: [
+        'groups'                  => ['event:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Event implements ChannelInterface, UuidInterface
 {
-    const TYPE_DECISION  = 'decision';
-    const TYPE_ACTION    = 'action';
-    const TYPE_CONDITION = 'condition';
+    use UuidTrait;
+    use DateAddedTrait;
 
-    const PATH_INACTION = 'no';
-    const PATH_ACTION   = 'yes';
+    public const TABLE_NAME = 'campaign_events';
 
-    const TRIGGER_MODE_DATE      = 'date';
-    const TRIGGER_MODE_INTERVAL  = 'interval';
-    const TRIGGER_MODE_IMMEDIATE = 'immediate';
+    public const ENTITY_NAME = 'campaign_event';
 
-    const CHANNEL_EMAIL = 'email';
+    public const TYPE_DECISION  = 'decision';
+
+    public const TYPE_ACTION    = 'action';
+
+    public const TYPE_CONDITION = 'condition';
+
+    public const PATH_INACTION = 'no';
+
+    public const PATH_ACTION   = 'yes';
+
+    public const TRIGGER_MODE_DATE      = 'date';
+
+    public const TRIGGER_MODE_INTERVAL  = 'interval';
+
+    public const TRIGGER_MODE_IMMEDIATE = 'immediate';
+
+    public const TRIGGER_MODE_OPTIMIZED = 'optimized';
+
+    public const CHANNEL_EMAIL = 'email';
 
     /**
      * @var int
      */
+    #[Groups(['event:read', 'campaign:read'])]
     private $id;
 
     /**
      * @var string
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $name;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $description;
 
     /**
      * @var string
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $type;
 
     /**
      * @var string
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $eventType;
 
     /**
      * @var int
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $order = 0;
 
     /**
      * @var array
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $properties = [];
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $triggerDate;
 
     /**
-     * @var int
+     * @var int|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $triggerInterval = 0;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $triggerIntervalUnit;
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $triggerHour;
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $triggerRestrictedStartHour;
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $triggerRestrictedStopHour;
 
     /**
      * @var array|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $triggerRestrictedDaysOfWeek = [];
 
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
+    private ?int $triggerWindow = null;
+
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $triggerMode;
 
     /**
      * @var Campaign
      */
+    #[Groups(['event:write'])]
     private $campaign;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int, Event>
      **/
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $children;
 
     /**
-     * @var Event
+     * @var Event|null
      **/
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $parent;
 
     /**
-     * @var string
+     * @var string|null
      **/
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $decisionPath;
 
     /**
-     * @var string
+     * @var string|null
      **/
     private $tempId;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int, LeadEventLog>
      */
     private $log;
 
@@ -146,16 +203,19 @@ class Event implements ChannelInterface
      *
      * @var array
      */
+    #[Groups(['event:read', 'event:write'])]
     private $contactLog = [];
 
     /**
      * @var string|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $channel;
 
     /**
-     * @var int|null
+     * @var string|null
      */
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
     private $channelId;
 
     /**
@@ -163,29 +223,55 @@ class Event implements ChannelInterface
      */
     private $changes = [];
 
-    public function __construct()
-    {
-        $this->log      = new ArrayCollection();
-        $this->children = new ArrayCollection();
-    }
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
+    private ?\DateTimeInterface $deleted = null;
+
+    private int $failedCount = 0;
+
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
+    private ?Event $redirectEvent;
+
+    #[Groups(['event:read', 'event:write', 'campaign:read'])]
+    private ?\DateTime $dateLinked = null;
 
     /**
-     * Clean up after clone.
+     * Collection of events that redirect to this event.
+     *
+     * @var ArrayCollection<int, Event>
      */
-    public function __clone()
+    private Collection $redirectingEvents;
+
+    public function __construct(?\DateTime $dateAdded = null)
     {
-        $this->tempId    = null;
-        $this->campaign  = null;
-        $this->channel   = null;
-        $this->channelId = null;
+        $this->log               = new ArrayCollection();
+        $this->children          = new ArrayCollection();
+        $this->redirectEvent     = null;
+        $this->redirectingEvents = new ArrayCollection();
+
+        if ($dateAdded) {
+            $this->setDateAdded($dateAdded);
+            $this->setDateLinked($dateAdded);
+        } else {
+            $this->setDateAdded(new \DateTime());
+        }
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public function __clone()
+    {
+        $this->tempId            = null;
+        $this->campaign          = null;
+        $this->channel           = null;
+        $this->channelId         = null;
+        $this->redirectEvent     = null;
+        $this->redirectingEvents = new ArrayCollection();
+    }
+
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
-        $builder->setTable('campaign_events')
-            ->setCustomRepositoryClass('Mautic\CampaignBundle\Entity\EventRepository')
+        $builder->setTable(self::TABLE_NAME)
+            ->setCustomRepositoryClass(EventRepository::class)
             ->addIndex(['type', 'event_type'], 'campaign_event_search')
             ->addIndex(['event_type'], 'campaign_event_type')
             ->addIndex(['channel', 'channel_id'], 'campaign_event_channel');
@@ -206,6 +292,18 @@ class Event implements ChannelInterface
             ->build();
 
         $builder->addField('properties', 'array');
+
+        $builder->addNullableField('deleted', 'datetime');
+
+        $builder->createManyToOne('redirectEvent', 'Event')
+            ->cascadePersist()
+            ->addJoinColumn('redirect_event_id', 'id', true, false, 'SET NULL')
+            ->build();
+
+        $builder->createOneToMany('redirectingEvents', 'Event')
+            ->mappedBy('redirectEvent')
+            ->fetchExtraLazy()
+            ->build();
 
         $builder->createField('triggerDate', 'datetime')
             ->columnName('trigger_date')
@@ -243,6 +341,11 @@ class Event implements ChannelInterface
             ->nullable()
             ->build();
 
+        $builder->createField('triggerWindow', 'integer')
+            ->columnName('trigger_window')
+            ->nullable()
+            ->build();
+
         $builder->createField('triggerMode', 'string')
             ->columnName('trigger_mode')
             ->length(10)
@@ -252,6 +355,7 @@ class Event implements ChannelInterface
         $builder->createManyToOne('campaign', 'Campaign')
             ->inversedBy('events')
             ->addJoinColumn('campaign_id', 'id', false, false, 'CASCADE')
+            ->isOwnershipParent()
             ->build();
 
         $builder->createOneToMany('children', 'Event')
@@ -279,7 +383,6 @@ class Event implements ChannelInterface
         $builder->createOneToMany('log', 'LeadEventLog')
             ->mappedBy('event')
             ->cascadePersist()
-            ->cascadeRemove()
             ->fetchExtraLazy()
             ->build();
 
@@ -287,18 +390,33 @@ class Event implements ChannelInterface
             ->nullable()
             ->build();
 
-        $builder->createField('channelId', 'integer')
+        $builder->createField('channelId', Types::STRING)
             ->columnName('channel_id')
+            ->length(64)
+            ->nullable()
+            ->build();
+
+        $builder->createField('failedCount', 'integer')
+            ->columnName('failed_count')
+            ->build();
+
+        static::addUuidField($builder);
+
+        $builder->createField('dateAdded', Types::DATETIME_MUTABLE)
+            ->columnName('date_added')
+            ->option('default', '1970-01-01 00:00:00')
+            ->build();
+
+        $builder->createField('dateLinked', Types::DATETIME_MUTABLE)
+            ->columnName('date_linked')
             ->nullable()
             ->build();
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('campaignEvent')
             ->addListProperties(
@@ -356,9 +474,9 @@ class Event implements ChannelInterface
                      'triggerInterval',
                      'triggerIntervalUnit',
                      'triggerHour',
-                    'triggerRestrictedStartHour',
-                    'triggerRestrictedStopHour',
-                    'triggerRestrictedDaysOfWeek',
+                     'triggerRestrictedStartHour',
+                     'triggerRestrictedStopHour',
+                     'triggerRestrictedDaysOfWeek',
                      'triggerMode',
                      'children',
                      'parent',
@@ -399,11 +517,15 @@ class Event implements ChannelInterface
              ->build();
     }
 
+    public static function loadValidatorMetadata(ClassMetadata $metadata): void
+    {
+        $metadata->addConstraint(new EntityEvent());
+    }
+
     /**
-     * @param string $prop
-     * @param mixed  $val
+     * @param mixed $val
      */
-    private function isChanged($prop, $val)
+    private function isChanged(string $prop, $val): bool
     {
         $getter  = 'get'.ucfirst($prop);
         $current = $this->$getter();
@@ -412,10 +534,16 @@ class Event implements ChannelInterface
             $newId     = ($val) ? $val->getId() : null;
             if ($currentId != $newId) {
                 $this->changes[$prop] = [$currentId, $newId];
+
+                return true;
             }
         } elseif ($this->$prop != $val) {
             $this->changes[$prop] = [$this->$prop, $val];
+
+            return true;
         }
+
+        return false;
     }
 
     /**
@@ -427,8 +555,6 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Get id.
-     *
      * @return int
      */
     public function getId()
@@ -436,19 +562,15 @@ class Event implements ChannelInterface
         return $this->id;
     }
 
-    public function nullId()
+    public function nullId(): void
     {
         $this->id = null;
     }
 
     /**
-     * Set order.
-     *
      * @param int $order
-     *
-     * @return Event
      */
-    public function setOrder($order)
+    public function setOrder($order): static
     {
         $this->isChanged('order', $order);
 
@@ -458,8 +580,6 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Get order.
-     *
      * @return int
      */
     public function getOrder()
@@ -468,13 +588,9 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Set properties.
-     *
      * @param array $properties
-     *
-     * @return Event
      */
-    public function setProperties($properties)
+    public function setProperties($properties): static
     {
         $this->isChanged('properties', $properties);
 
@@ -484,8 +600,6 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Get properties.
-     *
      * @return array
      */
     public function getProperties()
@@ -493,12 +607,7 @@ class Event implements ChannelInterface
         return $this->properties;
     }
 
-    /**
-     * Set campaign.
-     *
-     * @return Event
-     */
-    public function setCampaign(\Mautic\CampaignBundle\Entity\Campaign $campaign)
+    public function setCampaign(Campaign $campaign): static
     {
         $this->campaign = $campaign;
 
@@ -506,9 +615,7 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Get campaign.
-     *
-     * @return \Mautic\CampaignBundle\Entity\Campaign
+     * @return Campaign
      */
     public function getCampaign()
     {
@@ -516,13 +623,9 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Set type.
-     *
      * @param string $type
-     *
-     * @return Event
      */
-    public function setType($type)
+    public function setType($type): static
     {
         $this->isChanged('type', $type);
         $this->type = $type;
@@ -531,8 +634,6 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Get type.
-     *
      * @return string
      */
     public function getType()
@@ -540,22 +641,15 @@ class Event implements ChannelInterface
         return $this->type;
     }
 
-    /**
-     * @return array
-     */
-    public function convertToArray()
+    public function convertToArray(): array
     {
         return get_object_vars($this);
     }
 
     /**
-     * Set description.
-     *
      * @param string $description
-     *
-     * @return Event
      */
-    public function setDescription($description)
+    public function setDescription($description): static
     {
         $this->isChanged('description', $description);
         $this->description = $description;
@@ -564,9 +658,7 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Get description.
-     *
-     * @return string
+     * @return string|null
      */
     public function getDescription()
     {
@@ -574,13 +666,9 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Set name.
-     *
      * @param string $name
-     *
-     * @return Event
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->isChanged('name', $name);
         $this->name = $name;
@@ -589,8 +677,6 @@ class Event implements ChannelInterface
     }
 
     /**
-     * Get name.
-     *
      * @return string
      */
     public function getName()
@@ -598,12 +684,7 @@ class Event implements ChannelInterface
         return $this->name;
     }
 
-    /**
-     * Add log.
-     *
-     * @return Event
-     */
-    public function addLog(LeadEventLog $log)
+    public function addLog(LeadEventLog $log): static
     {
         $this->log[] = $log;
 
@@ -613,15 +694,13 @@ class Event implements ChannelInterface
     /**
      * Remove log.
      */
-    public function removeLog(LeadEventLog $log)
+    public function removeLog(LeadEventLog $log): void
     {
         $this->log->removeElement($log);
     }
 
     /**
-     * Get log.
-     *
-     * @return \Doctrine\Common\Collections\Collection
+     * @return Collection
      */
     public function getLog()
     {
@@ -630,8 +709,6 @@ class Event implements ChannelInterface
 
     /**
      * Get log for a contact and a rotation.
-     *
-     * @param $rotation
      *
      * @return LeadEventLog|null
      */
@@ -653,12 +730,8 @@ class Event implements ChannelInterface
 
     /**
      * Add children.
-     *
-     * @param \Mautic\CampaignBundle\Entity\Event $children
-     *
-     * @return Event
      */
-    public function addChild(Event $children)
+    public function addChild(Event $children): static
     {
         $this->children[] = $children;
 
@@ -667,24 +740,24 @@ class Event implements ChannelInterface
 
     /**
      * Remove children.
-     *
-     * @param \Mautic\CampaignBundle\Entity\Event $children
      */
-    public function removeChild(Event $children)
+    public function removeChild(Event $children): void
     {
         $this->children->removeElement($children);
     }
 
     /**
-     * @return ArrayCollection|Event[]
+     * @return ArrayCollection<int,Event>|Collection<(int|string), mixed>
      */
     public function getChildren()
     {
-        return $this->children;
+        $criteria = Criteria::create()->where(Criteria::expr()->isNull('deleted'));
+
+        return $this->children->matching($criteria);
     }
 
     /**
-     * @return ArrayCollection|Event[]
+     * @return ArrayCollection<int,Event>
      */
     public function getPositiveChildren()
     {
@@ -694,7 +767,7 @@ class Event implements ChannelInterface
     }
 
     /**
-     * @return ArrayCollection|Event[]
+     * @return ArrayCollection<int,Event>
      */
     public function getNegativeChildren()
     {
@@ -704,9 +777,9 @@ class Event implements ChannelInterface
     }
 
     /**
-     * @param $type
+     * @param string $type
      *
-     * @return ArrayCollection
+     * @return ArrayCollection<int,Event>
      */
     public function getChildrenByType($type)
     {
@@ -716,9 +789,9 @@ class Event implements ChannelInterface
     }
 
     /**
-     * @param $type
+     * @param string $type
      *
-     * @return ArrayCollection
+     * @return ArrayCollection<int,Event>
      */
     public function getChildrenByEventType($type)
     {
@@ -729,14 +802,13 @@ class Event implements ChannelInterface
 
     /**
      * Set parent.
-     *
-     * @param \Mautic\CampaignBundle\Entity\Event $parent
-     *
-     * @return Event
      */
-    public function setParent(Event $parent = null)
+    public function setParent(?Event $parent = null): static
     {
-        $this->isChanged('parent', $parent);
+        $isChanged = $this->isChanged('parent', $parent);
+        if ($isChanged) {
+            $this->setDateLinked(new \DateTime());
+        }
         $this->parent = $parent;
 
         return $this;
@@ -745,16 +817,15 @@ class Event implements ChannelInterface
     /**
      * Remove parent.
      */
-    public function removeParent()
+    public function removeParent(): void
     {
         $this->isChanged('parent', '');
+        $this->setDateLinked(new \DateTime());
         $this->parent = null;
     }
 
     /**
-     * Get parent.
-     *
-     * @return \Mautic\CampaignBundle\Entity\Event
+     * @return ?Event
      */
     public function getParent()
     {
@@ -762,24 +833,27 @@ class Event implements ChannelInterface
     }
 
     /**
-     * @return mixed
+     * @return \DateTimeInterface|null
      */
     public function getTriggerDate()
     {
         return $this->triggerDate;
     }
 
-    /**
-     * @param mixed $triggerDate
-     */
-    public function setTriggerDate($triggerDate)
+    public function setTriggerDate(mixed $triggerDate = 'now'): void
     {
+        if (is_array($triggerDate) && array_key_exists('date', $triggerDate)) {
+            $triggerDate = new \DateTime($triggerDate['date']);
+        } elseif (is_string($triggerDate)) {
+            $triggerDate = new \DateTime($triggerDate);
+        }
+
         $this->isChanged('triggerDate', $triggerDate);
         $this->triggerDate = $triggerDate;
     }
 
     /**
-     * @return int
+     * @return int|null
      */
     public function getTriggerInterval()
     {
@@ -789,14 +863,14 @@ class Event implements ChannelInterface
     /**
      * @param int $triggerInterval
      */
-    public function setTriggerInterval($triggerInterval)
+    public function setTriggerInterval($triggerInterval): void
     {
         $this->isChanged('triggerInterval', $triggerInterval);
         $this->triggerInterval = $triggerInterval;
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getTriggerHour()
     {
@@ -804,18 +878,11 @@ class Event implements ChannelInterface
     }
 
     /**
-     * @param string $triggerHour
-     *
-     * @return Event
+     * @param \DateTime|string|array<string,string> $triggerHour
      */
-    public function setTriggerHour($triggerHour)
+    public function setTriggerHour($triggerHour): static
     {
-        if (empty($triggerHour)) {
-            $triggerHour = null;
-        } elseif (!$triggerHour instanceof \DateTime) {
-            $triggerHour = new \DateTime($triggerHour);
-        }
-
+        $triggerHour = $this->convertToDateTime($triggerHour);
         $this->isChanged('triggerHour', $triggerHour ? $triggerHour->format('H:i') : $triggerHour);
         $this->triggerHour = $triggerHour;
 
@@ -823,7 +890,7 @@ class Event implements ChannelInterface
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getTriggerIntervalUnit()
     {
@@ -833,26 +900,21 @@ class Event implements ChannelInterface
     /**
      * @param mixed $triggerIntervalUnit
      */
-    public function setTriggerIntervalUnit($triggerIntervalUnit)
+    public function setTriggerIntervalUnit($triggerIntervalUnit): void
     {
         $this->isChanged('triggerIntervalUnit', $triggerIntervalUnit);
         $this->triggerIntervalUnit = $triggerIntervalUnit;
     }
 
     /**
-     * @return mixed
+     * @return string
      */
     public function getEventType()
     {
         return $this->eventType;
     }
 
-    /**
-     * @param $eventType
-     *
-     * @return $this
-     */
-    public function setEventType($eventType)
+    public function setEventType($eventType): static
     {
         $this->isChanged('eventType', $eventType);
         $this->eventType = $eventType;
@@ -860,8 +922,20 @@ class Event implements ChannelInterface
         return $this;
     }
 
+    public function getTriggerWindow(): ?int
+    {
+        return $this->triggerWindow;
+    }
+
+    public function setTriggerWindow(?int $triggerWindow): Event
+    {
+        $this->triggerWindow = $triggerWindow;
+
+        return $this;
+    }
+
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getTriggerMode()
     {
@@ -871,14 +945,14 @@ class Event implements ChannelInterface
     /**
      * @param mixed $triggerMode
      */
-    public function setTriggerMode($triggerMode)
+    public function setTriggerMode($triggerMode): void
     {
         $this->isChanged('triggerMode', $triggerMode);
         $this->triggerMode = $triggerMode;
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getDecisionPath()
     {
@@ -888,14 +962,14 @@ class Event implements ChannelInterface
     /**
      * @param mixed $decisionPath
      */
-    public function setDecisionPath($decisionPath)
+    public function setDecisionPath($decisionPath): void
     {
         $this->isChanged('decisionPath', $decisionPath);
         $this->decisionPath = $decisionPath;
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getTempId()
     {
@@ -905,14 +979,14 @@ class Event implements ChannelInterface
     /**
      * @param mixed $tempId
      */
-    public function setTempId($tempId)
+    public function setTempId($tempId): void
     {
         $this->isChanged('tempId', $tempId);
         $this->tempId = $tempId;
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getChannel()
     {
@@ -922,14 +996,14 @@ class Event implements ChannelInterface
     /**
      * @param mixed $channel
      */
-    public function setChannel($channel)
+    public function setChannel($channel): void
     {
         $this->isChanged('channel', $channel);
         $this->channel = $channel;
     }
 
     /**
-     * @return int
+     * @return string|null
      */
     public function getChannelId()
     {
@@ -937,20 +1011,20 @@ class Event implements ChannelInterface
     }
 
     /**
-     * @param int $channelId
+     * @param string|int $channelId
      */
-    public function setChannelId($channelId)
+    public function setChannelId($channelId): void
     {
         $this->isChanged('channelId', $channelId);
-        $this->channelId = (int) $channelId;
+        $this->channelId = (string) $channelId;
     }
 
     /**
      * Used by the API.
      *
-     * @return LeadEventLog[]|\Doctrine\Common\Collections\Collection|static
+     * @return LeadEventLog[]|Collection|static
      */
-    public function getContactLog(Contact $contact = null)
+    public function getContactLog(?Contact $contact = null)
     {
         if ($this->contactLog) {
             return $this->contactLog;
@@ -968,10 +1042,8 @@ class Event implements ChannelInterface
      * Used by the API.
      *
      * @param array $contactLog
-     *
-     * @return Event
      */
-    public function setContactLog($contactLog)
+    public function setContactLog($contactLog): static
     {
         $this->contactLog = $contactLog;
 
@@ -980,10 +1052,8 @@ class Event implements ChannelInterface
 
     /**
      * Used by the API.
-     *
-     * @return Event
      */
-    public function addContactLog($contactLog)
+    public function addContactLog($contactLog): static
     {
         $this->contactLog[] = $contactLog;
 
@@ -993,7 +1063,7 @@ class Event implements ChannelInterface
     /**
      * Get the value of triggerRestrictedStartHour.
      *
-     * @return \DateTime|null
+     * @return \DateTimeInterface|null
      */
     public function getTriggerRestrictedStartHour()
     {
@@ -1003,17 +1073,11 @@ class Event implements ChannelInterface
     /**
      * Set the value of triggerRestrictedStartHour.
      *
-     * @param \DateTime|null $triggerRestrictedStartHour
-     *
-     * @return self
+     * @param \DateTime|string|array<string,string>|null $triggerRestrictedStartHour
      */
-    public function setTriggerRestrictedStartHour($triggerRestrictedStartHour)
+    public function setTriggerRestrictedStartHour($triggerRestrictedStartHour): static
     {
-        if (empty($triggerRestrictedStartHour)) {
-            $triggerRestrictedStartHour = null;
-        } elseif (!$triggerRestrictedStartHour instanceof \DateTime) {
-            $triggerRestrictedStartHour = new \DateTime($triggerRestrictedStartHour);
-        }
+        $triggerRestrictedStartHour = $this->convertToDateTime($triggerRestrictedStartHour);
 
         $this->isChanged('triggerRestrictedStartHour', $triggerRestrictedStartHour ? $triggerRestrictedStartHour->format('H:i') : $triggerRestrictedStartHour);
 
@@ -1025,7 +1089,7 @@ class Event implements ChannelInterface
     /**
      * Get the value of triggerRestrictedStopHour.
      *
-     * @return \DateTime|null
+     * @return \DateTimeInterface|null
      */
     public function getTriggerRestrictedStopHour()
     {
@@ -1035,17 +1099,11 @@ class Event implements ChannelInterface
     /**
      * Set the value of triggerRestrictedStopHour.
      *
-     * @param \DateTime|null $triggerRestrictedStopHour
-     *
-     * @return self
+     * @param \DateTime|string|array<string,string>|null $triggerRestrictedStopHour
      */
-    public function setTriggerRestrictedStopHour($triggerRestrictedStopHour)
+    public function setTriggerRestrictedStopHour($triggerRestrictedStopHour): static
     {
-        if (empty($triggerRestrictedStopHour)) {
-            $triggerRestrictedStopHour = null;
-        } elseif (!$triggerRestrictedStopHour instanceof \DateTime) {
-            $triggerRestrictedStopHour = new \DateTime($triggerRestrictedStopHour);
-        }
+        $triggerRestrictedStopHour = $this->convertToDateTime($triggerRestrictedStopHour);
 
         $this->isChanged('triggerRestrictedStopHour', $triggerRestrictedStopHour ? $triggerRestrictedStopHour->format('H:i') : $triggerRestrictedStopHour);
 
@@ -1056,24 +1114,105 @@ class Event implements ChannelInterface
 
     /**
      * Get the value of triggerRestrictedDaysOfWeek.
-     *
-     * @return array
      */
-    public function getTriggerRestrictedDaysOfWeek()
+    public function getTriggerRestrictedDaysOfWeek(): array
     {
         return (array) $this->triggerRestrictedDaysOfWeek;
     }
 
     /**
      * Set the value of triggerRestrictedDaysOfWeek.
-     *
-     * @return self
      */
-    public function setTriggerRestrictedDaysOfWeek(array $triggerRestrictedDaysOfWeek = null)
+    public function setTriggerRestrictedDaysOfWeek(?array $triggerRestrictedDaysOfWeek = null): static
     {
         $this->triggerRestrictedDaysOfWeek = $triggerRestrictedDaysOfWeek;
         $this->isChanged('triggerRestrictedDaysOfWeek', $triggerRestrictedDaysOfWeek);
 
         return $this;
+    }
+
+    public function setDeleted(mixed $deleted = 'now'): Event
+    {
+        if (is_array($deleted) && array_key_exists('date', $deleted)) {
+            $deleted = new \DateTime($deleted['date']);
+        } elseif (is_string($deleted)) {
+            $deleted = new \DateTime($deleted);
+        }
+
+        $this->isChanged('deleted', $deleted);
+        $this->deleted = $deleted;
+
+        return $this;
+    }
+
+    public function getDeleted(): ?\DateTimeInterface
+    {
+        return $this->deleted;
+    }
+
+    public function isDeleted(): bool
+    {
+        return !is_null($this->deleted);
+    }
+
+    public function getFailedCount(): int
+    {
+        return $this->failedCount;
+    }
+
+    private function convertToDateTime(mixed $triggerDate): mixed
+    {
+        if (empty($triggerDate)) {
+            $triggerDate = null;
+        } elseif (is_array($triggerDate) && array_key_exists('date', $triggerDate)) {
+            $triggerDate = new \DateTime($triggerDate['date']);
+        } elseif (is_string($triggerDate)) {
+            $triggerDate = new \DateTime($triggerDate);
+        }
+
+        return $triggerDate;
+    }
+
+    public function getDateLinked(): ?\DateTime
+    {
+        return $this->dateLinked;
+    }
+
+    public function setDateLinked(?\DateTime $dateLinked): void
+    {
+        $this->isChanged('dateLinked', $dateLinked);
+        $this->dateLinked = $dateLinked;
+    }
+
+    public function setRedirectEvent(?Event $redirectEvent = null): Event
+    {
+        $this->isChanged('redirectEvent', $redirectEvent);
+        $this->redirectEvent = $redirectEvent;
+
+        return $this;
+    }
+
+    public function getRedirectEvent(): ?Event
+    {
+        return $this->redirectEvent;
+    }
+
+    public function shouldBeRedirected(): bool
+    {
+        return $this->isDeleted() && null !== $this->redirectEvent;
+    }
+
+    /**
+     * Check if this event is used as a redirect target by any other event.
+     */
+    #[Groups(['event:read', 'campaign:read'])]
+    public function isRedirectTarget(): bool
+    {
+        return $this->redirectingEvents->count() > 0;
+    }
+
+    public function getPermissionUser(): mixed
+    {
+        return $this->getCampaign()->getCreatedBy();
     }
 }

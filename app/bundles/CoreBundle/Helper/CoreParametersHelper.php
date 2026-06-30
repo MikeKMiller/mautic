@@ -1,46 +1,22 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Helper;
 
 use Mautic\CoreBundle\Loader\ParameterLoader;
 use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\HttpFoundation\ParameterBag;
 
-/**
- * Class CoreParametersHelper.
- */
 class CoreParametersHelper
 {
-    /**
-     * @var ParameterBag
-     */
-    private $parameters;
+    private readonly \Symfony\Component\HttpFoundation\ParameterBag $parameters;
 
-    /**
-     * @var ContainerInterface
-     */
-    private $container;
+    private ?array $resolvedParameters = null;
 
-    /**
-     * @var array
-     */
-    private $resolvedParameters;
-
-    public function __construct(ContainerInterface $container)
-    {
+    public function __construct(
+        private readonly ContainerInterface $container,
+    ) {
         $loader = new ParameterLoader();
 
         $this->parameters = $loader->getParameterBag();
-        $this->container  = $container;
 
         $this->resolveParameters();
     }
@@ -56,7 +32,7 @@ class CoreParametersHelper
         $name = $this->stripMauticPrefix($name);
 
         if ('db_table_prefix' === $name && defined('MAUTIC_TABLE_PREFIX')) {
-            //use the constant in case in the installer
+            // use the constant in case in the installer
             return MAUTIC_TABLE_PREFIX;
         }
 
@@ -82,14 +58,6 @@ class CoreParametersHelper
         return $this->resolvedParameters;
     }
 
-    /**
-     * @deprecated 3.0.0 to be removed in 4.0; use get() instead
-     */
-    public function getParameter($name, $default = null)
-    {
-        return $this->get($name, $default);
-    }
-
     private function stripMauticPrefix(string $name): string
     {
         return str_replace('mautic.', '', $name);
@@ -102,5 +70,14 @@ class CoreParametersHelper
         foreach ($all as $key => $value) {
             $this->resolvedParameters[$key] = $this->get($key, $value);
         }
+    }
+
+    public function getDefaultTimezone(): string
+    {
+        if (!empty($this->get('default_timezone'))) {
+            return $this->get('default_timezone');
+        }
+
+        return 'UTC';
     }
 }

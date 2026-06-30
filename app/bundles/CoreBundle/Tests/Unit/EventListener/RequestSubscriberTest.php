@@ -1,156 +1,123 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\EventListener;
 
 use Mautic\CoreBundle\EventListener\RequestSubscriber;
-use Mautic\CoreBundle\Helper\TemplatingHelper;
-use Symfony\Bundle\FrameworkBundle\Templating\DelegatingEngine;
+use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpKernel\Event\GetResponseEvent;
+use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Security\Csrf\CsrfToken;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
+use Twig\Environment;
 
 class RequestSubscriberTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @var RequestSubscriber
-     */
-    private $subscriber;
+    private RequestSubscriber $subscriber;
+
+    private Request $request;
 
     /**
-     * @var Request
+     * @var MockObject&RequestEvent
      */
-    private $request;
-
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject
-     */
-    private $getResponseEventMock;
+    private MockObject $event;
 
     protected function setUp(): void
     {
-        $aCsrfTokenId    = 45;
+        $aCsrfTokenId    = '45';
         $aCsrfTokenValue = 'csrf-token-value';
 
         $csrfTokenManagerMock = $this->createMock(CsrfTokenManagerInterface::class);
 
-        $csrfTokenManagerMock
-            ->method('getToken')
+        $csrfTokenManagerMock->method('getToken')
             ->willReturn(new CsrfToken($aCsrfTokenId, $aCsrfTokenValue));
+
+        $csrfTokenManagerMock->method('isTokenValid')
+          ->willReturnCallback(fn (CsrfToken $token): bool => $token->getValue() === $aCsrfTokenValue);
 
         $this->request = new Request();
 
-        $this->getResponseEventMock = $this->getMockBuilder(GetResponseEvent::class)
+        $this->event = $this->getMockBuilder(RequestEvent::class)
             ->setConstructorArgs([
-                $this->createMock(HttpKernelInterface::class),
+                $this->createStub(HttpKernelInterface::class),
                 $this->request,
-                HttpKernelInterface::MASTER_REQUEST,
-            ])
-            ->getMock();
+                HttpKernelInterface::MAIN_REQUEST,
+            ])->getMock();
 
-        $this->getResponseEventMock
-            ->expects($this->any())
-            ->method('getRequest')
-            ->willReturn($this->request);
+        $this->event->method('getRequest')->willReturn($this->request);
 
-        $templatingHelper = $this->createMock(TemplatingHelper::class);
-
-        $templatingHelper
-            ->method('getTemplating')
-            ->willReturn($this->createMock(DelegatingEngine::class));
+        $twig = $this->createMock(Environment::class);
 
         $this->subscriber = new RequestSubscriber(
             $csrfTokenManagerMock,
-            $this->createMock(TranslatorInterface::class),
-            $templatingHelper
+            $this->createStub(TranslatorInterface::class),
+            $twig
         );
     }
 
-    public function testTheValidateCsrfTokenForAjaxPostMethodAsRegularPost()
+    public function testTheValidateCsrfTokenForAjaxPostMethodAsRegularPost(): void
     {
-        $this->getResponseEventMock
-            ->expects($this->never())
-            ->method('setResponse');
+        $this->event->expects($this->never())->method('setResponse');
 
         $this->request->server->set('REQUEST_METHOD', 'POST');
 
-        $this->subscriber->validateCsrfTokenForAjaxPost($this->getResponseEventMock);
+        $this->subscriber->validateCsrfTokenForAjaxPost($this->event);
     }
 
-    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxGet()
+    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxGet(): void
     {
-        $this->getResponseEventMock
-            ->expects($this->never())
-            ->method('setResponse');
+        $this->event->expects($this->never())->method('setResponse');
 
         $this->request->headers->set('X-Requested-With', 'XMLHttpRequest');
         $this->request->server->set('REQUEST_METHOD', 'GET');
 
-        $this->subscriber->validateCsrfTokenForAjaxPost($this->getResponseEventMock);
+        $this->subscriber->validateCsrfTokenForAjaxPost($this->event);
     }
 
-    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxPostOnPublicRoute()
+    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxPostOnPublicRoute(): void
     {
-        $this->getResponseEventMock
-            ->expects($this->never())
-            ->method('setResponse');
+        $this->event->expects($this->never())->method('setResponse');
 
         $this->request->headers->set('X-Requested-With', 'XMLHttpRequest');
         $this->request->server->set('REQUEST_METHOD', 'POST');
         $this->request->server->set('REQUEST_URI', '/some-public-page');
 
-        $this->subscriber->validateCsrfTokenForAjaxPost($this->getResponseEventMock);
+        $this->subscriber->validateCsrfTokenForAjaxPost($this->event);
     }
 
-    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxPostOnSecureRouteWithMissingCsrf()
+    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxPostOnSecureRouteWithMissingCsrf(): void
     {
-        $this->getResponseEventMock
-            ->expects($this->once())
-            ->method('setResponse');
+        $this->event->expects($this->once())->method('setResponse');
 
         $this->request->headers->set('X-Requested-With', 'XMLHttpRequest');
         $this->request->server->set('REQUEST_METHOD', 'POST');
         $this->request->server->set('REQUEST_URI', '/s/some-secure-page');
 
-        $this->subscriber->validateCsrfTokenForAjaxPost($this->getResponseEventMock);
+        $this->subscriber->validateCsrfTokenForAjaxPost($this->event);
     }
 
-    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxPostOnSecureRouteWithInvalidCsrf()
+    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxPostOnSecureRouteWithInvalidCsrf(): void
     {
-        $this->getResponseEventMock
-            ->expects($this->once())
-            ->method('setResponse');
+        $this->event->expects($this->once())->method('setResponse');
 
         $this->request->headers->set('X-CSRF-Token', 'invalid-csrf-token-value');
         $this->request->headers->set('X-Requested-With', 'XMLHttpRequest');
         $this->request->server->set('REQUEST_METHOD', 'POST');
         $this->request->server->set('REQUEST_URI', '/s/some-secure-page');
 
-        $this->subscriber->validateCsrfTokenForAjaxPost($this->getResponseEventMock);
+        $this->subscriber->validateCsrfTokenForAjaxPost($this->event);
     }
 
-    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxPostOnSecureRouteWithMatchingCsrf()
+    public function testTheValidateCsrfTokenForAjaxPostMethodAsAjaxPostOnSecureRouteWithMatchingCsrf(): void
     {
-        $this->getResponseEventMock
-            ->expects($this->never())
-            ->method('setResponse');
+        $this->event->expects($this->never())->method('setResponse');
 
         $this->request->headers->set('X-CSRF-Token', 'csrf-token-value');
         $this->request->headers->set('X-Requested-With', 'XMLHttpRequest');
         $this->request->server->set('REQUEST_METHOD', 'POST');
         $this->request->server->set('REQUEST_URI', '/s/some-secure-page');
 
-        $this->subscriber->validateCsrfTokenForAjaxPost($this->getResponseEventMock);
+        $this->subscriber->validateCsrfTokenForAjaxPost($this->event);
     }
 }

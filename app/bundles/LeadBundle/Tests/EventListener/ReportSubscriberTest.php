@@ -2,18 +2,9 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\EventListener;
 
-use Doctrine\DBAL\Driver\PDOStatement;
+use Doctrine\DBAL\Query\Expression\ExpressionBuilder;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Mautic\CampaignBundle\Entity\CampaignRepository;
 use Mautic\CampaignBundle\EventCollector\EventCollector;
@@ -26,152 +17,113 @@ use Mautic\LeadBundle\Entity\PointsChangeLogRepository;
 use Mautic\LeadBundle\EventListener\ReportSubscriber;
 use Mautic\LeadBundle\Model\CompanyModel;
 use Mautic\LeadBundle\Model\CompanyReportData;
+use Mautic\LeadBundle\Model\FieldModel;
 use Mautic\LeadBundle\Model\LeadModel;
+use Mautic\LeadBundle\Report\DncReportService;
 use Mautic\LeadBundle\Report\FieldsBuilder;
-use Mautic\LeadBundle\Segment\Query\Expression\CompositeExpression;
-use Mautic\LeadBundle\Segment\Query\Expression\ExpressionBuilder;
-use Mautic\ReportBundle\Entity\Report;
+use Mautic\ReportBundle\Event\ColumnCollectEvent;
 use Mautic\ReportBundle\Event\ReportBuilderEvent;
 use Mautic\ReportBundle\Event\ReportDataEvent;
 use Mautic\ReportBundle\Event\ReportGeneratorEvent;
 use Mautic\ReportBundle\Event\ReportGraphEvent;
 use Mautic\ReportBundle\Helper\ReportHelper;
 use Mautic\StageBundle\Model\StageModel;
+use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\MockObject\MockObject;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var MockObject|LeadModel
+     * @var MockObject&LeadModel
      */
-    private $leadModelMock;
+    private MockObject $leadModelMock;
 
     /**
-     * @var MockObject|StageModel
+     * @var MockObject&FieldModel
      */
-    private $stageModelMock;
+    private MockObject $leadFieldModelMock;
 
     /**
-     * @var MockObject|CampaignModel
+     * @var MockObject&CompanyModel
      */
-    private $campaignModelMock;
+    private MockObject $companyModelMock;
 
     /**
-     * @var MockObject|EventCollector
+     * @var MockObject&CompanyReportData
      */
-    private $eventCollectorMock;
+    private MockObject $companyReportDataMock;
 
     /**
-     * @var MockObject|CompanyModel
+     * @var MockObject&FieldsBuilder
      */
-    private $companyModelMock;
+    private MockObject $fieldsBuilderMock;
 
     /**
-     * @var MockObject|CompanyReportData
+     * @var MockObject&Translator
      */
-    private $companyReportDataMock;
+    private MockObject $translatorMock;
 
     /**
-     * @var MockObject|FieldsBuilder
+     * @var MockObject&ReportGeneratorEvent
      */
-    private $fieldsBuilderMock;
+    private MockObject $reportGeneratorEventMock;
+
+    private ChannelListHelper $channelListHelperMock;
+
+    private ReportHelper $reportHelperMock;
 
     /**
-     * @var MockObject|Translator
+     * @var MockObject&ReportBuilderEvent
      */
-    private $translatorMock;
+    private MockObject $reportBuilderEventMock;
 
     /**
-     * @var MockObject|ReportGeneratorEvent
+     * @var MockObject&QueryBuilder
      */
-    private $reportGeneratorEventMock;
+    private MockObject $queryBuilderMock;
 
     /**
-     * @var MockObject|ChannelListHelper
+     * @var MockObject&ReportGraphEvent
      */
-    private $channelListHelperMock;
+    private MockObject $reportGraphEventMock;
 
     /**
-     * @var MockObject|ReportHelper
+     * @var \PHPUnit\Framework\MockObject\Stub|CompanyRepository
      */
-    private $reportHelperMock;
+    private \PHPUnit\Framework\MockObject\Stub $companyRepositoryMock;
 
     /**
-     * @var MockObject|CampaignRepository
+     * @var \PHPUnit\Framework\MockObject\Stub|PointsChangeLogRepository
      */
-    private $campaignRepositoryMock;
+    private \PHPUnit\Framework\MockObject\Stub $pointsChangeLogRepositoryMock;
 
     /**
-     * @var MockObject|ReportBuilderEvent
+     * @var MockObject&ReportDataEvent
      */
-    private $reportBuilderEventMock;
+    private MockObject $reportDataEventMock;
 
-    /**
-     * @var MockObject|QueryBuilder
-     */
-    private $queryBuilderMock;
+    private ReportSubscriber $reportSubscriber;
 
-    /**
-     * @var MockObject|ExpressionBuilder
-     */
-    private $expressionBuilderMock;
-
-    /**
-     * @var MockObject|ReportGraphEvent
-     */
-    private $reportGraphEventMock;
-
-    /**
-     * @var MockObject|CompanyRepository
-     */
-    private $companyRepositoryMock;
-
-    /**
-     * @var MockObject|PointsChangeLogRepository
-     */
-    private $pointsChangeLogRepositoryMock;
-
-    /**
-     * @var MockObject|ReportMock
-     */
-    private $reportMock;
-
-    /**
-     * @var MockObject|ReportDataEventMock
-     */
-    private $reportDataEventMock;
-
-    /**
-     * @var ReportSubscriber
-     */
-    private $reportSubscriber;
-
-    /**
-     * @var array
-     */
-    private $leadColumns = [
+    /** @var array<string, array<string, string>> */
+    private array $leadColumns = [
         'xx.yy' => [
-            'label' => null,
+            'label' => '',
             'type'  => 'bool',
             'alias' => 'first',
         ],
     ];
 
-    /**
-     * @var array
-     */
-    private $leadFilters = [
+    /** @var array<string, array<string, string>> */
+    private array $leadFilters = [
         'filter' => [
             'label' => 'second',
             'type'  => 'text',
         ],
     ];
 
-    /**
-     * @var array
-     */
-    private $companyColumns = [
+    /** @var array<string, array<string, string>> */
+    private array $companyColumns = [
         'comp.name' => [
             'label' => 'company_name',
             'type'  => 'text',
@@ -180,48 +132,43 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
 
     protected function setUp(): void
     {
-        if (!defined('MAUTIC_TABLE_PREFIX')) {
-            define('MAUTIC_TABLE_PREFIX', '');
-        }
-
         $this->leadModelMock                    = $this->createMock(LeadModel::class);
-        $this->stageModelMock                   = $this->createMock(StageModel::class);
-        $this->campaignModelMock                = $this->createMock(CampaignModel::class);
-        $this->eventCollectorMock               = $this->createMock(EventCollector::class);
+        $this->leadFieldModelMock               = $this->createMock(FieldModel::class);
+        $stageModelMock                         = $this->createMock(StageModel::class);
+        $campaignModelMock                      = $this->createMock(CampaignModel::class);
+        $eventCollectorMock                     = $this->createMock(EventCollector::class);
         $this->companyModelMock                 = $this->createMock(CompanyModel::class);
         $this->companyReportDataMock            = $this->createMock(CompanyReportData::class);
         $this->fieldsBuilderMock                = $this->createMock(FieldsBuilder::class);
         $this->translatorMock                   = $this->createMock(Translator::class);
         $this->reportGeneratorEventMock         = $this->createMock(ReportGeneratorEvent::class);
         $this->reportDataEventMock              = $this->createMock(ReportDataEvent::class);
-        $this->channelListHelperMock            = $this->createMock(ChannelListHelper::class);
-        $this->reportHelperMock                 = $this->createMock(ReportHelper::class);
-        $this->campaignRepositoryMock           = $this->createMock(CampaignRepository::class);
+        $this->channelListHelperMock            = new ChannelListHelper($this->createStub(EventDispatcherInterface::class), $this->createStub(Translator::class));
+        $this->reportHelperMock                 = new ReportHelper($this->createStub(EventDispatcherInterface::class));
+        $campaignRepositoryMock                 = $this->createMock(CampaignRepository::class);
         $this->reportBuilderEventMock           = $this->createMock(ReportBuilderEvent::class);
         $this->queryBuilderMock                 = $this->createMock(QueryBuilder::class);
-        $this->expressionBuilderMock            = $this->createMock(ExpressionBuilder::class);
+        $expressionBuilderMock                  = $this->createMock(ExpressionBuilder::class);
         $this->reportGraphEventMock             = $this->createMock(ReportGraphEvent::class);
-        $this->companyRepositoryMock            = $this->createMock(CompanyRepository::class);
-        $this->pointsChangeLogRepositoryMock    = $this->createMock(PointsChangeLogRepository::class);
-        $this->reportMock                       = $this->createMock(Report::class);
+        $this->companyRepositoryMock            = $this->createStub(CompanyRepository::class);
+        $this->pointsChangeLogRepositoryMock    = $this->createStub(PointsChangeLogRepository::class);
+        $dncReportService                       = $this->createMock(DncReportService::class);
         $this->reportSubscriber                 = new ReportSubscriber(
             $this->leadModelMock,
-            $this->stageModelMock,
-            $this->campaignModelMock,
-            $this->eventCollectorMock,
+            $this->leadFieldModelMock,
+            $stageModelMock,
+            $campaignModelMock,
+            $eventCollectorMock,
             $this->companyModelMock,
             $this->companyReportDataMock,
             $this->fieldsBuilderMock,
-            $this->translatorMock
+            $this->translatorMock,
+            $dncReportService
         );
-
-        $this->expressionBuilderMock->expects($this->any())
-            ->method('andX')
-            ->willReturn($this->expressionBuilderMock);
 
         $this->queryBuilderMock->expects($this->any())
                 ->method('expr')
-                ->willReturn($this->expressionBuilderMock);
+                ->willReturn($expressionBuilderMock);
 
         $this->queryBuilderMock->expects($this->any())
             ->method('resetQueryParts')
@@ -229,7 +176,30 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
 
         $this->queryBuilderMock->expects($this->any())
             ->method('getQueryPart')
-            ->willReturn([['alias' => 'lp']]);
+            ->willReturnCallback(function ($input): array|string {
+                if ('join' === $input) {
+                    return [
+                        'lp' => [[
+                            'joinType'      => 'left',
+                            'joinTable'     => 'leads',
+                            'joinAlias'     => 'l',
+                            'joinCondition' => 'l.id = lp.lead_id',
+                        ]],
+                        'l' => [[
+                            'joinType'      => 'inner',
+                            'joinTable'     => 'lead_list_leads',
+                            'joinAlias'     => 's',
+                            'joinCondition' => 's.lead_id = l.id',
+                        ]],
+                    ];
+                }
+
+                if ('where' === $input) {
+                    return '(lp.date_added IS NULL OR (lp.date_added BETWEEN :dateFrom AND :dateTo)) AND (s.leadlist_id = :i3csleadlistid))';
+                }
+
+                return [['alias' => 'lp']];
+            });
 
         $this->queryBuilderMock->expects($this->any())
             ->method('from')
@@ -270,9 +240,9 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
             ->method('orderBy')
             ->willReturn($this->queryBuilderMock);
 
-        $this->campaignModelMock->method('getRepository')->willReturn($this->campaignRepositoryMock);
+        $campaignModelMock->method('getRepository')->willReturn($campaignRepositoryMock);
 
-        $this->eventCollectorMock->expects($this->any())
+        $eventCollectorMock->expects($this->any())
             ->method('getEventsArray')
             ->willReturn(
                 [
@@ -281,38 +251,38 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
                             'label'           => 'Send email',
                             'description'     => 'Send the selected email to the contact.',
                             'batchEventName'  => 'mautic.email.on_campaign_batch_action',
-                            'formType'        => "Mautic\EmailBundle\Form\Type\EmailSendType",
+                            'formType'        => \Mautic\EmailBundle\Form\Type\EmailSendType::class,
                             'formTypeOptions' => [
-                              'update_select'    => 'campaignevent_properties_email',
-                              'with_email_types' => true,
+                                'update_select'    => 'campaignevent_properties_email',
+                                'with_email_types' => true,
                             ],
                             'formTheme'      => "MauticEmailBundle:FormTheme\EmailSendList",
                             'channel'        => 'email',
                             'channelIdField' => 'email',
-                          ],
                         ],
-                        'decision' => [
-                            'email.click' => [
-                              'label'                  => 'Clicks email',
-                              'description'            => 'Trigger actions when an email is clicked. Connect a &quot;Send Email&quot; action to the top of this decision.',
-                              'eventName'              => 'mautic.email.on_campaign_trigger_decision',
-                              'formType'               => "Mautic\EmailBundle\Form\Type\EmailClickDecisionType",
-                              'connectionRestrictions' => [
+                    ],
+                    'decision' => [
+                        'email.click' => [
+                            'label'                  => 'Clicks email',
+                            'description'            => 'Trigger actions when an email is clicked. Connect a Send Email action to the top of this decision.',
+                            'eventName'              => 'mautic.email.on_campaign_trigger_decision',
+                            'formType'               => \Mautic\EmailBundle\Form\Type\EmailClickDecisionType::class,
+                            'connectionRestrictions' => [
                                 'source' => [
-                                  'action' => [
-                                    'email.send',
-                                  ],
+                                    'action' => [
+                                        'email.send',
+                                    ],
                                 ],
-                              ],
                             ],
                         ],
+                    ],
                 ]);
 
         $this->translatorMock->expects($this->any())
             ->method('hasId')
             ->willReturn(false);
 
-        $this->stageModelMock->expects($this->any())
+        $stageModelMock->expects($this->any())
             ->method('getUserStages')
             ->willReturn([
                 'stage' => [
@@ -324,7 +294,10 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
         parent::setUp();
     }
 
-    public function eventDataProvider()
+    /**
+     * @return array<int, array<int, string>>
+     */
+    public static function eventDataProvider(): array
     {
         return [
             ['leads'],
@@ -337,7 +310,10 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
         ];
     }
 
-    public function reportGraphEventDataProvider()
+    /**
+     * @return array<int, array<int, string>>
+     */
+    public static function reportGraphEventDataProvider(): array
     {
         return [
             ['leads'],
@@ -347,18 +323,26 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
         ];
     }
 
-    public function testNotRelevantContextBuilder()
+    public function testNotRelevantContextBuilder(): void
     {
-        $this->reportBuilderEventMock->expects($this->at(0))
-            ->method('checkContext')
-            ->with([
-                'leads',
-                'lead.pointlog',
-                'contact.attribution.multi',
-                'contact.attribution.first',
-                'contact.attribution.last',
-                'contact.frequencyrules',
-            ])->willReturn(false);
+        $matcher = $this->any();
+        $this->reportBuilderEventMock->expects($matcher)->method('checkContext')
+            ->willReturnCallback(
+                function (...$parameters) use ($matcher): false {
+                    if (1 === $matcher->numberOfInvocations()) {
+                        $this->assertSame([
+                            'leads',
+                            'lead.pointlog',
+                            'contact.attribution.multi',
+                            'contact.attribution.first',
+                            'contact.attribution.last',
+                            'contact.frequencyrules',
+                        ], $parameters[0]);
+                    }
+
+                    return false;
+                }
+            );
 
         $this->reportBuilderEventMock->expects($this->never())
             ->method('addTable');
@@ -366,21 +350,26 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->reportSubscriber->onReportBuilder($this->reportBuilderEventMock);
     }
 
-    public function testNotRelevantContextGenerate()
+    public function testNotRelevantContextGenerate(): void
     {
-        $this->reportGeneratorEventMock->expects($this->at(0))
-            ->method('checkContext')
-            ->with(['leads',
-            'lead.pointlog',
-            'contact.attribution.multi',
-            'contact.attribution.first',
-            'contact.attribution.last',
-            'contact.frequencyrules',
-            ])->willReturn(false);
+        $matcher = $this->exactly(2);
+        $this->reportGeneratorEventMock->expects($matcher)->method('checkContext')->willReturnCallback(function (...$parameters) use ($matcher): false {
+            if (1 === $matcher->numberOfInvocations()) {
+                $this->assertSame([
+                    'leads',
+                    'lead.pointlog',
+                    'contact.attribution.multi',
+                    'contact.attribution.first',
+                    'contact.attribution.last',
+                    'contact.frequencyrules',
+                ], $parameters[0]);
+            }
+            if (2 === $matcher->numberOfInvocations()) {
+                $this->assertSame(['companies'], $parameters[0]);
+            }
 
-        $this->reportGeneratorEventMock->expects($this->at(1))
-            ->method('checkContext')
-            ->with(['companies'])->willReturn(false);
+            return false;
+        });
 
         $this->reportGeneratorEventMock->expects($this->never())
             ->method('getQueryBuilder');
@@ -388,16 +377,14 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->reportSubscriber->onReportGenerate($this->reportGeneratorEventMock);
     }
 
-    /**
-     * @dataProvider eventDataProvider
-     */
-    public function testOnReportBuilder($event)
+    #[\PHPUnit\Framework\Attributes\DataProvider('eventDataProvider')]
+    public function testOnReportBuilder(string $event): void
     {
         if ('companies' != $event) {
             $this->fieldsBuilderMock->expects($this->once())
-            ->method('getLeadFieldsColumns')
-            ->with('l.')
-            ->willReturn($this->leadColumns);
+                ->method('getLeadFieldsColumns')
+                ->with('l.')
+                ->willReturn($this->leadColumns);
 
             $this->fieldsBuilderMock->expects($this->once())
                 ->method('getLeadFilter')
@@ -405,13 +392,13 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
                 ->willReturn($this->leadFilters);
 
             $this->companyReportDataMock->expects($this->once())
-            ->method('getCompanyData')
-            ->willReturn($this->companyColumns);
+                ->method('getCompanyData')
+                ->willReturn($this->companyColumns);
         } else {
             $this->fieldsBuilderMock->expects($this->once())
-            ->method('getCompanyFieldsColumns')
-            ->with('comp.')
-            ->willReturn($this->companyColumns);
+                ->method('getCompanyFieldsColumns')
+                ->with('comp.')
+                ->willReturn($this->companyColumns);
         }
 
         $reportBuilderEvent = new ReportBuilderEvent($this->translatorMock, $this->channelListHelperMock, $event, [], $this->reportHelperMock);
@@ -423,75 +410,91 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
                 'display_name' => 'mautic.lead.leads',
                 'columns'      => [
                     'xx.yy' => [
-                        'label' => null,
+                        'label' => '',
                         'type'  => 'bool',
                         'alias' => 'first',
                     ],
                     'comp.name' => [
-                        'label' => null,
+                        'label' => '',
                         'type'  => 'text',
                         'alias' => 'name',
                     ],
                 ],
                 'filters' => [
                     'filter' => [
-                        'label' => null,
+                        'label' => '',
                         'type'  => 'text',
                         'alias' => 'filter',
                     ],
                     'comp.name' => [
-                        'label' => null,
+                        'label' => '',
                         'type'  => 'text',
                         'alias' => 'name',
                     ],
-                    ],
+                ],
                 'group' => 'contacts',
             ],
         ];
         switch ($event) {
             case 'leads':
+                $expected['leads']['columns']['l.stage_id'] = [
+                    'label' => '',
+                    'type'  => 'int',
+                    'alias' => 'stage_id',
+                ];
+                $expected['leads']['columns']['ss.name'] = [
+                    'alias' => 'stage_name',
+                    'label' => '',
+                    'type'  => 'string',
+                ];
+                $expected['leads']['columns']['ss.date_added'] = [
+                    'alias'   => 'stage_date_added',
+                    'label'   => null,
+                    'type'    => 'string',
+                    'formula' => sprintf('(SELECT MAX(stage_log.date_added) FROM %slead_stages_change_log stage_log WHERE stage_log.stage_id = l.stage_id AND stage_log.lead_id = l.id)', MAUTIC_TABLE_PREFIX),
+                ];
                 break;
             case 'contact.frequencyrules':
                 $expected['contact.frequencyrules'] = [
                     'display_name' => 'mautic.lead.report.frequency.messages',
                     'columns'      => [
                         'xx.yy' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'bool',
                             'alias' => 'first',
                         ],
                         'comp.name' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'text',
                             'alias' => 'name',
                         ],
                         'lf.frequency_number' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'int',
                             'alias' => 'frequency_number',
                         ],
                         'lf.frequency_time' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'frequency_time',
                         ],
                         'lf.channel' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'channel',
                         ],
                         'lf.preferred_channel' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'boolean',
                             'alias' => 'preferred_channel',
                         ],
                         'lf.pause_from_date' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'datetime',
                             'alias' => 'pause_from_date',
                         ],
                         'lf.pause_to_date' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'datetime',
                             'alias' => 'pause_to_date',
                         ],
@@ -504,42 +507,42 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
                     ],
                     'filters' => [
                         'filter' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'text',
                             'alias' => 'filter',
                         ],
                         'comp.name' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'text',
                             'alias' => 'name',
                         ],
                         'lf.frequency_number' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'int',
                             'alias' => 'frequency_number',
                         ],
                         'lf.frequency_time' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'frequency_time',
                         ],
                         'lf.channel' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'channel',
                         ],
                         'lf.preferred_channel' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'boolean',
                             'alias' => 'preferred_channel',
                         ],
                         'lf.pause_from_date' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'datetime',
                             'alias' => 'pause_from_date',
                         ],
                         'lf.pause_to_date' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'datetime',
                             'alias' => 'pause_to_date',
                         ],
@@ -558,37 +561,37 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
                     'display_name' => 'mautic.lead.report.points.table',
                     'columns'      => [
                         'xx.yy' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'bool',
                             'alias' => 'first',
                         ],
                         'comp.name' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'text',
                             'alias' => 'name',
                         ],
                         'lp.id' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'int',
                             'alias' => 'id',
                         ],
                         'lp.type' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'type',
                         ],
                         'lp.event_name' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'event_name',
                         ],
                         'lp.action_name' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'action_name',
                         ],
                         'lp.delta' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'int',
                             'alias' => 'delta',
                         ],
@@ -598,45 +601,55 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
                             'groupByFormula' => 'DATE(lp.date_added)',
                             'alias'          => 'date_added',
                         ],
+                        'pl.id' => [
+                            'alias' => 'group_id',
+                            'label' => '',
+                            'type'  => 'int',
+                        ],
+                        'pl.name' => [
+                            'alias' => 'group_name',
+                            'label' => '',
+                            'type'  => 'string',
+                        ],
                         'i.ip_address' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'ip_address',
                         ],
                     ],
                     'filters' => [
                         'filter' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'text',
                             'alias' => 'filter',
                         ],
                         'comp.name' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'text',
                             'alias' => 'name',
                         ],
                         'lp.id' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'int',
                             'alias' => 'id',
                         ],
                         'lp.type' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'type',
                         ],
                         'lp.event_name' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'event_name',
                         ],
                         'lp.action_name' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'string',
                             'alias' => 'action_name',
                         ],
                         'lp.delta' => [
-                            'label' => null,
+                            'label' => '',
                             'type'  => 'int',
                             'alias' => 'delta',
                         ],
@@ -646,205 +659,220 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
                             'groupByFormula' => 'DATE(lp.date_added)',
                             'alias'          => 'date_added',
                         ],
+                        'pl.id' => [
+                            'alias' => 'group_id',
+                            'label' => '',
+                            'type'  => 'int',
+                        ],
+                        'pl.name' => [
+                            'alias' => 'group_name',
+                            'label' => '',
+                            'type'  => 'string',
+                        ],
                     ],
                     'group' => 'contacts',
                 ];
                 break;
-                case 'contact.attribution.first':
-                case 'contact.attribution.last':
-                case 'contact.attribution.multi':
-                    $displayName      = 'mautic.lead.report.attribution.'.explode('.', $event)[2];
-                    $expected[$event] = [
-                        'display_name' => $displayName,
-                        'columns'      => [
-                            'xx.yy' => [
-                                'label' => null,
-                                'type'  => 'bool',
-                                'alias' => 'first',
-                            ],
-                            'comp.name' => [
-                                'label' => null,
-                                'type'  => 'text',
-                                'alias' => 'name',
-                            ],
-                            'cat.id' => [
-                                'label' => null,
-                                'type'  => 'int',
-                                'alias' => 'category_id',
-                            ],
-                            'cat.title' => [
-                                'label' => null,
-                                'type'  => 'string',
-                                'alias' => 'category_title',
-                            ],
-                            'log.campaign_id' => [
-                                'label' => null,
-                                'type'  => 'int',
-                                'link'  => 'mautic_campaign_action',
-                                'alias' => 'campaign_id',
-                            ],
-                            'log.date_triggered' => [
-                                'label'          => null,
-                                'type'           => 'datetime',
-                                'groupByFormula' => 'DATE(log.date_triggered)',
-                                'alias'          => 'date_triggered',
-                            ],
-                            'c.name' => [
-                                'alias' => 'campaign_name',
-                                'label' => null,
-                                'type'  => 'string',
-                            ],
-                            'l.stage_id' => [
-                                'label' => null,
-                                'type'  => 'int',
-                                'link'  => 'mautic_stage_action',
-                                'alias' => 'stage_id',
-                            ],
-                            's.name' => [
-                                'alias' => 'stage_name',
-                                'label' => null,
-                                'type'  => 'string',
-                            ],
-                            'channel' => [
-                                'alias'   => 'channel',
-                                'formula' => 'SUBSTRING_INDEX(e.type, \'.\', 1)',
-                                'label'   => null,
-                                'type'    => 'string',
-                            ],
-                            'channel_action' => [
-                                'alias'   => 'channel_action',
-                                'formula' => 'SUBSTRING_INDEX(e.type, \'.\', -1)',
-                                'label'   => null,
-                                'type'    => 'string',
-                            ],
-                            'e.name' => [
-                                'alias' => 'action_name',
-                                'label' => null,
-                                'type'  => 'string',
-                            ],
+            case 'contact.attribution.first':
+            case 'contact.attribution.last':
+            case 'contact.attribution.multi':
+                $displayName      = 'mautic.lead.report.attribution.'.explode('.', $event)[2];
+                $expected[$event] = [
+                    'display_name' => $displayName,
+                    'columns'      => [
+                        'xx.yy' => [
+                            'label' => '',
+                            'type'  => 'bool',
+                            'alias' => 'first',
                         ],
-                        'filters' => [
-                            'filter' => [
-                                'label' => null,
-                                'type'  => 'text',
-                                'alias' => 'filter',
-                            ],
-                            'comp.name' => [
-                                'label' => null,
-                                'type'  => 'text',
-                                'alias' => 'name',
-                            ],
-                            'cat.id' => [
-                                'label' => null,
-                                'type'  => 'int',
-                                'alias' => 'category_id',
-                            ],
-                            'cat.title' => [
-                                'label' => null,
-                                'type'  => 'string',
-                                'alias' => 'category_title',
-                            ],
-                            'log.campaign_id' => [
-                                'label' => null,
-                                'type'  => 'select',
-                                'list'  => null,
-                                'alias' => 'campaign_id',
-                            ],
-                            'log.date_triggered' => [
-                                'label'          => null,
-                                'type'           => 'datetime',
-                                'groupByFormula' => 'DATE(log.date_triggered)',
-                                'alias'          => 'date_triggered',
-                            ],
-                            'c.name' => [
-                                'alias' => 'campaign_name',
-                                'label' => null,
-                                'type'  => 'string',
-                            ],
-                            'l.stage_id' => [
-                                'label' => null,
-                                'type'  => 'select',
-                                'list'  => [
-                                    1 => 'Stage One',
-                                ],
-                                'alias' => 'stage_id',
-                            ],
-                            's.name' => [
-                                'alias' => 'stage_name',
-                                'label' => null,
-                                'type'  => 'string',
-                            ],
-                            'channel' => [
-                                'label' => null,
-                                'type'  => 'select',
-                                'list'  => [
-                                    'email' => 'Email',
-                                ],
-                                'alias' => 'channel',
-                            ],
-                            'channel_action' => [
-                                'label' => null,
-                                'type'  => 'select',
-                                'list'  => [
-                                    'click' => 'email: click',
-                                ],
-                                'alias' => 'channel_action',
-                            ],
-                            'e.name' => [
-                                'alias' => 'action_name',
-                                'label' => null,
-                                'type'  => 'string',
-                            ],
+                        'comp.name' => [
+                            'label' => '',
+                            'type'  => 'text',
+                            'alias' => 'name',
                         ],
-                        'group' => 'contacts',
-                    ];
+                        'cat.id' => [
+                            'label' => '',
+                            'type'  => 'int',
+                            'alias' => 'category_id',
+                        ],
+                        'cat.title' => [
+                            'label' => '',
+                            'type'  => 'string',
+                            'alias' => 'category_title',
+                        ],
+                        'log.campaign_id' => [
+                            'label' => '',
+                            'type'  => 'int',
+                            'link'  => 'mautic_campaign_action',
+                            'alias' => 'campaign_id',
+                        ],
+                        'log.date_triggered' => [
+                            'label'          => '',
+                            'type'           => 'datetime',
+                            'groupByFormula' => 'DATE(log.date_triggered)',
+                            'alias'          => 'date_triggered',
+                        ],
+                        'c.name' => [
+                            'alias' => 'campaign_name',
+                            'label' => '',
+                            'type'  => 'string',
+                        ],
+                        'l.stage_id' => [
+                            'label' => '',
+                            'type'  => 'int',
+                            'alias' => 'stage_id',
+                        ],
+                        'ss.name' => [
+                            'alias' => 'stage_name',
+                            'label' => '',
+                            'type'  => 'string',
+                        ],
+                        'channel' => [
+                            'alias'   => 'channel',
+                            'formula' => 'SUBSTRING_INDEX(e.type, \'.\', 1)',
+                            'label'   => '',
+                            'type'    => 'string',
+                        ],
+                        'channel_action' => [
+                            'alias'   => 'channel_action',
+                            'formula' => 'SUBSTRING_INDEX(e.type, \'.\', -1)',
+                            'label'   => '',
+                            'type'    => 'string',
+                        ],
+                        'e.name' => [
+                            'alias' => 'action_name',
+                            'label' => '',
+                            'type'  => 'string',
+                        ],
+                    ],
+                    'filters' => [
+                        'filter' => [
+                            'label' => '',
+                            'type'  => 'text',
+                            'alias' => 'filter',
+                        ],
+                        'comp.name' => [
+                            'label' => '',
+                            'type'  => 'text',
+                            'alias' => 'name',
+                        ],
+                        'cat.id' => [
+                            'label' => '',
+                            'type'  => 'int',
+                            'alias' => 'category_id',
+                        ],
+                        'cat.title' => [
+                            'label' => '',
+                            'type'  => 'string',
+                            'alias' => 'category_title',
+                        ],
+                        'log.campaign_id' => [
+                            'label' => '',
+                            'type'  => 'select',
+                            'list'  => [],
+                            'alias' => 'campaign_id',
+                        ],
+                        'log.date_triggered' => [
+                            'label'          => null,
+                            'type'           => 'datetime',
+                            'groupByFormula' => 'DATE(log.date_triggered)',
+                            'alias'          => 'date_triggered',
+                        ],
+                        'c.name' => [
+                            'alias' => 'campaign_name',
+                            'label' => '',
+                            'type'  => 'string',
+                        ],
+                        'l.stage_id' => [
+                            'label' => '',
+                            'type'  => 'select',
+                            'list'  => [
+                                1 => 'Stage One',
+                            ],
+                            'alias' => 'stage_id',
+                        ],
+                        'ss.name' => [
+                            'alias' => 'stage_name',
+                            'label' => '',
+                            'type'  => 'string',
+                        ],
+                        'channel' => [
+                            'label' => '',
+                            'type'  => 'select',
+                            'list'  => [
+                                'email' => 'Email',
+                            ],
+                            'alias' => 'channel',
+                        ],
+                        'channel_action' => [
+                            'label' => '',
+                            'type'  => 'select',
+                            'list'  => [
+                                'click' => 'email: click',
+                            ],
+                            'alias' => 'channel_action',
+                        ],
+                        'e.name' => [
+                            'alias' => 'action_name',
+                            'label' => '',
+                            'type'  => 'string',
+                        ],
+                    ],
+                    'group' => 'contacts',
+                ];
 
                 break;
-                case 'companies':
-                    unset($expected['leads']);
-                    $expected['companies'] = [
-                        'display_name' => 'mautic.lead.lead.companies',
-                        'columns'      => [
-                            'comp.name' => [
-                                'label' => null,
-                                'type'  => 'text',
-                                'alias' => 'name',
-                            ],
+            case 'companies':
+                unset($expected['leads']);
+                $expected['companies'] = [
+                    'display_name' => 'mautic.lead.lead.companies',
+                    'columns'      => [
+                        'comp.name' => [
+                            'label' => '',
+                            'type'  => 'text',
+                            'alias' => 'name',
                         ],
-                        'filters' => [
-                            'comp.name' => [
-                                'label' => null,
-                                'type'  => 'text',
-                                'alias' => 'name',
-                            ],
+                    ],
+                    'filters' => [
+                        'comp.name' => [
+                            'label' => '',
+                            'type'  => 'text',
+                            'alias' => 'name',
                         ],
+                    ],
                     'group' => 'companies',
                 ];
                 break;
         }
 
-        $this->assertSame($expected, $reportBuilderEvent->getTables());
+        $this->assertEquals($expected, $reportBuilderEvent->getTables());
     }
 
-    /**
-     * @dataProvider eventDataProvider
-     */
-    public function testReportGenerate($event)
+    #[\PHPUnit\Framework\Attributes\DataProvider('eventDataProvider')]
+    public function testReportGenerate(string $context): void
     {
-        $this->reportGeneratorEventMock->expects($this->at(0))
-        ->method('checkContext')
-        ->with(['leads',
-        'lead.pointlog',
-        'contact.attribution.multi',
-        'contact.attribution.first',
-        'contact.attribution.last',
-        'contact.frequencyrules',
-        ])
-        ->willReturn(true);
+        $matcher = $this->any();
+        $this->reportGeneratorEventMock->expects($matcher)->method('checkContext')
+            ->willReturnCallback(
+                function (...$parameters) use ($matcher): true {
+                    if (1 === $matcher->numberOfInvocations()) {
+                        $this->assertSame([
+                            'leads',
+                            'lead.pointlog',
+                            'contact.attribution.multi',
+                            'contact.attribution.first',
+                            'contact.attribution.last',
+                            'contact.frequencyrules',
+                        ], $parameters[0]);
+                    }
+
+                    return true;
+                }
+            );
 
         $this->reportGeneratorEventMock->expects($this->once())
             ->method('getContext')
-            ->willReturn($event);
+            ->willReturn($context);
 
         $this->reportGeneratorEventMock->expects($this->once())
             ->method('getQueryBuilder')
@@ -853,10 +881,8 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->reportSubscriber->onReportGenerate($this->reportGeneratorEventMock);
     }
 
-    /**
-     * @dataProvider ReportGraphEventDataProvider
-     */
-    public function testonReportGraphGenerate($event)
+    #[\PHPUnit\Framework\Attributes\DataProvider('ReportGraphEventDataProvider')]
+    public function testonReportGraphGenerate(string $event): void
     {
         $this->reportGraphEventMock->expects($this->once())
             ->method('checkContext')
@@ -882,18 +908,13 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
             ->method('getRepository')
             ->willReturn($this->companyRepositoryMock);
 
-        $mockStmt = $this->getMockBuilder(PDOStatement::class)
-            ->disableOriginalConstructor()
-            ->setMethods(['fetchAll'])
-            ->getMock();
-
         $this->reportGraphEventMock->expects($this->once())
             ->method('getQueryBuilder')
             ->willReturn($this->queryBuilderMock);
 
         $mockChartQuery = $this->getMockBuilder(ChartQuery::class)
             ->disableOriginalConstructor()
-            ->setMethods([
+            ->onlyMethods([
                 'modifyCountQuery',
                 'modifyTimeDataQuery',
                 'loadAndBuildTimeData',
@@ -932,10 +953,8 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->reportSubscriber->onReportGraphGenerate($this->reportGraphEventMock);
     }
 
-    /**
-     * @dataProvider ReportGraphEventDataProvider
-     */
-    public function testOnReportDisplay($event)
+    #[\PHPUnit\Framework\Attributes\DataProvider('ReportGraphEventDataProvider')]
+    public function testOnReportDisplay(string $event): void
     {
         $this->reportBuilderEventMock->expects($this->any())
         ->method('checkContext')
@@ -997,5 +1016,89 @@ class ReportSubscriberTest extends \PHPUnit\Framework\TestCase
             ]]);
         $this->reportSubscriber->onReportBuilder($this->reportBuilderEventMock);
         $this->reportSubscriber->onReportDisplay($this->reportDataEventMock);
+    }
+
+    public function testOnReportColumnCollectForCompany(): void
+    {
+        $companyFields  = [
+            'comp.id'   => [
+                'alias' => 'comp_id',
+                'label' => 'mautic.lead.report.company.company_id',
+                'type'  => 'int',
+                'link'  => 'mautic_company_action',
+            ],
+            'companies_lead.is_primary' => [
+                'label' => 'mautic.lead.report.company.is_primary',
+                'type'  => 'bool',
+            ],
+            'companies_lead.date_added' => [
+                'label' => 'mautic.lead.report.company.date_added',
+                'type'  => 'datetime',
+            ],
+        ];
+
+        $columns        = [
+            'comp.id'   => [
+                'alias' => 'comp_id',
+                'label' => 'mautic.lead.report.company.company_id',
+                'type'  => 'int',
+                'link'  => 'mautic_company_action',
+            ],
+        ];
+
+        $columnCollectEvent = new ColumnCollectEvent('company');
+
+        $this->companyReportDataMock->expects($this->once())
+            ->method('getCompanyData')
+            ->willReturn($companyFields);
+
+        $this->reportSubscriber->onReportColumnCollect($columnCollectEvent);
+
+        Assert::assertSame($columns, $columnCollectEvent->getColumns());
+    }
+
+    public function testOnReportColumnCollectForContact(): void
+    {
+        $publishedFields = [
+            [
+                'label'  => 'Email',
+                'type'   => 'string',
+                'alias'  => 'email',
+            ],
+            [
+                'label'  => 'Firstname',
+                'type'   => 'string',
+                'alias'  => 'firstname',
+            ],
+        ];
+
+        $columns          = [
+            'l.email'     => [
+                'label'   => '',
+                'type'    => 'string',
+                'alias'   => 'email',
+            ],
+            'l.firstname' => [
+                'label'   => '',
+                'type'    => 'string',
+                'alias'   => 'firstname',
+            ],
+            'l.id'        => [
+                'label'   => 'mautic.lead.report.contact_id',
+                'type'    => 'int',
+                'link'    => 'mautic_contact_action',
+                'alias'   => 'contactId',
+            ],
+        ];
+
+        $columnCollectEvent = new ColumnCollectEvent('contact');
+
+        $this->leadFieldModelMock->expects($this->once())
+            ->method('getPublishedFieldArrays')
+            ->willReturn($publishedFields);
+
+        $this->reportSubscriber->onReportColumnCollect($columnCollectEvent);
+
+        Assert::assertSame($columns, $columnCollectEvent->getColumns());
     }
 }

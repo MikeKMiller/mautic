@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\NotificationBundle\EventListener;
 
 use Doctrine\DBAL\Connection;
@@ -23,35 +14,18 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class ReportSubscriber implements EventSubscriberInterface
 {
-    const MOBILE_NOTIFICATIONS       = 'mobile_notifications';
-    const MOBILE_NOTIFICATIONS_STATS = 'mobile_notifications.stats';
+    public const MOBILE_NOTIFICATIONS       = 'mobile_notifications';
 
-    /**
-     * @var Connection
-     */
-    private $db;
+    public const MOBILE_NOTIFICATIONS_STATS = 'mobile_notifications.stats';
 
-    /**
-     * @var CompanyReportData
-     */
-    private $companyReportData;
-
-    /**
-     * @var StatRepository
-     */
-    private $statRepository;
-
-    public function __construct(Connection $db, CompanyReportData $companyReportData, StatRepository $statRepository)
-    {
-        $this->db                = $db;
-        $this->companyReportData = $companyReportData;
-        $this->statRepository    = $statRepository;
+    public function __construct(
+        private readonly Connection $db,
+        private readonly CompanyReportData $companyReportData,
+        private readonly StatRepository $statRepository,
+    ) {
     }
 
-    /**
-     * @return array
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             ReportEvents::REPORT_ON_BUILD          => ['onReportBuilder', 0],
@@ -63,7 +37,7 @@ class ReportSubscriber implements EventSubscriberInterface
     /**
      * Add available tables and columns to the report builder lookup.
      */
-    public function onReportBuilder(ReportBuilderEvent $event)
+    public function onReportBuilder(ReportBuilderEvent $event): void
     {
         if (!$event->checkContext([self::MOBILE_NOTIFICATIONS, self::MOBILE_NOTIFICATIONS_STATS])) {
             return;
@@ -88,7 +62,8 @@ class ReportSubscriber implements EventSubscriberInterface
                 'alias'   => 'read_ratio',
                 'label'   => 'mautic.mobile_notification.report.read_ratio',
                 'type'    => 'string',
-                'formula' => 'CONCAT(ROUND(('.$prefix.'read_count/'.$prefix.'sent_count)*100),\'%\')',
+                'formula' => 'ROUND(('.$prefix.'read_count/'.$prefix.'sent_count)*100)',
+                'suffix'  => '%',
             ],
             $prefix.'sent_count' => [
                 'label' => 'mautic.mobile_notification.report.sent_count',
@@ -110,15 +85,17 @@ class ReportSubscriber implements EventSubscriberInterface
                 'alias'   => 'hits_ratio',
                 'label'   => 'mautic.mobile_notification.report.hits_ratio',
                 'type'    => 'string',
-                'formula' => 'CONCAT(ROUND('.$channelUrlTrackables.'hits/('.$prefix.'sent_count * '.$channelUrlTrackables
-                    .'trackable_count)*100),\'%\')',
+                'formula' => 'ROUND('.$channelUrlTrackables.'hits/('.$prefix.'sent_count * '.$channelUrlTrackables
+                    .'trackable_count)*100)',
+                'suffix'  => '%',
             ],
             'unique_ratio' => [
                 'alias'   => 'unique_ratio',
                 'label'   => 'mautic.mobile_notification.report.unique_ratio',
                 'type'    => 'string',
-                'formula' => 'CONCAT(ROUND('.$channelUrlTrackables.'unique_hits/('.$prefix.'sent_count * '.$channelUrlTrackables
-                    .'trackable_count)*100),\'%\')',
+                'formula' => 'ROUND('.$channelUrlTrackables.'unique_hits/('.$prefix.'sent_count * '.$channelUrlTrackables
+                    .'trackable_count)*100)',
+                'suffix'  => '%',
             ],
         ];
 
@@ -193,7 +170,7 @@ class ReportSubscriber implements EventSubscriberInterface
     /**
      * Initialize the QueryBuilder object to generate reports from.
      */
-    public function onReportGenerate(ReportGeneratorEvent $event)
+    public function onReportGenerate(ReportGeneratorEvent $event): void
     {
         if (!$event->checkContext([self::MOBILE_NOTIFICATIONS, self::MOBILE_NOTIFICATIONS_STATS])) {
             return;
@@ -213,7 +190,7 @@ class ReportSubscriber implements EventSubscriberInterface
                 $qb->from(MAUTIC_TABLE_PREFIX.'push_notifications', 'pn');
                 $event->addCategoryLeftJoin($qb, 'pn');
 
-                if ($event->hasColumn($clickColumns) || $event->hasFilter($clickColumns)) {
+                if ($event->usesColumn($clickColumns)) {
                     $qbcut->select(
                         'COUNT(cut2.channel_id) AS trackable_count, SUM(cut2.hits) AS hits',
                         'SUM(cut2.unique_hits) AS unique_hits',
@@ -234,7 +211,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     ->addIpAddressLeftJoin($qb, 'pns')
                     ->applyDateFilters($qb, 'date_sent', 'pns');
 
-                if ($event->hasColumn($clickColumns) || $event->hasFilter($clickColumns)) {
+                if ($event->usesColumn($clickColumns)) {
                     $qbcut->select('COUNT(ph.id) AS hits', 'COUNT(DISTINCT(ph.redirect_id)) AS unique_hits', 'cut2.channel_id', 'ph.lead_id')
                         ->from(MAUTIC_TABLE_PREFIX.'channel_url_trackables', 'cut2')
                         ->join(
@@ -261,7 +238,7 @@ class ReportSubscriber implements EventSubscriberInterface
     /**
      * Initialize the QueryBuilder object to generate reports from.
      */
-    public function onReportGraphGenerate(ReportGraphEvent $event)
+    public function onReportGraphGenerate(ReportGraphEvent $event): void
     {
         // Context check, we only want to fire for Mobile Notification reports
         if (!$event->checkContext(self::MOBILE_NOTIFICATIONS_STATS)) {
@@ -310,7 +287,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-paper-plane-o';
+                    $graphData['iconClass'] = 'ri-send-plane-line';
                     $graphData['link']      = 'mautic_mobile_notification_action';
                     $event->setGraph($g, $graphData);
                     break;
@@ -325,7 +302,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-eye';
+                    $graphData['iconClass'] = 'ri-eye-line';
                     $graphData['link']      = 'mautic_mobile_notification_action';
                     $event->setGraph($g, $graphData);
                     break;
@@ -340,7 +317,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-tachometer';
+                    $graphData['iconClass'] = 'ri-speed-up-line';
                     $graphData['link']      = 'mautic_mobile_notification_action';
                     $event->setGraph($g, $graphData);
                     break;

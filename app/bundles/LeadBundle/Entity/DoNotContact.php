@@ -1,44 +1,33 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Helper\InputHelper;
 
-/**
- * Class DoNotContact.
- */
 class DoNotContact
 {
     /**
      * Lead is contactable.
      */
-    const IS_CONTACTABLE = 0;
+    public const IS_CONTACTABLE = 0;
 
     /**
      * Lead unsubscribed themselves.
      */
-    const UNSUBSCRIBED = 1;
+    public const UNSUBSCRIBED = 1;
 
     /**
      * Lead was unsubscribed due to an unsuccessful send.
      */
-    const BOUNCED = 2;
+    public const BOUNCED = 2;
 
     /**
      * Lead was manually unsubscribed by user.
      */
-    const MANUAL = 3;
+    public const MANUAL = 3;
 
     /**
      * @var int
@@ -46,12 +35,12 @@ class DoNotContact
     private $id;
 
     /**
-     * @var Lead
+     * @var Lead|null
      */
     private $lead;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
@@ -61,7 +50,7 @@ class DoNotContact
     private $reason = 0;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $comments;
 
@@ -72,13 +61,15 @@ class DoNotContact
 
     private $channelId;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('lead_donotcontact')
-            ->setCustomRepositoryClass('Mautic\LeadBundle\Entity\DoNotContactRepository')
-            ->addIndex(['reason'], 'dnc_reason_search');
+            ->setCustomRepositoryClass(DoNotContactRepository::class)
+            ->addIndex(['lead_id', 'channel', 'reason'], 'leadid_reason_channel')
+            ->addIndex(['reason'], 'dnc_reason_search')
+            ->addIndex(['date_added'], 'dnc_date_added');
 
         $builder->addId();
 
@@ -101,10 +92,8 @@ class DoNotContact
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('doNotContact')
             ->addListProperties(
@@ -134,17 +123,14 @@ class DoNotContact
     }
 
     /**
-     * @return Lead
+     * @return Lead|null
      */
     public function getLead()
     {
         return $this->lead;
     }
 
-    /**
-     * @return DoNotContact
-     */
-    public function setLead(Lead $lead)
+    public function setLead(Lead $lead): static
     {
         $this->lead = $lead;
 
@@ -152,17 +138,14 @@ class DoNotContact
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateAdded()
     {
         return $this->dateAdded;
     }
 
-    /**
-     * @return DoNotContact
-     */
-    public function setDateAdded(\DateTime $dateAdded)
+    public function setDateAdded(\DateTime $dateAdded): static
     {
         $this->dateAdded = $dateAdded;
 
@@ -179,10 +162,8 @@ class DoNotContact
 
     /**
      * @param int $reason
-     *
-     * @return DoNotContact
      */
-    public function setReason($reason)
+    public function setReason($reason): static
     {
         $this->reason = $reason;
 
@@ -190,21 +171,16 @@ class DoNotContact
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getComments()
     {
         return $this->comments;
     }
 
-    /**
-     * @param string $comments
-     *
-     * @return DoNotContact
-     */
-    public function setComments($comments)
+    public function setComments(?string $comments): static
     {
-        $this->comments = $comments;
+        $this->comments = InputHelper::string((string) $comments);
 
         return $this;
     }
@@ -219,10 +195,8 @@ class DoNotContact
 
     /**
      * @param string $channel
-     *
-     * @return DoNotContact
      */
-    public function setChannel($channel)
+    public function setChannel($channel): static
     {
         $this->channel = $channel;
 
@@ -239,10 +213,8 @@ class DoNotContact
 
     /**
      * @param mixed $channelId
-     *
-     * @return DoNotContact
      */
-    public function setChannelId($channelId)
+    public function setChannelId($channelId): static
     {
         $this->channelId = $channelId;
 

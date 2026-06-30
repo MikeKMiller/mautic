@@ -1,27 +1,14 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Entity;
 
-use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * Class AuditLog.
- */
 class AuditLog
 {
     /**
-     * @var int
+     * @var string
      */
     protected $id;
 
@@ -46,7 +33,7 @@ class AuditLog
     protected $object;
 
     /**
-     * @var int
+     * @var string
      */
     protected $objectId;
 
@@ -61,7 +48,7 @@ class AuditLog
     protected $details = [];
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     protected $dateAdded;
 
@@ -70,12 +57,12 @@ class AuditLog
      */
     protected $ipAddress;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('audit_log')
-            ->setCustomRepositoryClass('Mautic\CoreBundle\Entity\AuditLogRepository')
+            ->setCustomRepositoryClass(AuditLogRepository::class)
             ->addIndex(['object', 'object_id'], 'object_search')
             ->addIndex(['bundle', 'object', 'action', 'object_id'], 'timeline_search')
             ->addIndex(['date_added'], 'date_added_index');
@@ -118,22 +105,18 @@ class AuditLog
 
     /**
      * Get id.
-     *
-     * @return int
      */
-    public function getId()
+    public function getId(): int
     {
-        return $this->id;
+        return (int) $this->id;
     }
 
     /**
      * Set userId.
      *
      * @param int $userId
-     *
-     * @return AuditLog
      */
-    public function setUserId($userId)
+    public function setUserId($userId): static
     {
         $this->userId = $userId;
 
@@ -143,7 +126,7 @@ class AuditLog
     /**
      * Get userId.
      *
-     * @return int
+     * @return int|null
      */
     public function getUserId()
     {
@@ -154,10 +137,8 @@ class AuditLog
      * Set object.
      *
      * @param string $object
-     *
-     * @return AuditLog
      */
-    public function setObject($object)
+    public function setObject($object): static
     {
         $this->object = $object;
 
@@ -167,7 +148,7 @@ class AuditLog
     /**
      * Get object.
      *
-     * @return string
+     * @return string|null
      */
     public function getObject()
     {
@@ -178,34 +159,28 @@ class AuditLog
      * Set objectId.
      *
      * @param int $objectId
-     *
-     * @return AuditLog
      */
-    public function setObjectId($objectId)
+    public function setObjectId($objectId): static
     {
-        $this->objectId = $objectId;
+        $this->objectId = (string) $objectId;
 
         return $this;
     }
 
     /**
      * Get objectId.
-     *
-     * @return int
      */
-    public function getObjectId()
+    public function getObjectId(): int
     {
-        return $this->objectId;
+        return (int) $this->objectId;
     }
 
     /**
      * Set action.
      *
      * @param string $action
-     *
-     * @return AuditLog
      */
-    public function setAction($action)
+    public function setAction($action): static
     {
         $this->action = $action;
 
@@ -215,7 +190,7 @@ class AuditLog
     /**
      * Get action.
      *
-     * @return string
+     * @return string|null
      */
     public function getAction()
     {
@@ -224,10 +199,8 @@ class AuditLog
 
     /**
      * Set details.
-     *
-     * @return AuditLog
      */
-    public function setDetails(array $details)
+    public function setDetails(array $details): static
     {
         $this->details = $details;
 
@@ -248,10 +221,8 @@ class AuditLog
      * Set dateAdded.
      *
      * @param \DateTime $dateAdded
-     *
-     * @return AuditLog
      */
-    public function setDateAdded($dateAdded)
+    public function setDateAdded($dateAdded): static
     {
         $this->dateAdded = $dateAdded;
 
@@ -261,7 +232,7 @@ class AuditLog
     /**
      * Get dateAdded.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getDateAdded()
     {
@@ -272,10 +243,8 @@ class AuditLog
      * Set ipAddress.
      *
      * @param string $ipAddress
-     *
-     * @return AuditLog
      */
-    public function setIpAddress($ipAddress)
+    public function setIpAddress($ipAddress): static
     {
         $this->ipAddress = $ipAddress;
 
@@ -285,7 +254,7 @@ class AuditLog
     /**
      * Get ipAddress.
      *
-     * @return string
+     * @return string|null
      */
     public function getIpAddress()
     {
@@ -296,10 +265,8 @@ class AuditLog
      * Set bundle.
      *
      * @param string $bundle
-     *
-     * @return AuditLog
      */
-    public function setBundle($bundle)
+    public function setBundle($bundle): static
     {
         $this->bundle = $bundle;
 
@@ -309,7 +276,7 @@ class AuditLog
     /**
      * Get bundle.
      *
-     * @return string
+     * @return string|null
      */
     public function getBundle()
     {
@@ -320,10 +287,8 @@ class AuditLog
      * Set userName.
      *
      * @param string $userName
-     *
-     * @return AuditLog
      */
-    public function setUserName($userName)
+    public function setUserName($userName): static
     {
         $this->userName = $userName;
 
@@ -333,7 +298,7 @@ class AuditLog
     /**
      * Get userName.
      *
-     * @return string
+     * @return string|null
      */
     public function getUserName()
     {

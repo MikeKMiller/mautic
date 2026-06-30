@@ -1,16 +1,9 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Tracker;
 
+use Mautic\CacheBundle\Cache\CacheProvider;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Entity\LeadDevice;
 use Mautic\LeadBundle\Tracker\DeviceTracker;
@@ -18,50 +11,73 @@ use Mautic\LeadBundle\Tracker\Factory\DeviceDetectorFactory\DeviceDetectorFactor
 use Mautic\LeadBundle\Tracker\Service\DeviceCreatorService\DeviceCreatorService;
 use Mautic\LeadBundle\Tracker\Service\DeviceTrackingService\DeviceTrackingServiceInterface;
 use Monolog\Logger;
+use Symfony\Component\Cache\Adapter\TagAwareAdapterInterface;
+use Symfony\Component\Cache\CacheItem;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 class DeviceTrackerTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @var DeviceCreatorService
-     */
-    private $deviceCreatorService;
+    private DeviceCreatorService $deviceCreatorService;
+
+    private DeviceDetectorFactory $deviceDetectorFactory;
 
     /**
-     * @var DeviceDetectorFactory
+     * @var \PHPUnit\Framework\MockObject\MockObject&DeviceTrackingServiceInterface
      */
-    private $deviceDetectorFactory;
+    private \PHPUnit\Framework\MockObject\MockObject $deviceTrackingService;
 
     /**
-     * @var DeviceTrackingServiceInterface
+     * @var Logger&\PHPUnit\Framework\MockObject\Stub
      */
-    private $deviceTrackingService;
+    private \PHPUnit\Framework\MockObject\Stub $logger;
 
-    /**
-     * @var Logger
-     */
-    private $logger;
-
-    /**
-     * @var string
-     */
-    private $userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36';
+    private string $userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36';
 
     protected function setUp(): void
     {
-        $this->deviceCreatorService = new DeviceCreatorService();
+        $createCacheItem = \Closure::bind(
+            function ($key): CacheItem {
+                $item        = new CacheItem();
+                $item->key   = $key;
+                $item->isHit = false;
 
-        $this->deviceDetectorFactory = new DeviceDetectorFactory();
+                return $item;
+            },
+            $this,
+            CacheItem::class
+        );
 
-        $this->deviceTrackingService = $this->getMockBuilder(DeviceTrackingServiceInterface::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $cacheAdapter = $this->createMock(TagAwareAdapterInterface::class);
+        $cacheAdapter->expects($this->atLeastOnce())
+          ->method('getItem')
+          ->withAnyParameters()
+          ->willReturn($createCacheItem('test'));
+        $cacheAdapter->expects($this->atLeastOnce())
+          ->method('save')
+          ->willReturn(true);
 
-        $this->logger = $this->getMockBuilder(Logger::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $coreParametersHelper = $this->createMock(CoreParametersHelper::class);
+        $coreParametersHelper->expects($this->once())
+          ->method('get')
+          ->with($this->equalTo('cache_adapter'))
+          ->willReturn('mautic.cache.adapter.filesystem');
+
+        $container = $this->createMock(ContainerInterface::class);
+        $container
+          ->expects($this->once())
+          ->method('get')
+          ->with($this->equalTo('mautic.cache.adapter.filesystem'))
+          ->willReturn($cacheAdapter);
+
+        $cacheProvider               = new CacheProvider($coreParametersHelper, $container);
+        $this->deviceDetectorFactory = new DeviceDetectorFactory($cacheProvider);
+        $this->deviceCreatorService  = new DeviceCreatorService();
+        $this->deviceTrackingService = $this->createMock(DeviceTrackingServiceInterface::class);
+
+        $this->logger = $this->createStub(Logger::class);
     }
 
-    public function testDeviceCreatedByUserAgent()
+    public function testDeviceCreatedByUserAgent(): void
     {
         $lead    = new Lead();
         $device  = new LeadDevice();

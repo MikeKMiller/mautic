@@ -1,68 +1,55 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Tests\MonitoredEmail\Organizer;
 
 use Mautic\EmailBundle\Event\ParseEmailEvent;
 use Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor;
 use Mautic\EmailBundle\MonitoredEmail\Mailbox;
-use Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxContainer;
 use Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(MailboxOrganizer::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(ParseEmailEvent::class)]
 class MailboxOrganizerTest extends \PHPUnit\Framework\TestCase
 {
-    protected $mailboxes = [
-       'EmailBundle_bounces' => [
-           'address'           => 'bounces@test.com',
-           'host'              => 'mail.test.com',
-           'port'              => '993',
-           'encryption'        => '/ssl',
-           'user'              => 'user',
-           'password'          => 'password',
-           'override_settings' => 0,
-           'folder'            => 'INBOX',
-           'imap_path'         => '{mail.test.com:993/imap/ssl}',
-       ],
-       'EmailBundle_unsubscribes' => [
-           'address'           => 'unsubscribes@test.com',
-           'host'              => 'mail2.test.com',
-           'port'              => '993',
-           'encryption'        => '/ssl',
-           'user'              => 'user',
-           'password'          => 'password',
-           'override_settings' => 0,
-           'folder'            => 'INBOX',
-           'imap_path'         => '{mail.test.com:993/imap/ssl}',
-       ],
-       'EmailBundle_replies' => [
-           'address'           => 'replies@test.com',
-           'host'              => 'mail3.test.com',
-           'port'              => '993',
-           'encryption'        => '/ssl',
-           'user'              => 'user',
-           'password'          => 'password',
-           'override_settings' => 0,
-           'folder'            => 'INBOX',
-           'imap_path'         => '{mail.test.com:993/imap/ssl}',
-       ],
-   ];
+    /** @var array<string, array<string, int|string>> */
+    protected array $mailboxes = [
+        'EmailBundle_bounces' => [
+            'address'           => 'bounces@test.com',
+            'host'              => 'mail.test.com',
+            'port'              => '993',
+            'encryption'        => '/ssl',
+            'user'              => 'user',
+            'password'          => 'password',
+            'override_settings' => 0,
+            'folder'            => 'INBOX',
+            'imap_path'         => '{mail.test.com:993/imap/ssl}',
+        ],
+        'EmailBundle_unsubscribes' => [
+            'address'           => 'unsubscribes@test.com',
+            'host'              => 'mail2.test.com',
+            'port'              => '993',
+            'encryption'        => '/ssl',
+            'user'              => 'user',
+            'password'          => 'password',
+            'override_settings' => 0,
+            'folder'            => 'INBOX',
+            'imap_path'         => '{mail.test.com:993/imap/ssl}',
+        ],
+        'EmailBundle_replies' => [
+            'address'           => 'replies@test.com',
+            'host'              => 'mail3.test.com',
+            'port'              => '993',
+            'encryption'        => '/ssl',
+            'user'              => 'user',
+            'password'          => 'password',
+            'override_settings' => 0,
+            'folder'            => 'INBOX',
+            'imap_path'         => '{mail.test.com:993/imap/ssl}',
+        ],
+    ];
 
-    /**
-     * @testdox Multiple mailboxes with the same imap path should be converted to a single container
-     *
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::organize()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::getContainer()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::getContainers()
-     */
-    public function testMailboxesAreConvertedIntoASingleContainer()
+    #[\PHPUnit\Framework\Attributes\TestDox('Multiple mailboxes with the same imap path should be converted to a single container')]
+    public function testMailboxesAreConvertedIntoASingleContainer(): void
     {
         $configs   = $this->getConfigs($this->mailboxes);
         $event     = new ParseEmailEvent();
@@ -74,18 +61,10 @@ class MailboxOrganizerTest extends \PHPUnit\Framework\TestCase
         $this->assertCount(1, $containers);
         $key = '{mail.test.com:993/imap/ssl}_user';
         $this->assertArrayHasKey($key, $containers);
-
-        $this->assertInstanceOf(MailboxContainer::class, $containers[$key]);
     }
 
-    /**
-     * @testdox Multiple mailboxes with multiple imap paths are converted to a multiple container
-     *
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::organize()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::getContainer()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::getContainers()
-     */
-    public function testMailboxesWithDifferentPathsAreConvertedIntoMultipleContainers()
+    #[\PHPUnit\Framework\Attributes\TestDox('Multiple mailboxes with multiple imap paths are converted to a multiple container')]
+    public function testMailboxesWithDifferentPathsAreConvertedIntoMultipleContainers(): void
     {
         $mailboxes = [
             'EmailBundle_bounces' => [
@@ -131,22 +110,10 @@ class MailboxOrganizerTest extends \PHPUnit\Framework\TestCase
         $containers = $organizer->getContainers();
 
         $this->assertCount(3, $containers);
-
-        foreach ($containers as $key => $container) {
-            $this->assertInstanceOf(MailboxContainer::class, $container);
-        }
     }
 
-    /**
-     * @testdox Different criteria should be handled by the single container
-     *
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::organize()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::getContainer()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::getContainers()
-     * @covers  \Mautic\EmailBundle\Event\ParseEmailEvent::setCriteriaRequest()
-     * @covers  \Mautic\EmailBundle\Event\ParseEmailEvent::getCriteriaRequests()
-     */
-    public function testMailboxesWithDifferentCriteriaAreAddedToContainer()
+    #[\PHPUnit\Framework\Attributes\TestDox('Different criteria should be handled by the single container')]
+    public function testMailboxesWithDifferentCriteriaAreAddedToContainer(): void
     {
         $configs = $this->getConfigs($this->mailboxes);
         $event   = new ParseEmailEvent();
@@ -161,28 +128,19 @@ class MailboxOrganizerTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(
             [
                 Mailbox::CRITERIA_UNSEEN => [
-                        'EmailBundle_bounces',
-                        'EmailBundle_unsubscribes',
-                    ],
+                    'EmailBundle_bounces',
+                    'EmailBundle_unsubscribes',
+                ],
                 Mailbox::CRITERIA_UID.' 1234:*' => [
-                        'EmailBundle_replies',
-                    ],
+                    'EmailBundle_replies',
+                ],
             ],
             $criteria
         );
     }
 
-    /**
-     * @testdox All getters return appropriate values
-     *
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::organize()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::getContainer()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Organizer\MailboxOrganizer::getContainers()
-     * @covers  \Mautic\EmailBundle\Event\ParseEmailEvent::setCriteriaRequest()
-     * @covers  \Mautic\EmailBundle\Event\ParseEmailEvent::getCriteriaRequests()
-     * @covers  \Mautic\EmailBundle\Event\ParseEmailEvent::getMarkAsSeenInstructions()
-     */
-    public function testMailboxesWithDifferentCriteriaWithUnseenFlagMarksContainer()
+    #[\PHPUnit\Framework\Attributes\TestDox('All getters return appropriate values')]
+    public function testMailboxesWithDifferentCriteriaWithUnseenFlagMarksContainer(): void
     {
         $configs = $this->getConfigs($this->mailboxes);
         $event   = new ParseEmailEvent();
@@ -198,11 +156,11 @@ class MailboxOrganizerTest extends \PHPUnit\Framework\TestCase
     }
 
     /**
-     * @param $mailboxes
+     * @param array<string, array<string, int|string>> $mailboxes
      *
-     * @return array
+     * @return array<string, ConfigAccessor>
      */
-    protected function getConfigs($mailboxes)
+    protected function getConfigs(array $mailboxes): array
     {
         $configs = [];
 

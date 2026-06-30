@@ -1,26 +1,25 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Entity;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\CoreBundle\Entity\IpAddress;
+use Mautic\CoreBundle\Entity\OptimisticLockInterface;
+use Mautic\CoreBundle\Entity\OptimisticLockTrait;
+use Mautic\CoreBundle\Helper\DateTimeHelper;
 use Mautic\LeadBundle\Entity\Lead as LeadEntity;
 
-class LeadEventLog implements ChannelInterface
+class LeadEventLog implements ChannelInterface, OptimisticLockInterface
 {
+    use OptimisticLockTrait;
+
+    public const TABLE_NAME = 'campaign_lead_event_log';
+
     /**
-     * @var int|null
+     * @var string|null
      */
     private $id;
 
@@ -35,17 +34,17 @@ class LeadEventLog implements ChannelInterface
     private $lead;
 
     /**
-     * @var Campaign
+     * @var Campaign|null
      */
     private $campaign;
 
     /**
-     * @var IpAddress
+     * @var IpAddress|null
      */
     private $ipAddress;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface|null
      **/
     private $dateTriggered;
 
@@ -55,7 +54,7 @@ class LeadEventLog implements ChannelInterface
     private $isScheduled = false;
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
     private $triggerDate;
 
@@ -70,20 +69,23 @@ class LeadEventLog implements ChannelInterface
     private $metadata = [];
 
     /**
-     * @var bool
+     * @var bool|null
      */
     private $nonActionPathTaken = false;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $channel;
 
     /**
-     * @var int
+     * @var int|null
      */
     private $channelId;
 
+    /**
+     * @var bool|null
+     */
     private $previousScheduledState;
 
     /**
@@ -92,16 +94,25 @@ class LeadEventLog implements ChannelInterface
     private $rotation = 1;
 
     /**
-     * @var FailedLeadEventLog
+     * @var FailedLeadEventLog|null
      */
     private $failedLog;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    /**
+     * Subscribers can fail log with custom reschedule interval.
+     *
+     * @var \DateInterval|null
+     */
+    private $rescheduleInterval;
+
+    private ?\DateTime $dateQueued = null;
+
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
-        $builder->setTable('campaign_lead_event_log')
-            ->setCustomRepositoryClass('Mautic\CampaignBundle\Entity\LeadEventLogRepository')
+        $builder->setTable(self::TABLE_NAME)
+            ->setCustomRepositoryClass(LeadEventLogRepository::class)
             ->addIndex(['is_scheduled', 'lead_id'], 'campaign_event_upcoming_search')
             ->addIndex(['campaign_id', 'is_scheduled', 'trigger_date'], 'campaign_event_schedule_counts')
             ->addIndex(['date_triggered'], 'campaign_date_triggered')
@@ -109,13 +120,15 @@ class LeadEventLog implements ChannelInterface
             ->addIndex(['channel', 'channel_id', 'lead_id'], 'campaign_log_channel')
             ->addIndex(['campaign_id', 'event_id', 'date_triggered'], 'campaign_actions')
             ->addIndex(['campaign_id', 'date_triggered', 'event_id', 'non_action_path_taken'], 'campaign_stats')
+            ->addIndex(['trigger_date'], 'campaign_trigger_date_order')
+            ->addIndex(['is_scheduled', 'event_id', 'trigger_date'], 'idx_scheduled_events')
             ->addUniqueConstraint(['event_id', 'lead_id', 'rotation'], 'campaign_rotation');
 
         $builder->addBigIntIdField();
 
         $builder->createManyToOne('event', 'Event')
             ->inversedBy('log')
-            ->addJoinColumn('event_id', 'id', false, false, 'CASCADE')
+            ->addJoinColumn('event_id', 'id', false, false)
             ->build();
 
         $builder->addLead(false, 'CASCADE');
@@ -163,71 +176,70 @@ class LeadEventLog implements ChannelInterface
             ->fetchExtraLazy()
             ->cascadeAll()
             ->build();
+
+        $builder->createField('dateQueued', Types::DATETIME_MUTABLE)
+            ->columnName('date_queued')
+            ->nullable()
+            ->build();
+
+        self::addVersionField($builder);
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('campaignEventLog')
-                 ->addProperties(
-                     [
-                         'ipAddress',
-                         'dateTriggered',
-                         'isScheduled',
-                         'triggerDate',
-                         'metadata',
-                         'nonActionPathTaken',
-                         'channel',
-                         'channelId',
-                         'rotation',
-                     ]
-                 )
+            ->addProperties(
+                [
+                    'ipAddress',
+                    'dateTriggered',
+                    'isScheduled',
+                    'triggerDate',
+                    'metadata',
+                    'nonActionPathTaken',
+                    'channel',
+                    'channelId',
+                    'rotation',
+                ]
+            )
 
-                // Add standalone groups
-                 ->setGroupPrefix('campaignEventStandaloneLog')
-                 ->addProperties(
-                     [
-                         'event',
-                         'lead',
-                         'campaign',
-                         'ipAddress',
-                         'dateTriggered',
-                         'isScheduled',
-                         'triggerDate',
-                         'metadata',
-                         'nonActionPathTaken',
-                         'channel',
-                         'channelId',
-                         'rotation',
-                     ]
-                 )
-                 ->build();
+            // Add standalone groups
+            ->setGroupPrefix('campaignEventStandaloneLog')
+            ->addProperties(
+                [
+                    'event',
+                    'lead',
+                    'campaign',
+                    'ipAddress',
+                    'dateTriggered',
+                    'isScheduled',
+                    'triggerDate',
+                    'metadata',
+                    'nonActionPathTaken',
+                    'channel',
+                    'channelId',
+                    'rotation',
+                ]
+            )
+            ->build();
     }
 
-    /**
-     * @return int|null
-     */
-    public function getId()
+    public function getId(): int
     {
-        return $this->id;
+        return (int) $this->id;
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getDateTriggered()
     {
         return $this->dateTriggered;
     }
 
-    /**
-     * @return $this
-     */
-    public function setDateTriggered(\DateTime $dateTriggered = null)
+    public function setDateTriggered(?\DateTimeInterface $dateTriggered = null): static
     {
         $this->dateTriggered = $dateTriggered;
         if (null !== $dateTriggered) {
@@ -238,17 +250,14 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @return IpAddress
+     * @return IpAddress|null
      */
     public function getIpAddress()
     {
         return $this->ipAddress;
     }
 
-    /**
-     * @return $this
-     */
-    public function setIpAddress(IpAddress $ipAddress)
+    public function setIpAddress(IpAddress $ipAddress): static
     {
         $this->ipAddress = $ipAddress;
 
@@ -256,17 +265,14 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @return LeadEntity
+     * @return LeadEntity|null
      */
     public function getLead()
     {
         return $this->lead;
     }
 
-    /**
-     * @return $this
-     */
-    public function setLead(LeadEntity $lead)
+    public function setLead(LeadEntity $lead): static
     {
         $this->lead = $lead;
 
@@ -274,7 +280,7 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @return Event
+     * @return Event|null
      */
     public function getEvent()
     {
@@ -286,7 +292,7 @@ class LeadEventLog implements ChannelInterface
      *
      * @return $this
      */
-    public function setEvent(Event $event)
+    public function setEvent(Event $event): static
     {
         $this->event = $event;
 
@@ -306,11 +312,9 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @param $isScheduled
-     *
-     * @return $this
+     * @param bool $isScheduled
      */
-    public function setIsScheduled($isScheduled)
+    public function setIsScheduled($isScheduled): static
     {
         if (null === $this->previousScheduledState) {
             $this->previousScheduledState = $this->isScheduled;
@@ -324,7 +328,7 @@ class LeadEventLog implements ChannelInterface
     /**
      * If isScheduled was changed, this will have the previous state.
      *
-     * @return mixed
+     * @return bool|null
      */
     public function getPreviousScheduledState()
     {
@@ -332,38 +336,41 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @return mixed
+     * @return \DateTimeInterface|null
      */
     public function getTriggerDate()
     {
         return $this->triggerDate;
     }
 
-    /**
-     * @param \DateTime $triggerDate
-     *
-     * @return $this
-     */
-    public function setTriggerDate(\DateTime $triggerDate = null)
+    public function setTriggerDate(?\DateTimeInterface $triggerDate = null, ?string $note = null): static
     {
         $this->triggerDate = $triggerDate;
         $this->setIsScheduled(true);
+        $this->logTriggerDateChange($triggerDate, $note);
 
         return $this;
     }
 
+    private function logTriggerDateChange(?\DateTimeInterface $newTriggerDate, ?string $note): void
+    {
+        $this->metadata['triggerDateLog'] ??= [];
+        $this->metadata['triggerDateLog'][] = [
+            'date'      => (new \DateTime())->format(DateTimeHelper::FORMAT_DB),
+            'changedTo' => $newTriggerDate ? $newTriggerDate->format(DateTimeHelper::FORMAT_DB) : null,
+            'note'      => $note,
+        ];
+    }
+
     /**
-     * @return Campaign
+     * @return Campaign|null
      */
     public function getCampaign()
     {
         return $this->campaign;
     }
 
-    /**
-     * @return $this
-     */
-    public function setCampaign(Campaign $campaign)
+    public function setCampaign(Campaign $campaign): static
     {
         $this->campaign = $campaign;
 
@@ -379,11 +386,9 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @param $systemTriggered
-     *
-     * @return $this
+     * @param bool $systemTriggered
      */
-    public function setSystemTriggered($systemTriggered)
+    public function setSystemTriggered($systemTriggered): static
     {
         $this->systemTriggered = $systemTriggered;
 
@@ -391,7 +396,7 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @return mixed
+     * @return bool|null
      */
     public function getNonActionPathTaken()
     {
@@ -399,11 +404,9 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @param $nonActionPathTaken
-     *
-     * @return $this
+     * @param bool $nonActionPathTaken
      */
-    public function setNonActionPathTaken($nonActionPathTaken)
+    public function setNonActionPathTaken($nonActionPathTaken): static
     {
         $this->nonActionPathTaken = $nonActionPathTaken;
 
@@ -411,7 +414,7 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @return mixed
+     * @return mixed[]
      */
     public function getMetadata()
     {
@@ -419,9 +422,9 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @param $metadata
+     * @param mixed[] $metadata
      */
-    public function appendToMetadata($metadata)
+    public function appendToMetadata($metadata): void
     {
         if (!is_array($metadata)) {
             // Assumed output for timeline BC for <2.14
@@ -432,11 +435,9 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @param $metadata
-     *
-     * @return $this
+     * @param mixed[] $metadata
      */
-    public function setMetadata($metadata)
+    public function setMetadata($metadata): static
     {
         if (!is_array($metadata)) {
             // Assumed output for timeline
@@ -449,7 +450,7 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getChannel()
     {
@@ -458,18 +459,14 @@ class LeadEventLog implements ChannelInterface
 
     /**
      * @param string $channel
-     *
-     * @return LeadEventLog
      */
-    public function setChannel($channel)
+    public function setChannel($channel): void
     {
         $this->channel = $channel;
-
-        return $this;
     }
 
     /**
-     * @return mixed
+     * @return int|null
      */
     public function getChannelId()
     {
@@ -477,15 +474,11 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @param mixed $channelId
-     *
-     * @return LeadEventLog
+     * @param int|null $channelId
      */
-    public function setChannelId($channelId)
+    public function setChannelId($channelId): void
     {
         $this->channelId = $channelId;
-
-        return $this;
     }
 
     /**
@@ -498,10 +491,8 @@ class LeadEventLog implements ChannelInterface
 
     /**
      * @param int $rotation
-     *
-     * @return LeadEventLog
      */
-    public function setRotation($rotation)
+    public function setRotation($rotation): static
     {
         $this->rotation = (int) $rotation;
 
@@ -509,40 +500,51 @@ class LeadEventLog implements ChannelInterface
     }
 
     /**
-     * @return FailedLeadEventLog
+     * @return FailedLeadEventLog|null
      */
     public function getFailedLog()
     {
         return $this->failedLog;
     }
 
-    /**
-     * @param FailedLeadEventLog $log
-     *
-     * return $this
-     */
-    public function setFailedLog(FailedLeadEventLog $log = null)
+    public function setFailedLog(?FailedLeadEventLog $log = null): static
     {
         $this->failedLog = $log;
 
         return $this;
     }
 
-    /**
-     * @return bool
-     */
-    public function isFailed()
+    public function isFailed(): bool
     {
         $log = $this->getFailedLog();
 
         return !empty($log);
     }
 
-    /**
-     * @return bool
-     */
-    public function isSuccess()
+    public function isSuccess(): bool
     {
         return !$this->isFailed();
+    }
+
+    public function setRescheduleInterval(?\DateInterval $interval): void
+    {
+        $this->rescheduleInterval = $interval;
+    }
+
+    public function getRescheduleInterval(): ?\DateInterval
+    {
+        return $this->rescheduleInterval;
+    }
+
+    public function getDateQueued(): ?\DateTime
+    {
+        return $this->dateQueued;
+    }
+
+    public function setDateQueued(?\DateTime $dateQueued): LeadEventLog
+    {
+        $this->dateQueued = $dateQueued;
+
+        return $this;
     }
 }

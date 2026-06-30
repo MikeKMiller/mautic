@@ -1,27 +1,17 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Helper;
 
 use Mautic\LeadBundle\Entity\CompanyLeadRepository;
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Helper\PrimaryCompanyHelper;
-use PHPUnit\Framework\Exception;
 
 class PrimaryCompanyHelperTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var CompanyLeadRepository|Exception
+     * @var \PHPUnit\Framework\MockObject\MockObject&CompanyLeadRepository
      */
-    private $leadRepository;
+    private \PHPUnit\Framework\MockObject\MockObject $leadRepository;
 
     protected function setUp(): void
     {
@@ -49,7 +39,7 @@ class PrimaryCompanyHelperTest extends \PHPUnit\Framework\TestCase
             );
     }
 
-    public function testProfileFieldsReturnedWithPrimaryCompany()
+    public function testProfileFieldsReturnedWithPrimaryCompany(): void
     {
         $lead = $this->createMock(Lead::class);
         $lead->expects($this->once())
@@ -65,7 +55,7 @@ class PrimaryCompanyHelperTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(['email' => 'test@test.com', 'companywebsite' => 'https://foo.com'], $profileFields);
     }
 
-    public function testPrimaryCompanyMergedIntoProfileFields()
+    public function testPrimaryCompanyMergedIntoProfileFields(): void
     {
         $leadFields = [
             'email' => 'test@test.com',
@@ -76,10 +66,7 @@ class PrimaryCompanyHelperTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(['email' => 'test@test.com', 'companywebsite' => 'https://foo.com'], $profileFields);
     }
 
-    /**
-     * @return PrimaryCompanyHelper
-     */
-    private function getPrimaryCompanyHelper()
+    private function getPrimaryCompanyHelper(): PrimaryCompanyHelper
     {
         return new PrimaryCompanyHelper($this->leadRepository);
     }

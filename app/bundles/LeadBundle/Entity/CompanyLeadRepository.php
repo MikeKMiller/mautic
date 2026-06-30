@@ -1,56 +1,60 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\ParameterType;
 use Mautic\CoreBundle\Entity\CommonRepository;
+use Mautic\LeadBundle\Exception\PrimaryCompanyNotFoundException;
 
+/**
+ * @extends CommonRepository<CompanyLead>
+ */
 class CompanyLeadRepository extends CommonRepository
 {
+    public const DELETE_BATCH_SIZE = 1000;
+
+    public const BATCH_SIZE        = 5000;
+
     /**
      * @param CompanyLead[] $entities
      */
-    public function saveEntities($entities, $new = true)
+    public function saveEntities($entities, $new = true): void
     {
         // Get a list of contacts and set primary to 0
         if ($new) {
-            $contacts = [];
+            $contacts  = [];
+            $contactId = null;
             foreach ($entities as $entity) {
-                $contactId            = $entity->getLead()->getId();
+                $contactId = $entity->getLead()->getId();
+                if (!isset($contacts[$contactId])) {
+                    // Set one company from the batch as as primary
+                    $entity->setPrimary(true);
+                }
+
                 $contacts[$contactId] = $contactId;
-                $entity->setPrimary(true);
             }
+
             if ($contactId) {
+                // Only one company should be set as primary so reset all in order to let the entity update the one
                 $qb = $this->getEntityManager()->getConnection()->createQueryBuilder()
                     ->update(MAUTIC_TABLE_PREFIX.'companies_leads')
                     ->set('is_primary', 0);
 
                 $qb->where(
-                    $qb->expr()->in('lead_id', $contacts)
-                )->execute();
+                    $qb->expr()->in('lead_id', ':leadIds')
+                )->setParameter('leadIds', $contacts, ArrayParameterType::INTEGER)
+                    ->executeStatement();
             }
         }
 
-        return parent::saveEntities($entities);
+        parent::saveEntities($entities);
     }
 
     /**
      * Get companies by leadId.
-     *
-     * @param $leadId
-     * @param $companyId
-     *
-     * @return array
      */
-    public function getCompaniesByLeadId($leadId, $companyId = null)
+    public function getCompaniesByLeadId($leadId, $companyId = null, ?bool $onlyPrimary = null): array
     {
         $q = $this->_em->getConnection()->createQueryBuilder();
 
@@ -66,29 +70,91 @@ class CompanyLeadRepository extends CommonRepository
             )->setParameter('companyId', $companyId);
         }
 
-        return $q->execute()->fetchAll();
+        if ($onlyPrimary) {
+            $q->andWhere(
+                $q->expr()->eq('cl.is_primary', true)
+            );
+        }
+
+        return $q->executeQuery()->fetchAllAssociative();
     }
 
     /**
-     * @param $companyId
+     * @param int[] $ids
      *
-     * @return array
+     * @return list<array<string, mixed>>
      */
-    public function getCompanyLeads($companyId)
+    public function getPrimaryCompaniesByLeadIds(array $ids): array
+    {
+        $ids = array_filter($ids);
+
+        if (!$ids) {
+            return [];
+        }
+
+        $q = $this->_em->getConnection()->createQueryBuilder();
+
+        $q->select('comp.*')
+            ->from(MAUTIC_TABLE_PREFIX.'companies', 'comp')
+            ->join('comp', MAUTIC_TABLE_PREFIX.'companies_leads', 'cl', 'cl.company_id = comp.id')
+            ->andWhere('cl.is_primary = 1')
+            ->andWhere('cl.lead_id IN (:ids)')
+            ->setParameter('ids', $ids, ArrayParameterType::INTEGER);
+
+        return $q->executeQuery()->fetchAllAssociative();
+    }
+
+    /**
+     * @return mixed[]
+     *
+     * @throws PrimaryCompanyNotFoundException
+     */
+    public function getPrimaryCompanyByLeadId(int $leadId): array
+    {
+        $companies = $this->getCompaniesByLeadId($leadId);
+        foreach ($companies as $company) {
+            if ($company['is_primary']) {
+                return $company;
+            }
+        }
+
+        throw new PrimaryCompanyNotFoundException();
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getCompanyIdsByLeadId(string $leadId): array
+    {
+        $q = $this->_em->getConnection()->createQueryBuilder();
+
+        $q->select('cl.company_id')
+            ->from(MAUTIC_TABLE_PREFIX.'companies_leads', 'cl')
+            ->where('cl.lead_id = :leadId')
+            ->setParameter('leadId', $leadId);
+
+        return array_map(
+            fn (array $company): string => (string) $company['company_id'],
+            $q->executeQuery()->fetchAllAssociative()
+        );
+    }
+
+    /**
+     * @param int $companyId
+     */
+    public function getCompanyLeads($companyId): array
     {
         $q = $this->_em->getConnection()->createQueryBuilder();
         $q->select('cl.lead_id')
             ->from(MAUTIC_TABLE_PREFIX.'companies_leads', 'cl');
 
         $q->where($q->expr()->eq('cl.company_id', ':company'))
-            ->setParameter(':company', $companyId);
+            ->setParameter('company', $companyId);
 
-        return $q->execute()->fetchAll();
+        return $q->executeQuery()->fetchAllAssociative();
     }
 
     /**
-     * @param $leadId
-     *
      * @return array
      */
     public function getLatestCompanyForLead($leadId)
@@ -98,30 +164,33 @@ class CompanyLeadRepository extends CommonRepository
         $q->select('cl.company_id, comp.companyname, comp.companycity, comp.companycountry')
             ->from(MAUTIC_TABLE_PREFIX.'companies_leads', 'cl')
             ->join('cl', MAUTIC_TABLE_PREFIX.'companies', 'comp', 'comp.id = cl.company_id')
-            ->where('cl.lead_id = :leadId')
+            ->where(
+                $q->expr()->eq('cl.lead_id', ':leadId'),
+                $q->expr()->isNull('comp.deleted')
+            )
             ->setParameter('leadId', $leadId);
         $q->orderBy('cl.date_added', 'DESC');
-        $result = $q->execute()->fetchAll();
+
+        $result = $q->executeQuery()->fetchAllAssociative();
 
         return !empty($result) ? $result[0] : [];
     }
 
     /**
-     * @param $leadId
-     * @param $companyId
+     * @return mixed[]
      */
-    public function getCompanyLeadEntity($leadId, $companyId)
+    public function getCompanyLeadEntity($leadId, $companyId): array
     {
         $qb = $this->getEntityManager()->getConnection()->createQueryBuilder();
         $qb->select('cl.is_primary, cl.lead_id, cl.company_id')
             ->from(MAUTIC_TABLE_PREFIX.'companies_leads', 'cl')
             ->where(
-                    $qb->expr()->eq('cl.lead_id', ':leadId'),
-                    $qb->expr()->eq('cl.company_id', ':companyId')
+                $qb->expr()->eq('cl.lead_id', ':leadId'),
+                $qb->expr()->eq('cl.company_id', ':companyId')
             )->setParameter('leadId', $leadId)
             ->setParameter('companyId', $companyId);
 
-        return $qb->execute()->fetchAll();
+        return $qb->executeQuery()->fetchAllAssociative();
     }
 
     /**
@@ -142,26 +211,80 @@ class CompanyLeadRepository extends CommonRepository
     /**
      * Updates leads company name If company name changed and company is primary.
      */
-    public function updateLeadsPrimaryCompanyName(Company $company)
+    public function updateLeadsPrimaryCompanyName(Company $company): void
     {
         if ($company->isNew() || empty($company->getChanges()['fields']['companyname'])) {
             return;
         }
+        $this->updateCompanyNameOnLeads($company);
+    }
+
+    public function updateCompanyNameOnLeads(Company $company): void
+    {
         $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
         $q->select('cl.lead_id')
-            ->from(MAUTIC_TABLE_PREFIX.'companies_leads', 'cl');
-        $q->where($q->expr()->eq('cl.company_id', ':companyId'))
-            ->setParameter(':companyId', $company->getId())
-            ->andWhere('cl.is_primary = 1');
-        $leadIds = $q->execute()->fetchColumn();
-        if (!empty($leadIds)) {
+            ->from(MAUTIC_TABLE_PREFIX.'companies_leads', 'cl')
+            ->join('cl', MAUTIC_TABLE_PREFIX.'leads', 'l', 'l.id = cl.lead_id')
+            ->where($q->expr()->eq('cl.company_id', ':companyId'))
+            ->setParameter('companyId', $company->getId())
+            ->andWhere($q->expr()->neq('l.company', ':company'))
+            ->setParameter('company', $company->getName())
+            ->andWhere('cl.is_primary = 1')
+            ->setMaxResults(self::BATCH_SIZE);
+        while ($leadIds = $q->executeQuery()->fetchFirstColumn()) {
             $this->getEntityManager()->getConnection()->createQueryBuilder()
-            ->update(MAUTIC_TABLE_PREFIX.'leads')
-            ->set('company', ':company')
-            ->setParameter(':company', $company->getName())
-            ->where(
-                $q->expr()->in('id', $leadIds)
-            )->execute();
+                ->update(MAUTIC_TABLE_PREFIX.'leads')
+                ->set('company', ':company')
+                ->setParameter('company', $company->getName())
+                ->where(
+                    $q->expr()->in('id', ':leadIds')
+                )
+                ->setParameter('leadIds', $leadIds, ArrayParameterType::INTEGER)
+                ->executeStatement();
         }
+    }
+
+    public function deleteCompanyLeads(int $companyId): void
+    {
+        $tableName  = MAUTIC_TABLE_PREFIX.'companies_leads';
+        $statement  = $this->getEntityManager()
+            ->getConnection()
+            ->prepare("DELETE FROM {$tableName} WHERE company_id = :companyId LIMIT ".self::BATCH_SIZE);
+        $statement->bindValue('companyId', $companyId, ParameterType::INTEGER);
+
+        do {
+            $affected = $statement->executeStatement();
+        } while ($affected);
+    }
+
+    public function removeContactPrimaryCompany(int $leadId): void
+    {
+        $qb = $this->getEntityManager()->getConnection()->createQueryBuilder()
+            ->delete(MAUTIC_TABLE_PREFIX.'companies_leads');
+        $qb->where(
+            $qb->expr()->eq('lead_id', $leadId)
+        )->andWhere(
+            $qb->expr()->eq('is_primary', 1)
+        )->executeStatement();
+    }
+
+    public function removeAllSecondaryCompanies(): void
+    {
+        $conn = $this->getEntityManager()->getConnection();
+        do {
+            $sql = 'DELETE FROM '.MAUTIC_TABLE_PREFIX.'companies_leads WHERE is_primary = 0 LIMIT '.self::DELETE_BATCH_SIZE;
+            $row = $conn->executeStatement($sql);
+        } while ($row);
+    }
+
+    public function removeContactSecondaryCompanies(int $leadId): void
+    {
+        $qb = $this->getEntityManager()->getConnection()->createQueryBuilder()
+            ->delete(MAUTIC_TABLE_PREFIX.'companies_leads');
+        $qb->where(
+            $qb->expr()->eq('lead_id', $leadId)
+        )->andWhere(
+            $qb->expr()->eq('is_primary', 0)
+        )->executeStatement();
     }
 }

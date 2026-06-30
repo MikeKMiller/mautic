@@ -1,22 +1,10 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\SmsBundle\Event;
 
 use Mautic\CoreBundle\Event\CommonEvent;
 use Mautic\LeadBundle\Entity\Lead;
 
-/**
- * Class SmsSendEvent.
- */
 class SmsSendEvent extends CommonEvent
 {
     /**
@@ -25,22 +13,12 @@ class SmsSendEvent extends CommonEvent
     protected $smsId;
 
     /**
-     * @var string
-     */
-    protected $content;
-
-    /**
-     * @var Lead
-     */
-    protected $lead;
-
-    /**
      * @param string $content
      */
-    public function __construct($content, Lead $lead)
-    {
-        $this->content = $content;
-        $this->lead    = $lead;
+    public function __construct(
+        protected $content,
+        protected Lead $lead,
+    ) {
     }
 
     /**
@@ -54,23 +32,17 @@ class SmsSendEvent extends CommonEvent
     /**
      * @param string $content
      */
-    public function setContent($content)
+    public function setContent($content): void
     {
         $this->content = $content;
     }
 
-    /**
-     * @return Lead
-     */
-    public function getLead()
+    public function getLead(): Lead
     {
         return $this->lead;
     }
 
-    /**
-     * @param Lead $lead
-     */
-    public function setLead($lead)
+    public function setLead(Lead $lead): void
     {
         $this->lead = $lead;
     }
@@ -86,7 +58,7 @@ class SmsSendEvent extends CommonEvent
     /**
      * @param int $smsId
      */
-    public function setSmsId($smsId)
+    public function setSmsId($smsId): void
     {
         $this->smsId = $smsId;
     }

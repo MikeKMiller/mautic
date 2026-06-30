@@ -1,58 +1,70 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CategoryBundle\Model;
 
+use Doctrine\ORM\EntityManager;
 use Mautic\CategoryBundle\CategoryEvents;
 use Mautic\CategoryBundle\Entity\Category;
+use Mautic\CategoryBundle\Entity\CategoryRepository;
 use Mautic\CategoryBundle\Event\CategoryEvent;
+use Mautic\CategoryBundle\Event\CategoryTypeEntityEvent;
 use Mautic\CategoryBundle\Form\Type\CategoryType;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Helper\UserHelper;
+use Mautic\CoreBundle\Model\AjaxLookupModelInterface;
 use Mautic\CoreBundle\Model\FormModel;
-use Symfony\Component\EventDispatcher\Event;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Translation\Translator;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Form\FormFactoryInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Contracts\EventDispatcher\Event;
 
 /**
- * Class CategoryModel
- * {@inheritdoc}
+ * @extends FormModel<Category>
  */
-class CategoryModel extends FormModel
+class CategoryModel extends FormModel implements AjaxLookupModelInterface
 {
     /**
-     * @var \Symfony\Component\HttpFoundation\Request|null
+     * @var array<string,mixed[]>
      */
-    protected $request;
+    private array $categoriesByBundleCache = [];
 
-    /**
-     * CategoryModel constructor.
-     */
-    public function __construct(RequestStack $requestStack)
-    {
-        $this->request = $requestStack->getCurrentRequest();
+    public function __construct(
+        protected RequestStack $requestStack,
+        EntityManager $em,
+        CorePermissions $security,
+        EventDispatcherInterface $dispatcher,
+        UrlGeneratorInterface $router,
+        Translator $translator,
+        UserHelper $userHelper,
+        LoggerInterface $mauticLogger,
+        CoreParametersHelper $coreParametersHelper,
+    ) {
+        parent::__construct($em, $security, $dispatcher, $router, $translator, $userHelper, $mauticLogger, $coreParametersHelper);
     }
 
-    public function getRepository()
+    // @phpstan-ignore-next-line method.childReturnType
+    public function getRepository(): CategoryRepository
     {
-        return $this->em->getRepository('MauticCategoryBundle:Category');
+        $repository = $this->em->getRepository(Category::class);
+        \assert($repository instanceof CategoryRepository);
+
+        return $repository;
     }
 
-    public function getNameGetter()
+    public function getNameGetter(): string
     {
         return 'getTitle';
     }
 
-    public function getPermissionBase($bundle = null)
+    public function getPermissionBase(?string $bundle = null): string
     {
         if (null === $bundle) {
-            $bundle = $this->request->get('bundle');
+            $bundle = $this->requestStack->getCurrentRequest()->get('bundle');
         }
 
         if ('global' === $bundle || empty($bundle)) {
@@ -62,23 +74,15 @@ class CategoryModel extends FormModel
         return $bundle.':categories';
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @param $entity
-     * @param $unlock
-     *
-     * @return mixed
-     */
-    public function saveEntity($entity, $unlock = true)
+    public function saveEntity($entity, $unlock = true): void
     {
         $alias = $entity->getAlias();
         if (empty($alias)) {
             $alias = $entity->getTitle();
         }
-        $alias = $this->cleanAlias($alias, '', false, '-');
+        $alias = $this->cleanAlias($alias, '', 0, '-');
 
-        //make sure alias is not already taken
+        // make sure alias is not already taken
         $repo      = $this->getRepository();
         $testAlias = $alias;
         $bundle    = $entity->getBundle();
@@ -99,18 +103,10 @@ class CategoryModel extends FormModel
     }
 
     /**
-     * {@inheritdoc}
-     *
-     * @param       $entity
-     * @param       $formFactory
-     * @param null  $action
-     * @param array $options
-     *
-     * @return mixed
-     *
-     * @throws \Symfony\Component\HttpKernel\Exception\NotFoundHttpException
+     * @param string|null $action
+     * @param array       $options
      */
-    public function createForm($entity, $formFactory, $action = null, $options = [])
+    public function createForm($entity, FormFactoryInterface $formFactory, $action = null, $options = []): \Symfony\Component\Form\FormInterface
     {
         if (!$entity instanceof Category) {
             throw new MethodNotAllowedHttpException(['Category']);
@@ -124,12 +120,8 @@ class CategoryModel extends FormModel
 
     /**
      * Get a specific entity or generate a new one if id is empty.
-     *
-     * @param $id
-     *
-     * @return Category
      */
-    public function getEntity($id = null)
+    public function getEntity($id = null): ?Category
     {
         if (null === $id) {
             return new Category();
@@ -139,16 +131,9 @@ class CategoryModel extends FormModel
     }
 
     /**
-     * {@inheritdoc}
-     *
-     * @param $action
-     * @param $event
-     * @param $entity
-     * @param $isNew
-     *
-     * @throws \Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException
+     * @throws MethodNotAllowedHttpException
      */
-    protected function dispatchEvent($action, &$entity, $isNew = false, Event $event = null)
+    protected function dispatchEvent($action, &$entity, $isNew = false, ?Event $event = null): ?Event
     {
         if (!$entity instanceof Category) {
             throw new MethodNotAllowedHttpException(['Category']);
@@ -172,37 +157,84 @@ class CategoryModel extends FormModel
         }
 
         if ($this->dispatcher->hasListeners($name)) {
-            if (empty($event)) {
+            if (!$event instanceof Event) {
                 $event = new CategoryEvent($entity, $isNew);
                 $event->setEntityManager($this->em);
             }
 
-            $this->dispatcher->dispatch($name, $event);
+            $this->dispatcher->dispatch($event, $name);
 
             return $event;
-        } else {
-            return null;
         }
+
+        return null;
     }
 
     /**
-     * Get list of entities for autopopulate fields.
+     * {@inheritDoc}
      *
-     * @param $bundle
-     * @param $filter
-     * @param $limit
+     * @param string               $type
+     * @param string               $filter
+     * @param int                  $limit
+     * @param int                  $start
+     * @param array<string, mixed> $options
      *
-     * @return array
+     * @return array<mixed>
      */
-    public function getLookupResults($bundle, $filter = '', $limit = 10)
+    public function getLookupResults($type, $filter = '', $limit = 10, $start = 0, array $options = []): array
     {
-        static $results = [];
+        $filterString = is_array($filter) ? implode('.', $filter) : $filter;
+        $key          = $type.$filterString.$limit;
 
-        $key = $bundle.$filter.$limit;
-        if (!isset($results[$key])) {
-            $results[$key] = $this->getRepository()->getCategoryList($bundle, $filter, $limit, 0);
+        if (!isset($options['for_lookup']) && !empty($this->categoriesByBundleCache[$key])) {
+            return $this->categoriesByBundleCache[$key];
         }
 
-        return $results[$key];
+        $result = $this->getRepository()->getCategoryList($type, $filter, $limit, $start);
+
+        if (!isset($options['for_lookup'])) {
+            return $this->categoriesByBundleCache[$key] = $result;
+        }
+
+        $data = [];
+        foreach ($result as $entity) {
+            $data[] = [
+                'label' => $entity['title'],
+                'value' => $entity['id'],
+            ];
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    public function getUsage(Category $category): array
+    {
+        $bundle = $category->getBundle();
+
+        $types = [];
+        if ($this->dispatcher->hasListeners(CategoryTypeEntityEvent::class)) {
+            $event = $this->dispatcher->dispatch(new CategoryTypeEntityEvent());
+            $types = $event->getCategoryTypeEntity($bundle);
+        }
+
+        $data = [];
+        foreach ($types as $type) {
+            $class     = $type['class'];
+            $resources = $this->em->getRepository($class)->findBy(['category' => $category->getId()]);
+
+            if (!$resources) {
+                continue;
+            }
+
+            $data = array_merge(array_map(fn ($resource): array => [
+                'label' => $type['label'],
+                'id'    => $resource->getId(),
+            ], $resources), $data);
+        }
+
+        return $data;
     }
 }

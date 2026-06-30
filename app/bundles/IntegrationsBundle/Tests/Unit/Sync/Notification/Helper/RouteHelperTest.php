@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2018 Mautic Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://www.mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Tests\Unit\Sync\Notification\Helper;
 
 use Mautic\IntegrationsBundle\Event\InternalObjectRouteEvent;
@@ -27,19 +18,16 @@ use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 class RouteHelperTest extends TestCase
 {
     /**
-     * @var ObjectProvider|\PHPUnit\Framework\MockObject\MockObject
+     * @var \PHPUnit\Framework\MockObject\MockObject&ObjectProvider
      */
-    private $objectProvider;
+    private \PHPUnit\Framework\MockObject\MockObject $objectProvider;
 
     /**
-     * @var EventDispatcherInterface|\PHPUnit\Framework\MockObject\MockObject
+     * @var \PHPUnit\Framework\MockObject\MockObject&EventDispatcherInterface
      */
-    private $dispatcher;
+    private \PHPUnit\Framework\MockObject\MockObject $dispatcher;
 
-    /**
-     * @var RouteHelper
-     */
-    private $routeHelper;
+    private RouteHelper $routeHelper;
 
     protected function setUp(): void
     {
@@ -59,8 +47,7 @@ class RouteHelperTest extends TestCase
         $this->dispatcher->expects($this->once())
             ->method('dispatch')
             ->with(
-                IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE,
-                $this->callback(function (InternalObjectRouteEvent $event) use ($internalObject) {
+                $this->callback(function (InternalObjectRouteEvent $event) use ($internalObject): true {
                     $this->assertSame($internalObject, $event->getObject());
                     $this->assertSame(1, $event->getId());
 
@@ -68,7 +55,8 @@ class RouteHelperTest extends TestCase
                     $event->setRoute('route/for/id/1');
 
                     return true;
-                })
+                }),
+                IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE
             );
 
         $this->routeHelper->getRoute(Contact::NAME, 1);
@@ -85,8 +73,7 @@ class RouteHelperTest extends TestCase
         $this->dispatcher->expects($this->once())
             ->method('dispatch')
             ->with(
-                IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE,
-                $this->callback(function (InternalObjectRouteEvent $event) use ($internalObject) {
+                $this->callback(function (InternalObjectRouteEvent $event) use ($internalObject): true {
                     $this->assertSame($internalObject, $event->getObject());
                     $this->assertSame(1, $event->getId());
 
@@ -94,7 +81,8 @@ class RouteHelperTest extends TestCase
                     $event->setRoute('route/for/id/1');
 
                     return true;
-                })
+                }),
+                IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE
             );
 
         $this->routeHelper->getRoute(Company::NAME, 1);
@@ -125,8 +113,7 @@ class RouteHelperTest extends TestCase
         $this->dispatcher->expects($this->once())
             ->method('dispatch')
             ->with(
-                IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE,
-                $this->callback(function (InternalObjectRouteEvent $event) use ($internalObject) {
+                $this->callback(function (InternalObjectRouteEvent $event) use ($internalObject): true {
                     $this->assertSame($internalObject, $event->getObject());
                     $this->assertSame(1, $event->getId());
 
@@ -134,11 +121,12 @@ class RouteHelperTest extends TestCase
                     $event->setRoute('route/for/id/1');
 
                     return true;
-                })
+                }),
+                IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE
             );
 
         $link = $this->routeHelper->getLink(Contact::NAME, 1, 'Hello');
-        $this->assertEquals('<a href="route/for/id/1">Hello</a>', $link);
+        $this->assertSame('<a href="route/for/id/1">Hello</a>', $link);
     }
 
     public function testLinkCsv(): void
@@ -148,37 +136,37 @@ class RouteHelperTest extends TestCase
             ->method('getObjectByName')
             ->with(Contact::NAME)
             ->willReturn($internalObject);
+        $matcher = $this->exactly(2);
 
-        $this->dispatcher->expects($this->exactly(2))
-            ->method('dispatch')
-            ->withConsecutive(
-                [
-                    IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE,
-                    $this->callback(function (InternalObjectRouteEvent $event) use ($internalObject) {
+        $this->dispatcher->expects($matcher)
+            ->method('dispatch')->willReturnCallback(function (...$parameters) use ($matcher, $internalObject) {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $callback = function (InternalObjectRouteEvent $event) use ($internalObject): void {
                         $this->assertSame($internalObject, $event->getObject());
                         $this->assertSame(1, $event->getId());
 
                         // Mock a subscriber.
                         $event->setRoute('route/for/id/1');
-
-                        return true;
-                    }),
-                ],
-                [
-                    IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE,
-                    $this->callback(function (InternalObjectRouteEvent $event) use ($internalObject) {
+                    };
+                    $callback($parameters[0]);
+                    $this->assertSame(IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE, $parameters[1]);
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $callback = function (InternalObjectRouteEvent $event) use ($internalObject): void {
                         $this->assertSame($internalObject, $event->getObject());
                         $this->assertSame(2, $event->getId());
 
                         // Mock a subscriber.
                         $event->setRoute('route/for/id/2');
+                    };
+                    $callback($parameters[0]);
+                    $this->assertSame(IntegrationEvents::INTEGRATION_BUILD_INTERNAL_OBJECT_ROUTE, $parameters[1]);
+                }
 
-                        return true;
-                    }),
-                ]
-            );
+                return $parameters[0];
+            });
 
         $csv = $this->routeHelper->getLinkCsv(Contact::NAME, [1, 2]);
-        $this->assertEquals('[<a href="route/for/id/1">1</a>], [<a href="route/for/id/2">2</a>]', $csv);
+        $this->assertSame('[<a href="route/for/id/1">1</a>], [<a href="route/for/id/2">2</a>]', $csv);
     }
 }

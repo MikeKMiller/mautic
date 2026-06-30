@@ -1,23 +1,17 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\IpAddress;
 use Mautic\LeadBundle\Entity\Lead;
 
 class VideoHit
 {
+    public const TABLE_NAME = 'video_hits';
+
     /**
      * @var int
      */
@@ -29,22 +23,22 @@ class VideoHit
     private $guid;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateHit;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateLeft;
 
     /**
-     * @var int
+     * @var int|null
      */
     private $timeWatched;
 
     /**
-     * @var int
+     * @var int|null
      */
     private $duration;
 
@@ -54,37 +48,37 @@ class VideoHit
     private $redirect;
 
     /**
-     * @var \Mautic\LeadBundle\Entity\Lead
+     * @var Lead|null
      */
     private $lead;
 
     /**
-     * @var \Mautic\CoreBundle\Entity\IpAddress
+     * @var IpAddress|null
      */
     private $ipAddress;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $country;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $region;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $city;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $isp;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $organization;
 
@@ -98,32 +92,32 @@ class VideoHit
     private $url;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $userAgent;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $remoteHost;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $pageLanguage;
 
     /**
-     * @var string
+     * @var array<string>
      */
     private $browserLanguages = [];
 
     /**
-     * @var string
+     * @var string|null
      */
     private $channel;
 
     /**
-     * @var int
+     * @var int|null
      */
     private $channelId;
 
@@ -132,12 +126,12 @@ class VideoHit
      */
     private $query = [];
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
-        $builder->setTable('video_hits')
-            ->setCustomRepositoryClass('Mautic\PageBundle\Entity\VideoHitRepository')
+        $builder->setTable(self::TABLE_NAME)
+            ->setCustomRepositoryClass(VideoHitRepository::class)
             ->addIndex(['date_hit'], 'video_date_hit')
             ->addIndex(['channel', 'channel_id'], 'video_channel_search')
             ->addIndex(['guid', 'lead_id'], 'video_guid_lead_search');
@@ -155,7 +149,7 @@ class VideoHit
 
         $builder->addLead(true, 'SET NULL');
 
-        $builder->addIpAddress();
+        $builder->addIpAddress(true);
 
         $builder->createField('country', 'string')
             ->nullable()
@@ -235,10 +229,8 @@ class VideoHit
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('hit')
             ->addProperties(
@@ -283,10 +275,8 @@ class VideoHit
      * Set dateHit.
      *
      * @param \DateTime $dateHit
-     *
-     * @return VideoHit
      */
-    public function setDateHit($dateHit)
+    public function setDateHit($dateHit): static
     {
         $this->dateHit = $dateHit;
 
@@ -296,7 +286,7 @@ class VideoHit
     /**
      * Get dateHit.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateHit()
     {
@@ -304,7 +294,7 @@ class VideoHit
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateLeft()
     {
@@ -313,10 +303,8 @@ class VideoHit
 
     /**
      * @param \DateTime $dateLeft
-     *
-     * @return VideoHit
      */
-    public function setDateLeft($dateLeft)
+    public function setDateLeft($dateLeft): static
     {
         $this->dateLeft = $dateLeft;
 
@@ -327,10 +315,8 @@ class VideoHit
      * Set country.
      *
      * @param string $country
-     *
-     * @return VideoHit
      */
-    public function setCountry($country)
+    public function setCountry($country): static
     {
         $this->country = $country;
 
@@ -351,10 +337,8 @@ class VideoHit
      * Set region.
      *
      * @param string $region
-     *
-     * @return VideoHit
      */
-    public function setRegion($region)
+    public function setRegion($region): static
     {
         $this->region = $region;
 
@@ -375,10 +359,8 @@ class VideoHit
      * Set city.
      *
      * @param string $city
-     *
-     * @return VideoHit
      */
-    public function setCity($city)
+    public function setCity($city): static
     {
         $this->city = $city;
 
@@ -399,10 +381,8 @@ class VideoHit
      * Set isp.
      *
      * @param string $isp
-     *
-     * @return VideoHit
      */
-    public function setIsp($isp)
+    public function setIsp($isp): static
     {
         $this->isp = $isp;
 
@@ -423,10 +403,8 @@ class VideoHit
      * Set organization.
      *
      * @param string $organization
-     *
-     * @return VideoHit
      */
-    public function setOrganization($organization)
+    public function setOrganization($organization): static
     {
         $this->organization = $organization;
 
@@ -447,10 +425,8 @@ class VideoHit
      * Set code.
      *
      * @param int $code
-     *
-     * @return VideoHit
      */
-    public function setCode($code)
+    public function setCode($code): static
     {
         $this->code = $code;
 
@@ -471,10 +447,8 @@ class VideoHit
      * Set referer.
      *
      * @param string $referer
-     *
-     * @return VideoHit
      */
-    public function setReferer($referer)
+    public function setReferer($referer): static
     {
         $this->referer = $referer;
 
@@ -495,10 +469,8 @@ class VideoHit
      * Set url.
      *
      * @param string $url
-     *
-     * @return VideoHit
      */
-    public function setUrl($url)
+    public function setUrl($url): static
     {
         $this->url = $url;
 
@@ -519,10 +491,8 @@ class VideoHit
      * Set userAgent.
      *
      * @param string $userAgent
-     *
-     * @return VideoHit
      */
-    public function setUserAgent($userAgent)
+    public function setUserAgent($userAgent): static
     {
         $this->userAgent = $userAgent;
 
@@ -543,10 +513,8 @@ class VideoHit
      * Set remoteHost.
      *
      * @param string $remoteHost
-     *
-     * @return VideoHit
      */
-    public function setRemoteHost($remoteHost)
+    public function setRemoteHost($remoteHost): static
     {
         $this->remoteHost = $remoteHost;
 
@@ -563,12 +531,7 @@ class VideoHit
         return $this->remoteHost;
     }
 
-    /**
-     * Set ipAddress.
-     *
-     * @return VideoHit
-     */
-    public function setIpAddress(\Mautic\CoreBundle\Entity\IpAddress $ipAddress)
+    public function setIpAddress(IpAddress $ipAddress): static
     {
         $this->ipAddress = $ipAddress;
 
@@ -576,9 +539,7 @@ class VideoHit
     }
 
     /**
-     * Get ipAddress.
-     *
-     * @return \Mautic\CoreBundle\Entity\IpAddress
+     * @return IpAddress|null
      */
     public function getIpAddress()
     {
@@ -589,10 +550,8 @@ class VideoHit
      * Set pageLanguage.
      *
      * @param string $pageLanguage
-     *
-     * @return VideoHit
      */
-    public function setPageLanguage($pageLanguage)
+    public function setPageLanguage($pageLanguage): static
     {
         $this->pageLanguage = $pageLanguage;
 
@@ -612,11 +571,9 @@ class VideoHit
     /**
      * Set browserLanguages.
      *
-     * @param string $browserLanguages
-     *
-     * @return VideoHit
+     * @param array<string> $browserLanguages
      */
-    public function setBrowserLanguages($browserLanguages)
+    public function setBrowserLanguages($browserLanguages): static
     {
         $this->browserLanguages = $browserLanguages;
 
@@ -626,7 +583,7 @@ class VideoHit
     /**
      * Get browserLanguages.
      *
-     * @return string
+     * @return array<string>
      */
     public function getBrowserLanguages()
     {
@@ -634,17 +591,14 @@ class VideoHit
     }
 
     /**
-     * @return Lead
+     * @return Lead|null
      */
     public function getLead()
     {
         return $this->lead;
     }
 
-    /**
-     * @return VideoHit
-     */
-    public function setLead(Lead $lead)
+    public function setLead(Lead $lead): static
     {
         $this->lead = $lead;
 
@@ -661,10 +615,8 @@ class VideoHit
 
     /**
      * @param string $channel
-     *
-     * @return VideoHit
      */
-    public function setChannel($channel)
+    public function setChannel($channel): static
     {
         $this->channel = $channel;
 
@@ -681,10 +633,8 @@ class VideoHit
 
     /**
      * @param int $channelId
-     *
-     * @return VideoHit
      */
-    public function setChannelId($channelId)
+    public function setChannelId($channelId): static
     {
         $this->channelId = (int) $channelId;
 
@@ -699,10 +649,7 @@ class VideoHit
         return $this->redirect;
     }
 
-    /**
-     * @return VideoHit
-     */
-    public function setRedirect(Redirect $redirect)
+    public function setRedirect(Redirect $redirect): static
     {
         $this->redirect = $redirect;
 
@@ -719,10 +666,8 @@ class VideoHit
 
     /**
      * @param array $query
-     *
-     * @return VideoHit
      */
-    public function setQuery($query)
+    public function setQuery($query): static
     {
         $this->query = $query;
 
@@ -737,12 +682,7 @@ class VideoHit
         return $this->timeWatched;
     }
 
-    /**
-     * @param $timeWatched
-     *
-     * @return VideoHit
-     */
-    public function setTimeWatched($timeWatched)
+    public function setTimeWatched($timeWatched): static
     {
         $this->timeWatched = $timeWatched;
 
@@ -759,10 +699,8 @@ class VideoHit
 
     /**
      * @param string $guid
-     *
-     * @return VideoHit
      */
-    public function setGuid($guid)
+    public function setGuid($guid): static
     {
         $this->guid = $guid;
 
@@ -779,10 +717,8 @@ class VideoHit
 
     /**
      * @param int $duration
-     *
-     * @return VideoHit
      */
-    public function setDuration($duration)
+    public function setDuration($duration): static
     {
         $this->duration = $duration;
 

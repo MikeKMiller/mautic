@@ -1,39 +1,21 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\Helper;
 
 use Mautic\PageBundle\Model\PageModel;
 
 class TokenHelper
 {
-    /**
-     * @var PageModel
-     */
-    protected $model;
+    private const REGEX = '/{pagelink=(.*?)}/';
 
-    public function __construct(PageModel $model)
-    {
-        $this->model = $model;
+    public function __construct(
+        protected PageModel $model,
+    ) {
     }
 
-    /**
-     * @param $content
-     * @param $clickthrough
-     *
-     * @return array
-     */
-    public function findPageTokens($content, $clickthrough = [])
+    public function findPageTokens($content, $clickthrough = []): array
     {
-        preg_match_all('/{pagelink=(.*?)}/', $content, $matches);
+        preg_match_all(self::REGEX, $content, $matches);
 
         $tokens = [];
         if (!empty($matches[1])) {

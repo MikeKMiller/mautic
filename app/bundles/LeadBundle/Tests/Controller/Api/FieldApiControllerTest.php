@@ -1,23 +1,28 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Controller\Api;
 
-use Mautic\CampaignBundle\Tests\CampaignTestAbstract;
+use Doctrine\Persistence\ManagerRegistry;
+use Mautic\ApiBundle\Helper\EntityResultHelper;
+use Mautic\CoreBundle\Factory\ModelFactory;
+use Mautic\CoreBundle\Helper\AppVersion;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Translation\Translator;
 use Mautic\LeadBundle\Controller\Api\FieldApiController;
+use Mautic\LeadBundle\Entity\LeadFieldRepository;
+use Mautic\LeadBundle\Model\FieldModel;
+use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\FrameworkBundle\Routing\Router;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Form\FormFactoryInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 
-class FieldApiControllerTest extends CampaignTestAbstract
+class FieldApiControllerTest extends TestCase
 {
-    private $defaultWhere = [
+    /** @var array<int, array<string, mixed>> */
+    private array $defaultWhere = [
         [
             'col'  => 'object',
             'expr' => 'eq',
@@ -25,18 +30,15 @@ class FieldApiControllerTest extends CampaignTestAbstract
         ],
     ];
 
-    public function testgetWhereFromRequestWithNoWhere()
+    public function testgetWhereFromRequestWithNoWhere(): void
     {
-        $request = $this->getMockBuilder(Request::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $result = $this->getResultFromProtectedMethod('getWhereFromRequest', [], $request);
+        $request = new Request();
+        $result  = $this->getResultFromProtectedMethod('getWhereFromRequest', [$request], $request);
 
         $this->assertEquals($this->defaultWhere, $result);
     }
 
-    public function testgetWhereFromRequestWithSomeWhere()
+    public function testgetWhereFromRequestWithSomeWhere(): void
     {
         $where = [
             [
@@ -46,30 +48,43 @@ class FieldApiControllerTest extends CampaignTestAbstract
             ],
         ];
 
-        $request = $this->getMockBuilder(Request::class)
-            ->setMethods(['get'])
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $request->method('get')
-            ->willReturn($where);
-
-        $result = $this->getResultFromProtectedMethod('getWhereFromRequest', [], $request);
+        $request = new Request(['where' => $where]);
+        $result  = $this->getResultFromProtectedMethod('getWhereFromRequest', [$request], $request);
 
         $this->assertEquals(array_merge($where, $this->defaultWhere), $result);
     }
 
-    protected function getResultFromProtectedMethod($method, array $args, Request $request = null)
+    /**
+     * @param array<int, mixed> $args
+     */
+    protected function getResultFromProtectedMethod(string $method, array $args, Request $request): mixed
     {
-        $controller = new FieldApiController();
+        $requestStack = $this->createMock(RequestStack::class);
+        $requestStack->method('getCurrentRequest')
+            ->willReturn($request);
 
-        if ($request) {
-            $controller->setRequest($request);
-        }
+        $fieldRepository = $this->createMock(LeadFieldRepository::class);
+        $fieldModel      = $this->createMock(FieldModel::class);
+        $fieldModel->method('getRepository')
+            ->willReturn($fieldRepository);
+        $modelFactory = $this->createMock(ModelFactory::class);
+        $controller   = new FieldApiController(
+            $this->createStub(CorePermissions::class),
+            $this->createStub(Translator::class),
+            $this->createStub(EntityResultHelper::class),
+            $this->createStub(Router::class),
+            $this->createStub(FormFactoryInterface::class),
+            $this->createStub(AppVersion::class),
+            $requestStack,
+            $this->createStub(ManagerRegistry::class),
+            $modelFactory,
+            $this->createStub(EventDispatcherInterface::class),
+            $this->createStub(CoreParametersHelper::class),
+            $fieldModel,
+        );
 
         $controllerReflection = new \ReflectionClass(FieldApiController::class);
         $method               = $controllerReflection->getMethod($method);
-        $method->setAccessible(true);
 
         return $method->invokeArgs($controller, $args);
     }

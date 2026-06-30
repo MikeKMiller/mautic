@@ -1,65 +1,43 @@
 <?php
 
-/*
-* @copyright   2019 Mautic, Inc. All rights reserved
-* @author      Mautic, Inc.
-*
-* @link        https://mautic.com
-*
-* @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
-*/
-
 namespace Mautic\WebhookBundle\Http;
 
+use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\Request;
-use Http\Adapter\Guzzle6\Client as GuzzleClient;
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Helper\PrivateAddressChecker;
+use Mautic\WebhookBundle\Exception\PrivateAddressException;
 use Psr\Http\Message\ResponseInterface;
 
 class Client
 {
-    /**
-     * @var CoreParametersHelper
-     */
-    private $coreParametersHelper;
-
-    /**
-     * @var GuzzleClient
-     */
-    private $httpClient;
-
     public function __construct(
-        CoreParametersHelper $coreParametersHelper,
-        GuzzleClient $httpClient
+        private readonly CoreParametersHelper $coreParametersHelper,
+        private readonly GuzzleClient $httpClient,
+        private readonly PrivateAddressChecker $privateAddressChecker,
     ) {
-        $this->coreParametersHelper = $coreParametersHelper;
-        $this->httpClient           = $httpClient;
     }
 
     /**
-     * @param string      $url
-     * @param string|null $secret
-     *
-     * @return ResponseInterface
-     */
-
-    /**
-     * @param $url
-     * @param null $secret
-     *
-     * @return mixed|ResponseInterface
-     *
      * @throws \Http\Client\Exception
      */
-    public function post($url, array $payload, $secret = null)
+    public function post($url, array $payload, ?string $secret = null): ResponseInterface
     {
         $jsonPayload = json_encode($payload);
-        $signature   = base64_encode(hash_hmac('sha256', $jsonPayload, $secret, true));
+        $signature   = null === $secret ? null : base64_encode(hash_hmac('sha256', $jsonPayload, $secret, true));
         $headers     = [
             'Content-Type'      => 'application/json',
             'X-Origin-Base-URL' => $this->coreParametersHelper->get('site_url'),
             'Webhook-Signature' => $signature,
+            'User-Agent'        => 'Webhook',
         ];
+
+        $allowedPrivateAddresses = $this->coreParametersHelper->get('webhook_allowed_private_addresses');
+        $this->privateAddressChecker->setAllowedPrivateAddresses($allowedPrivateAddresses);
+
+        if (!$this->privateAddressChecker->isAllowedUrl($url)) {
+            throw new PrivateAddressException();
+        }
 
         return $this->httpClient->sendRequest(new Request('POST', $url, $headers, $jsonPayload));
     }

@@ -1,20 +1,11 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\SmsBundle\EventListener;
 
 use Mautic\AssetBundle\Helper\TokenHelper as AssetTokenHelper;
 use Mautic\CoreBundle\Event\TokenReplacementEvent;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Model\AuditLogModel;
-use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Helper\TokenHelper;
 use Mautic\PageBundle\Entity\Trackable;
 use Mautic\PageBundle\Helper\TokenHelper as PageTokenHelper;
@@ -26,49 +17,17 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class SmsSubscriber implements EventSubscriberInterface
 {
-    /**
-     * @var AuditLogModel
-     */
-    private $auditLogModel;
-
-    /**
-     * @var TrackableModel
-     */
-    private $trackableModel;
-
-    /**
-     * @var PageTokenHelper
-     */
-    private $pageTokenHelper;
-
-    /**
-     * @var AssetTokenHelper
-     */
-    private $assetTokenHelper;
-
-    /**
-     * @var SmsHelper
-     */
-    private $smsHelper;
-
     public function __construct(
-        AuditLogModel $auditLogModel,
-        TrackableModel $trackableModel,
-        PageTokenHelper $pageTokenHelper,
-        AssetTokenHelper $assetTokenHelper,
-        SmsHelper $smsHelper
+        private readonly AuditLogModel $auditLogModel,
+        private readonly TrackableModel $trackableModel,
+        private readonly PageTokenHelper $pageTokenHelper,
+        private readonly AssetTokenHelper $assetTokenHelper,
+        private readonly SmsHelper $smsHelper,
+        private readonly CoreParametersHelper $coreParametersHelper,
     ) {
-        $this->auditLogModel    = $auditLogModel;
-        $this->trackableModel   = $trackableModel;
-        $this->pageTokenHelper  = $pageTokenHelper;
-        $this->assetTokenHelper = $assetTokenHelper;
-        $this->smsHelper        = $smsHelper;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             SmsEvents::SMS_POST_SAVE     => ['onPostSave', 0],
@@ -80,7 +39,7 @@ class SmsSubscriber implements EventSubscriberInterface
     /**
      * Add an entry to the audit log.
      */
-    public function onPostSave(SmsEvent $event)
+    public function onPostSave(SmsEvent $event): void
     {
         $entity = $event->getSms();
         if ($details = $event->getChanges()) {
@@ -98,7 +57,7 @@ class SmsSubscriber implements EventSubscriberInterface
     /**
      * Add a delete entry to the audit log.
      */
-    public function onDelete(SmsEvent $event)
+    public function onDelete(SmsEvent $event): void
     {
         $entity = $event->getSms();
         $log    = [
@@ -111,9 +70,8 @@ class SmsSubscriber implements EventSubscriberInterface
         $this->auditLogModel->writeToLog($log);
     }
 
-    public function onTokenReplacement(TokenReplacementEvent $event)
+    public function onTokenReplacement(TokenReplacementEvent $event): void
     {
-        /** @var Lead $lead */
         $lead         = $event->getLead();
         $content      = $event->getContent();
         $clickthrough = $event->getClickthrough();
@@ -127,23 +85,28 @@ class SmsSubscriber implements EventSubscriberInterface
 
             // Disable trackable urls
             if (!$this->smsHelper->getDisableTrackableUrls()) {
-                list($content, $trackables) = $this->trackableModel->parseContentForTrackables(
+                [$content, $trackables] = $this->trackableModel->parseContentForTrackables(
                     $content,
                     $tokens,
                     'sms',
                     $clickthrough['channel'][1]
                 );
 
+                $shortenEnabled = $this->coreParametersHelper->get('shortener_sms_enable', false);
+
                 /**
-                 * @var string
+                 * @var string    $token
                  * @var Trackable $trackable
                  */
                 foreach ($trackables as $token => $trackable) {
-                    $tokens[$token] = $this->trackableModel->generateTrackableUrl($trackable, $clickthrough, true);
+                    $tokens[$token] = $this->trackableModel->generateTrackableUrl($trackable, $clickthrough, $shortenEnabled);
                 }
             }
 
             $content = str_replace(array_keys($tokens), array_values($tokens), $content);
+            foreach ($tokens as $token => $value) {
+                $event->addToken($token, $value);
+            }
 
             $event->setContent($content);
         }

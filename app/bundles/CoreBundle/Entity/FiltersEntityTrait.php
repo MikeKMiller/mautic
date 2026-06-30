@@ -1,34 +1,24 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Entity;
 
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Symfony\Component\Serializer\Attribute\Groups;
 
-/**
- * Trait FiltersEntityTrait.
- */
 trait FiltersEntityTrait
 {
     /**
      * @var array
      */
+    #[Groups(['dynamicContent:read', 'dynamicContent:write'])]
     private $filters = [];
 
     protected static function addFiltersMetadata(ClassMetadataBuilder $builder)
     {
         $builder->createField('filters', 'array')
-                ->columnName('filters')
-                ->nullable()
-                ->build();
+            ->columnName('filters')
+            ->nullable()
+            ->build();
     }
 
     /**

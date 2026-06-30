@@ -1,46 +1,27 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ReportBundle\Model;
 
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
-use Mautic\CoreBundle\Templating\Helper\FormatterHelper;
+use Mautic\CoreBundle\Helper\CsvHelper;
+use Mautic\CoreBundle\Twig\Helper\FormatterHelper;
 use Mautic\ReportBundle\Crate\ReportDataResult;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-/**
- * Class CsvExporter.
- */
 class CsvExporter
 {
-    /**
-     * @var FormatterHelper
-     */
-    protected $formatterHelper;
-
-    /**
-     * @var CoreParametersHelper
-     */
-    private $coreParametersHelper;
-
-    public function __construct(FormatterHelper $formatterHelper, CoreParametersHelper $coreParametersHelper)
-    {
-        $this->formatterHelper      = $formatterHelper;
-        $this->coreParametersHelper = $coreParametersHelper;
+    public function __construct(
+        protected FormatterHelper $formatterHelper,
+        private readonly CoreParametersHelper $coreParametersHelper,
+        private readonly TranslatorInterface $translator,
+    ) {
     }
 
     /**
      * @param resource $handle
      * @param int      $page
      */
-    public function export(ReportDataResult $reportDataResult, $handle, $page = 1)
+    public function export(ReportDataResult $reportDataResult, $handle, $page = 1): void
     {
         if (1 === $page) {
             $this->putHeader($reportDataResult, $handle);
@@ -55,25 +36,49 @@ class CsvExporter
             }
             $this->putRow($handle, $row);
         }
+
+        if ($reportDataResult->isLastPage()) {
+            $totalsRow = $reportDataResult->getTotalsToExport($this->formatterHelper);
+
+            if (!empty($totalsRow)) {
+                $this->putTotals($totalsRow, $handle);
+            }
+        }
     }
 
     /**
      * @param resource $handle
      */
-    private function putHeader(ReportDataResult $reportDataResult, $handle)
+    public function putHeader(ReportDataResult $reportDataResult, $handle): void
     {
         $this->putRow($handle, $reportDataResult->getHeaders());
     }
 
     /**
+     * @param array<string> $totals
+     * @param resource      $handle
+     */
+    public function putTotals(array $totals, $handle): void
+    {
+        // Put label if the first item is empty
+        $key = array_key_first($totals);
+
+        if (empty($totals[$key])) {
+            $totals[$key] = $this->translator->trans('mautic.report.report.groupby.totals');
+        }
+
+        $this->putRow($handle, $totals);
+    }
+
+    /**
      * @param resource $handle
      */
-    private function putRow($handle, array $row)
+    private function putRow($handle, array $row): void
     {
         if ($this->coreParametersHelper->get('csv_always_enclose')) {
             fputs($handle, '"'.implode('","', $row).'"'."\n");
         } else {
-            fputcsv($handle, $row);
+            CsvHelper::putCsv($handle, $row);
         }
     }
 }

@@ -1,68 +1,104 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\AssetBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
+use Mautic\AssetBundle\Validator\Constraints\Upload;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\CoreBundle\Entity\FormEntity;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
 use Mautic\CoreBundle\Helper\FileHelper;
+use Mautic\CoreBundle\Validator\SafeRemoteUrl;
+use Mautic\ProjectBundle\Entity\ProjectTrait;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\File\Exception\FileNotFoundException;
 use Symfony\Component\HttpFoundation\File\File;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
-use Symfony\Component\Validator\Context\ExecutionContextInterface;
+use Symfony\Component\Validator\Constraints\Sequentially;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 
-class Asset extends FormEntity
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('asset:assets:viewown')"),
+        new Post(security: "is_granted('asset:assets:create')"),
+        new Get(security: "is_granted('asset:assets:viewown', object)"),
+        new Put(security: "is_granted('asset:assets:editown', object)"),
+        new Patch(security: "is_granted('asset:assets:editother', object)"),
+        new Delete(security: "is_granted('asset:assets:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['asset:read'],
+        'swagger_definition_name' => 'Read',
+        'api_included'            => ['category'],
+    ],
+    denormalizationContext: [
+        'groups'                  => ['asset:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Asset extends FormEntity implements UuidInterface
 {
+    use UuidTrait;
+
+    use ProjectTrait;
+
+    public const ENTITY_NAME = 'asset';
+
     /**
-     * @var int
+     * @var int|null
      */
+    #[Groups(['asset:read', 'download:read', 'email:read'])]
     private $id;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $title;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $description;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $storageLocation = 'local';
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $path;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $remotePath;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $originalFileName;
 
     /**
-     * @var File
+     * @var File|null
      */
     private $file;
 
@@ -96,81 +132,102 @@ class Asset extends FormEntity
     private $tempName;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $alias;
 
     /**
      * @var string
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $language = 'en';
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $publishUp;
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $publishDown;
 
     /**
      * @var int
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $downloadCount = 0;
 
     /**
      * @var int
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $uniqueDownloadCount = 0;
 
     /**
      * @var int
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $revision = 1;
 
     /**
-     * @var \Mautic\CategoryBundle\Entity\Category
+     * @var \Mautic\CategoryBundle\Entity\Category|null
      **/
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $category;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $extension;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $mime;
 
     /**
-     * @var int
+     * @var int|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $size;
 
     /**
      * @var string|null
      */
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
     private $downloadUrl;
 
     /**
-     * @var bool
+     * @var bool|null
      */
-    private $disallow = false;
+    #[Groups(['asset:read', 'asset:write', 'download:read', 'email:read'])]
+    private $disallow = true;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public function __construct()
+    {
+        $this->initializeProjects();
+    }
+
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('assets')
-            ->setCustomRepositoryClass('Mautic\AssetBundle\Entity\AssetRepository')
+            ->setCustomRepositoryClass(AssetRepository::class)
             ->addIndex(['alias'], 'asset_alias_search');
 
         $builder->addIdColumns('title');
 
-        $builder->addField('alias', 'string');
+        $builder->createField('alias', 'string')
+            ->columnName('alias')
+            ->nullable()
+            ->build();
 
         $builder->createField('storageLocation', 'string')
             ->columnName('storage_location')
@@ -181,12 +238,12 @@ class Asset extends FormEntity
             ->nullable()
             ->build();
 
-        $builder->createField('remotePath', 'string')
+        $builder->createField('remotePath', Types::TEXT)
             ->columnName('remote_path')
             ->nullable()
             ->build();
 
-        $builder->createField('originalFileName', 'string')
+        $builder->createField('originalFileName', Types::TEXT)
             ->columnName('original_file_name')
             ->nullable()
             ->build();
@@ -224,14 +281,24 @@ class Asset extends FormEntity
         $builder->createField('disallow', 'boolean')
             ->nullable()
             ->build();
+
+        static::addUuidField($builder);
+        self::addProjectsField($builder, 'asset_projects_xref', 'asset_id');
+    }
+
+    public static function loadValidatorMetadata(ClassMetadata $metadata): void
+    {
+        $metadata->addConstraint(new Upload());
+        $metadata->addPropertyConstraint('remotePath', new Sequentially([
+            new Assert\Url(message: 'mautic.asset.validation.error.url'),
+            new SafeRemoteUrl(),
+        ]));
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('asset')
             ->addListProperties(
@@ -260,6 +327,8 @@ class Asset extends FormEntity
                 ]
             )
             ->build();
+
+        self::addProjectsInLoadApiMetadata($metadata, 'asset');
     }
 
     /**
@@ -275,7 +344,7 @@ class Asset extends FormEntity
     /**
      * Get id.
      *
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
@@ -284,10 +353,8 @@ class Asset extends FormEntity
 
     /**
      * Sets file.
-     *
-     * @param File $file
      */
-    public function setFile(File $file = null)
+    public function setFile(?File $file = null): void
     {
         $this->file = $file;
 
@@ -302,7 +369,7 @@ class Asset extends FormEntity
     /**
      * Get file.
      *
-     * @return UploadedFile
+     * @return File|null
      */
     public function getFile()
     {
@@ -322,10 +389,8 @@ class Asset extends FormEntity
      * Set title.
      *
      * @param string $title
-     *
-     * @return Asset
      */
-    public function setTitle($title)
+    public function setTitle($title): static
     {
         $this->isChanged('title', $title);
         $this->title = $title;
@@ -334,9 +399,7 @@ class Asset extends FormEntity
     }
 
     /**
-     * Get title.
-     *
-     * @return string
+     * @return ?string
      */
     public function getTitle()
     {
@@ -344,7 +407,7 @@ class Asset extends FormEntity
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getExtension()
     {
@@ -354,13 +417,13 @@ class Asset extends FormEntity
     /**
      * @param mixed $extension
      */
-    public function setExtension($extension)
+    public function setExtension($extension): void
     {
         $this->extension = $extension;
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getMime()
     {
@@ -370,7 +433,7 @@ class Asset extends FormEntity
     /**
      * @param mixed $mime
      */
-    public function setMime($mime)
+    public function setMime($mime): void
     {
         $this->mime = $mime;
     }
@@ -379,10 +442,8 @@ class Asset extends FormEntity
      * Set originalFileName.
      *
      * @param string $originalFileName
-     *
-     * @return Asset
      */
-    public function setOriginalFileName($originalFileName)
+    public function setOriginalFileName($originalFileName): static
     {
         $this->isChanged('originalFileName', $originalFileName);
         $this->originalFileName = $originalFileName;
@@ -393,7 +454,7 @@ class Asset extends FormEntity
     /**
      * Get originalFileName.
      *
-     * @return string
+     * @return string|null
      */
     public function getOriginalFileName()
     {
@@ -404,10 +465,8 @@ class Asset extends FormEntity
      * Set storage location.
      *
      * @param string $storageLocation
-     *
-     * @return Asset
      */
-    public function setStorageLocation($storageLocation)
+    public function setStorageLocation($storageLocation): static
     {
         $this->isChanged('storageLocation', $storageLocation);
         $this->storageLocation = $storageLocation;
@@ -418,7 +477,7 @@ class Asset extends FormEntity
     /**
      * Get storage location.
      *
-     * @return string
+     * @return string|null
      */
     public function getStorageLocation()
     {
@@ -430,13 +489,9 @@ class Asset extends FormEntity
     }
 
     /**
-     * Set path.
-     *
-     * @param string $path
-     *
-     * @return Asset
+     * @param ?string $path
      */
-    public function setPath($path)
+    public function setPath($path): Asset
     {
         $this->isChanged('path', $path);
         $this->path = $path;
@@ -447,7 +502,7 @@ class Asset extends FormEntity
     /**
      * Get path.
      *
-     * @return string
+     * @return ?string
      */
     public function getPath()
     {
@@ -455,13 +510,9 @@ class Asset extends FormEntity
     }
 
     /**
-     * Set remote path.
-     *
-     * @param string $remotePath
-     *
-     * @return Asset
+     * @param ?string $remotePath
      */
-    public function setRemotePath($remotePath)
+    public function setRemotePath($remotePath): Asset
     {
         $this->isChanged('remotePath', $remotePath);
         $this->remotePath = $remotePath;
@@ -470,9 +521,7 @@ class Asset extends FormEntity
     }
 
     /**
-     * Get remote path.
-     *
-     * @return string
+     * @return ?string
      */
     public function getRemotePath()
     {
@@ -481,12 +530,8 @@ class Asset extends FormEntity
 
     /**
      * Set alias.
-     *
-     * @param string $alias
-     *
-     * @return Asset
      */
-    public function setAlias($alias)
+    public function setAlias(?string $alias): self
     {
         $this->isChanged('alias', $alias);
         $this->alias = $alias;
@@ -496,10 +541,8 @@ class Asset extends FormEntity
 
     /**
      * Get alias.
-     *
-     * @return string
      */
-    public function getAlias()
+    public function getAlias(): ?string
     {
         return $this->alias;
     }
@@ -508,10 +551,8 @@ class Asset extends FormEntity
      * Set publishUp.
      *
      * @param \DateTime $publishUp
-     *
-     * @return Asset
      */
-    public function setPublishUp($publishUp)
+    public function setPublishUp($publishUp): static
     {
         $this->isChanged('publishUp', $publishUp);
         $this->publishUp = $publishUp;
@@ -522,7 +563,7 @@ class Asset extends FormEntity
     /**
      * Get publishUp.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getPublishUp()
     {
@@ -532,11 +573,9 @@ class Asset extends FormEntity
     /**
      * Set publishDown.
      *
-     * @param \DateTime $publishDown
-     *
-     * @return Asset
+     * @param \DateTimeInterface $publishDown
      */
-    public function setPublishDown($publishDown)
+    public function setPublishDown($publishDown): static
     {
         $this->isChanged('publishDown', $publishDown);
         $this->publishDown = $publishDown;
@@ -547,7 +586,7 @@ class Asset extends FormEntity
     /**
      * Get publishDown.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getPublishDown()
     {
@@ -558,10 +597,8 @@ class Asset extends FormEntity
      * Set downloadCount.
      *
      * @param int $downloadCount
-     *
-     * @return Asset
      */
-    public function setDownloadCount($downloadCount)
+    public function setDownloadCount($downloadCount): static
     {
         $this->downloadCount = $downloadCount;
 
@@ -582,10 +619,8 @@ class Asset extends FormEntity
      * Set revision.
      *
      * @param int $revision
-     *
-     * @return Asset
      */
-    public function setRevision($revision)
+    public function setRevision($revision): static
     {
         $this->revision = $revision;
 
@@ -606,10 +641,8 @@ class Asset extends FormEntity
      * Set language.
      *
      * @param string $language
-     *
-     * @return Asset
      */
-    public function setLanguage($language)
+    public function setLanguage($language): static
     {
         $this->isChanged('language', $language);
         $this->language = $language;
@@ -629,12 +662,8 @@ class Asset extends FormEntity
 
     /**
      * Set category.
-     *
-     * @param \Mautic\CategoryBundle\Entity\Category $category
-     *
-     * @return Asset
      */
-    public function setCategory(\Mautic\CategoryBundle\Entity\Category $category = null)
+    public function setCategory(?\Mautic\CategoryBundle\Entity\Category $category = null): static
     {
         $this->isChanged('category', $category);
         $this->category = $category;
@@ -645,7 +674,7 @@ class Asset extends FormEntity
     /**
      * Get category.
      *
-     * @return \Mautic\CategoryBundle\Entity\Category
+     * @return \Mautic\CategoryBundle\Entity\Category|null
      */
     public function getCategory()
     {
@@ -656,10 +685,8 @@ class Asset extends FormEntity
      * Set uniqueDownloadCount.
      *
      * @param int $uniqueDownloadCount
-     *
-     * @return Asset
      */
-    public function setUniqueDownloadCount($uniqueDownloadCount)
+    public function setUniqueDownloadCount($uniqueDownloadCount): static
     {
         $this->uniqueDownloadCount = $uniqueDownloadCount;
 
@@ -676,7 +703,7 @@ class Asset extends FormEntity
         return $this->uniqueDownloadCount;
     }
 
-    public function setFileNameFromRemote()
+    public function setFileNameFromRemote(): void
     {
         $fileName = basename($this->getRemotePath());
 
@@ -688,7 +715,7 @@ class Asset extends FormEntity
         }
     }
 
-    public function preUpload()
+    public function preUpload(): void
     {
         if (null !== $this->getFile()) {
             // set the asset title as original file name if title is missing
@@ -700,7 +727,7 @@ class Asset extends FormEntity
             $extension = $this->getFile()->guessExtension();
 
             if (empty($extension)) {
-                //get it from the original name
+                // get it from the original name
                 $extension = pathinfo($this->originalFileName, PATHINFO_EXTENSION);
             }
             $this->path = $filename.'.'.$extension;
@@ -709,7 +736,7 @@ class Asset extends FormEntity
         }
     }
 
-    public function upload()
+    public function upload(): void
     {
         // the file property can be empty if the field is not required
         if (null === $this->getFile()) {
@@ -747,7 +774,7 @@ class Asset extends FormEntity
     /**
      * Remove a file.
      */
-    public function setFileInfoFromFile()
+    public function setFileInfoFromFile(): void
     {
         // get some basic information about the file type
         $fileInfo = $this->getFileInfo();
@@ -767,7 +794,7 @@ class Asset extends FormEntity
      *
      * @param bool $temp >> regular uploaded file or temporary
      */
-    public function removeUpload($temp = false)
+    public function removeUpload($temp = false): void
     {
         if ($temp) {
             $file = $this->getAbsoluteTempPath();
@@ -834,10 +861,8 @@ class Asset extends FormEntity
      * Set uploadDir.
      *
      * @param string $uploadDir
-     *
-     * @return Asset
      */
-    public function setUploadDir($uploadDir)
+    public function setUploadDir($uploadDir): static
     {
         $this->uploadDir = $uploadDir;
 
@@ -856,17 +881,15 @@ class Asset extends FormEntity
             return $this->maxSize;
         }
 
-        return 6000000;
+        return 6_000_000;
     }
 
     /**
      * Set max size.
      *
      * @param string $maxSize
-     *
-     * @return Asset
      */
-    public function setMaxSize($maxSize)
+    public function setMaxSize($maxSize): static
     {
         $this->maxSize = $maxSize;
 
@@ -898,19 +921,16 @@ class Asset extends FormEntity
     /**
      * Returns some file info.
      *
-     * @return array
+     * @return array<string, float|string|false|null>|string
      */
     public function getFileInfo()
     {
         $fileInfo = [];
 
         if ($this->isRemote()) {
-            $ch = curl_init($this->getRemotePath());
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_HEADER, 1);
-            curl_setopt($ch, CURLOPT_NOBODY, 1);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            $ch = $this->buildRemoteCurl();
+            curl_setopt($ch, CURLOPT_HEADER, true);
+            curl_setopt($ch, CURLOPT_NOBODY, true);
             curl_exec($ch);
 
             // build an array of handy info
@@ -933,43 +953,31 @@ class Asset extends FormEntity
         return $fileInfo;
     }
 
-    /**
-     * Returns file mime type.
-     *
-     * @return string
-     */
-    public function getFileMimeType()
+    public function getFileMimeType(): ?string
     {
         if ($this->isRemote()) {
-            $ch = curl_init($this->getRemotePath());
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_HEADER, 1);
-            curl_setopt($ch, CURLOPT_NOBODY, 1);
-            curl_exec($ch);
-
-            return curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            return $this->getRemoteMimeTypeFromHeader();
         }
 
-        if (null === $this->loadFile()) {
+        $file = $this->loadFile();
+
+        if (null === $file) {
             return '';
         }
 
-        return $this->loadFile()->getMimeType();
+        return $file->getMimeType();
     }
 
     /**
-     * Returns Font Awesome icon class based on file type.
-     *
-     * @return string
+     * Returns icon class based on file type.
      */
-    public function getIconClass()
+    public function getIconClass(): string
     {
         $fileType = $this->getFileType();
 
         // return missing file icon if file type is empty
         if (!$fileType) {
-            return 'fa fa-ban';
+            return 'ri-prohibited-line';
         }
 
         $fileTypes = $this->getFileExtensions();
@@ -977,20 +985,18 @@ class Asset extends FormEntity
         // Search for icon name by file extension.
         foreach ($fileTypes as $icon => $extensions) {
             if (in_array($fileType, $extensions)) {
-                return 'fa fa-file-'.$icon.'-o';
+                return 'ri-file-'.$icon.'-line';
             }
         }
 
         // File extension is unknown, display general file icon.
-        return 'fa fa-file-o';
+        return 'ri-file-line';
     }
 
     /**
      * Decides if an asset is image displayable by browser.
-     *
-     * @return bool
      */
-    public function isImage()
+    public function isImage(): bool
     {
         $fileType = strtolower($this->getFileType());
 
@@ -1000,19 +1006,15 @@ class Asset extends FormEntity
 
         $imageTypes = ['jpg', 'jpeg', 'png', 'gif'];
 
-        if (in_array($fileType, $imageTypes)) {
-            return true;
-        }
-
-        return false;
+        return in_array($fileType, $imageTypes);
     }
 
     /**
      * Returns array of common extensions.
      *
-     * @return string
+     * @return array<string, string[]>
      */
-    public function getFileExtensions()
+    public function getFileExtensions(): array
     {
         return [
             'excel' => [
@@ -1036,7 +1038,7 @@ class Asset extends FormEntity
             'audio' => [
                 'mp3',
             ],
-            'archive' => [
+            'zip' => [
                 'zip',
                 'rar',
                 'iso',
@@ -1067,7 +1069,7 @@ class Asset extends FormEntity
                 'htm',
                 'sql',
             ],
-            'powerpoint' => [
+            'ppt' => [
                 'ppt',
                 'pptx',
                 'pptm',
@@ -1090,10 +1092,8 @@ class Asset extends FormEntity
 
     /**
      * Load the file object from it's path.
-     *
-     * @return \Symfony\Component\HttpFoundation\File\File|null
      */
-    public function loadFile($temp = false)
+    public function loadFile($temp = false): ?File
     {
         if ($temp) {
             $path = $this->getAbsoluteTempPath();
@@ -1107,7 +1107,7 @@ class Asset extends FormEntity
 
         try {
             $file = new File($path);
-        } catch (FileNotFoundException $e) {
+        } catch (FileNotFoundException) {
             $file = null;
         }
 
@@ -1115,13 +1115,14 @@ class Asset extends FormEntity
     }
 
     /**
-     * Load content of the file from it's path.
-     *
-     * @return string
+     * Load the content of the file from its path.
      */
-    public function getFileContents()
+    public function getFileContents(): string|bool
     {
         $path = $this->getFilePath();
+        if (!file_exists($path)) {
+            throw new FileNotFoundException(sprintf('Asset file not found at path: "%s"', $path));
+        }
 
         return file_get_contents($path);
     }
@@ -1137,7 +1138,7 @@ class Asset extends FormEntity
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getDescription()
     {
@@ -1147,68 +1148,17 @@ class Asset extends FormEntity
     /**
      * @param mixed $description
      */
-    public function setDescription($description)
+    public function setDescription($description): void
     {
         $this->description = $description;
-    }
-
-    public static function loadValidatorMetadata(ClassMetadata $metadata)
-    {
-        // Add a constraint to manage the file upload data
-        $metadata->addConstraint(new Assert\Callback([__CLASS__, 'validateFile']));
-    }
-
-    /**
-     * Validator to ensure proper data for the file fields.
-     *
-     * @param Asset                     $object  Entity object to validate
-     * @param ExecutionContextInterface $context Context object
-     */
-    public static function validateFile($object, ExecutionContextInterface $context)
-    {
-        if ($object->isLocal()) {
-            $tempName = $object->getTempName();
-            $path     = $object->getPath();
-
-            // If the object is stored locally, we should have file data
-            if ($object->isNew() && null === $tempName && null === $path) {
-                $context->buildViolation('mautic.asset.asset.error.missing.file')
-                    ->atPath('tempName')
-                    ->setTranslationDomain('validators')
-                    ->addViolation();
-            }
-
-            if (null === $object->getTitle()) {
-                $context->buildViolation('mautic.asset.asset.error.missing.title')
-                    ->atPath('title')
-                    ->setTranslationDomain('validators')
-                    ->addViolation();
-            }
-
-            // Unset any remote file data
-            $object->setRemotePath(null);
-        } elseif ($object->isRemote()) {
-            // If the object is stored remotely, we should have a remote path
-            if (null === $object->getRemotePath()) {
-                $context->buildViolation('mautic.asset.asset.error.missing.remote.path')
-                    ->atPath('remotePath')
-                    ->setTranslationDomain('validators')
-                    ->addViolation();
-            }
-
-            // Unset any local file data
-            $object->setPath(null);
-        }
     }
 
     /**
      * Set temporary ID.
      *
      * @param string $tempId
-     *
-     * @return Asset
      */
-    public function setTempId($tempId)
+    public function setTempId($tempId): static
     {
         $this->tempId = $tempId;
 
@@ -1229,10 +1179,8 @@ class Asset extends FormEntity
      * Set temporary file name.
      *
      * @param string $tempName
-     *
-     * @return Asset
      */
-    public function setTempName($tempName)
+    public function setTempName($tempName): static
     {
         $this->tempName = $tempName;
 
@@ -1242,7 +1190,7 @@ class Asset extends FormEntity
     /**
      * Get temporary file name.
      *
-     * @return string
+     * @return ?string
      */
     public function getTempName()
     {
@@ -1261,12 +1209,9 @@ class Asset extends FormEntity
         if (empty($this->size) || $forceUpdate) {
             // Try to fetch it
             if ($this->isRemote()) {
-                $ch = curl_init($this->getRemotePath());
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-                curl_setopt($ch, CURLOPT_HEADER, 1);
-                curl_setopt($ch, CURLOPT_NOBODY, 1);
-                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+                $ch = $this->buildRemoteCurl();
+                curl_setopt($ch, CURLOPT_HEADER, true);
+                curl_setopt($ch, CURLOPT_NOBODY, true);
 
                 curl_exec($ch);
 
@@ -1285,10 +1230,8 @@ class Asset extends FormEntity
 
     /**
      * @param mixed $size
-     *
-     * @return Asset
      */
-    public function setSize($size)
+    public function setSize($size): static
     {
         $this->size = $size;
 
@@ -1300,14 +1243,12 @@ class Asset extends FormEntity
      *
      * @param string    $setting
      * @param bool|true $convertToBytes
-     *
-     * @return int
      */
-    public static function getIniValue($setting, $convertToBytes = true)
+    public static function getIniValue($setting, $convertToBytes = true): int
     {
         $value = ini_get($setting);
 
-        if (-1 == $value || 0 === $value) {
+        if ('-1' === $value || '0' === $value) {
             return PHP_INT_MAX;
         }
 
@@ -1319,31 +1260,25 @@ class Asset extends FormEntity
     }
 
     /**
-     * @param        $size
      * @param string $unit
-     *
-     * @return string
      */
-    public static function convertBytesToHumanReadable($size, $unit = '')
+    public static function convertBytesToHumanReadable($size, $unit = ''): string
     {
-        list($number, $unit) = self::convertBytesToUnit($size, $unit);
+        [$number, $unit] = self::convertBytesToUnit($size, $unit);
 
         // Format number
         $number = number_format($number, 2);
 
         // Remove trailing .00
-        $number = false !== strpos($number, '.') ? rtrim(rtrim($number, '0'), '.') : $number;
+        $number = str_contains($number, '.') ? rtrim(rtrim($number, '0'), '.') : $number;
 
         return $number.' '.$unit;
     }
 
     /**
-     * @param        $size
      * @param string $unit
-     *
-     * @return array
      */
-    public static function convertBytesToUnit($size, $unit = '')
+    public static function convertBytesToUnit($size, $unit = ''): array
     {
         $unit = strtoupper($unit);
 
@@ -1371,34 +1306,26 @@ class Asset extends FormEntity
 
     /**
      * @param string|null $downloadUrl
-     *
-     * @return Asset
      */
-    public function setDownloadUrl($downloadUrl)
+    public function setDownloadUrl($downloadUrl): static
     {
         $this->downloadUrl = $downloadUrl;
 
         return $this;
     }
 
-    /**
-     * @return bool
-     */
-    public function isLocal()
+    public function isLocal(): bool
     {
         return 'local' === $this->storageLocation;
     }
 
-    /**
-     * @return bool
-     */
-    public function isRemote()
+    public function isRemote(): bool
     {
         return 'remote' === $this->storageLocation;
     }
 
     /**
-     * @return bool
+     * @return bool|null
      */
     public function getDisallow()
     {
@@ -1408,8 +1335,84 @@ class Asset extends FormEntity
     /**
      * @param mixed $disallow
      */
-    public function setDisallow($disallow)
+    public function setDisallow($disallow): void
     {
         $this->disallow = $disallow;
+    }
+
+    /**
+     * Returns the public slug for this asset.
+     *
+     * Uses `{uuid}` as the canonical slug.
+     * Falls back to `{id}:{alias}` for backward compatibility.
+     *
+     * @throws \LogicException if the asset has not been saved yet and has no ID
+     */
+    public function getSlug(): string
+    {
+        if (null === $this->id) {
+            throw new \LogicException('This asset must be saved before it can be used in a URL.');
+        }
+
+        return $this->uuid ?: $this->id.':'.$this->alias;
+    }
+
+    public function getRemoteMimeTypeFromHeader(): string
+    {
+        if (!$this->remotePath) {
+            return '';
+        }
+
+        $ch = $this->buildRemoteCurl();
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_NOBODY, true);
+        curl_exec($ch);
+
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if ($httpCode < 200 || $httpCode >= 300) {
+            return '';
+        }
+
+        $contentTypes = explode(',', (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE));
+        $mimeType     = end($contentTypes);
+
+        return $this->extractMimeType($mimeType);
+    }
+
+    public function getRemoteMimeTypeFromMagicBytes(): string
+    {
+        if (!$this->remotePath) {
+            return '';
+        }
+
+        $ch = $this->buildRemoteCurl();
+        curl_setopt($ch, CURLOPT_RANGE, '0-1023');
+
+        $chunk = curl_exec($ch);
+
+        if (false === $chunk) {
+            return '';
+        }
+
+        $mimeType = (string) (new \finfo(FILEINFO_MIME_TYPE))->buffer($chunk);
+
+        return $this->extractMimeType($mimeType);
+    }
+
+    private function extractMimeType(string $mimeType): string
+    {
+        return trim(explode(';', $mimeType)[0]);
+    }
+
+    private function buildRemoteCurl(): \CurlHandle
+    {
+        $ch = curl_init($this->remotePath);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
+
+        return $ch;
     }
 }

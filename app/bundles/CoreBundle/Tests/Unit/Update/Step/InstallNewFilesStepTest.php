@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        https://www.mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\Update\Step;
 
 use Mautic\CoreBundle\Exception\UpdateFailedException;
@@ -17,29 +8,26 @@ use Mautic\CoreBundle\Helper\UpdateHelper;
 use Mautic\CoreBundle\Update\Step\InstallNewFilesStep;
 use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\Filesystem\Filesystem;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-class InstallNewFilesStepTest extends AbstractStepTest
+class InstallNewFilesStepTest extends AbstractStepTestCase
 {
     /**
-     * @var MockObject|TranslatorInterface
+     * @var MockObject&TranslatorInterface
      */
-    private $translator;
+    private MockObject $translator;
 
     /**
-     * @var MockObject|UpdateHelper
+     * @var MockObject&UpdateHelper
      */
-    private $updateHelper;
+    private MockObject $updateHelper;
 
     /**
-     * @var MockObject|PathsHelper
+     * @var MockObject&PathsHelper
      */
-    private $pathsHelper;
+    private MockObject $pathsHelper;
 
-    /**
-     * @var InstallNewFilesStep
-     */
-    private $step;
+    private InstallNewFilesStep $step;
 
     protected function setUp(): void
     {
@@ -49,10 +37,12 @@ class InstallNewFilesStepTest extends AbstractStepTest
         $this->updateHelper = $this->createMock(UpdateHelper::class);
         $this->pathsHelper  = $this->createMock(PathsHelper::class);
 
+        $this->translator->method('trans')->willReturn('some translation');
+
         $this->step = new InstallNewFilesStep($this->translator, $this->updateHelper, $this->pathsHelper);
     }
 
-    public function testUpdatePackageUnzipped()
+    public function testUpdatePackageUnzipped(): void
     {
         $resourcePath = __DIR__.'/resources';
 
@@ -75,17 +65,21 @@ class InstallNewFilesStepTest extends AbstractStepTest
             ->method('getRootPath')
             ->willReturn($resourcePath);
 
+        $this->translator->expects($this->any())
+            ->method('trans')
+            ->willReturn('');
+
         $this->step->execute($this->progressBar, $this->input, $this->output);
 
         $this->assertFileExists($resourcePath.'/update');
-        $this->assertFileNotExists($resourcePath.'/update-test.zip');
+        $this->assertFileDoesNotExist($resourcePath.'/update-test.zip');
 
         // Cleanup
         $filesystem = new Filesystem();
         $filesystem->remove($resourcePath.'/update');
     }
 
-    public function testCustomUpdatePackageUnzipped()
+    public function testCustomUpdatePackageUnzipped(): void
     {
         $resourcePath = __DIR__.'/resources';
 
@@ -107,17 +101,21 @@ class InstallNewFilesStepTest extends AbstractStepTest
             ->with('update-package')
             ->willReturn($resourcePath.'/update-test.zip');
 
+        $this->translator->expects($this->any())
+            ->method('trans')
+            ->willReturn('');
+
         $this->step->execute($this->progressBar, $this->input, $this->output);
 
         $this->assertFileExists($resourcePath.'/update');
-        $this->assertFileNotExists($resourcePath.'/update-test.zip');
+        $this->assertFileDoesNotExist($resourcePath.'/update-test.zip');
 
         // Cleanup
         $filesystem = new Filesystem();
         $filesystem->remove($resourcePath.'/update');
     }
 
-    public function testUpdateFailedExceptionThrownIfCustomPackageDoesNotExist()
+    public function testUpdateFailedExceptionThrownIfCustomPackageDoesNotExist(): void
     {
         $this->expectException(UpdateFailedException::class);
 
@@ -134,7 +132,7 @@ class InstallNewFilesStepTest extends AbstractStepTest
         $this->step->execute($this->progressBar, $this->input, $this->output);
     }
 
-    public function testUpdateFailedExceptionThrownIfUnzippingFails()
+    public function testUpdateFailedExceptionThrownIfUnzippingFails(): void
     {
         $this->expectException(UpdateFailedException::class);
 
@@ -147,6 +145,10 @@ class InstallNewFilesStepTest extends AbstractStepTest
                     'package' => $resourcePath.'/update-test.zip',
                 ]
             );
+
+        $this->translator->expects($this->any())
+            ->method('trans')
+            ->willReturn('');
 
         $this->step->execute($this->progressBar, $this->input, $this->output);
     }

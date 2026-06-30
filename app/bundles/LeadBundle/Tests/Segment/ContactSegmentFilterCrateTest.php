@@ -1,24 +1,13 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Segment;
 
 use Mautic\LeadBundle\Segment\ContactSegmentFilterCrate;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(ContactSegmentFilterCrate::class)]
 class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testEmptyFilter()
+    public function testEmptyFilter(): void
     {
         $filter = [];
 
@@ -35,10 +24,7 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertFalse($contactSegmentFilterCrate->hasTimeParts());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testDateIdentifiedFilter()
+    public function testDateIdentifiedFilter(): void
     {
         $filter = [
             'glue'     => 'and',
@@ -63,10 +49,7 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertTrue($contactSegmentFilterCrate->hasTimeParts());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testDateFilter()
+    public function testDateFilter(): void
     {
         $filter = [
             'glue'     => 'and',
@@ -91,10 +74,7 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertFalse($contactSegmentFilterCrate->hasTimeParts());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testBooleanFilter()
+    public function testBooleanFilter(): void
     {
         $filter = [
             'type'   => 'boolean',
@@ -110,10 +90,7 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertTrue($contactSegmentFilterCrate->filterValueDoNotNeedAdjustment());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testNumericFilter()
+    public function testNumericFilter(): void
     {
         $filter = [
             'type'   => 'number',
@@ -129,10 +106,7 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertTrue($contactSegmentFilterCrate->filterValueDoNotNeedAdjustment());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testCompanyTypeFilter()
+    public function testCompanyTypeFilter(): void
     {
         $filter = [
             'object' => 'company',
@@ -144,10 +118,7 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertTrue($contactSegmentFilterCrate->isCompanyType());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testMultiselectFilter()
+    public function testMultiselectFilter(): void
     {
         $filter = [
             'glue'     => 'and',
@@ -172,10 +143,7 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertFalse($contactSegmentFilterCrate->hasTimeParts());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testNotMultiselectFilter()
+    public function testNotMultiselectFilter(): void
     {
         $filter = [
             'glue'     => 'and',
@@ -200,10 +168,7 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertFalse($contactSegmentFilterCrate->hasTimeParts());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     */
-    public function testOldEqualInsteadOfInOperator()
+    public function testOldEqualInsteadOfInOperator(): void
     {
         $filter = [
             'glue'     => 'and',
@@ -228,12 +193,8 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertFalse($contactSegmentFilterCrate->hasTimeParts());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     *
-     * @dataProvider specialFieldsToConvertToEmptyProvider
-     */
-    public function testSpecialFieldsToConvertToNotEmpty($field)
+    #[\PHPUnit\Framework\Attributes\DataProvider('specialFieldsToConvertToEmptyProvider')]
+    public function testSpecialFieldsToConvertToNotEmpty(string $field): void
     {
         $filter = [
             'glue'     => 'and',
@@ -258,12 +219,8 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertFalse($contactSegmentFilterCrate->hasTimeParts());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\ContactSegmentFilterCrate
-     *
-     * @dataProvider specialFieldsToConvertToEmptyProvider
-     */
-    public function testSpecialFieldsToConvertToEmpty($field)
+    #[\PHPUnit\Framework\Attributes\DataProvider('specialFieldsToConvertToEmptyProvider')]
+    public function testSpecialFieldsToConvertToEmpty(string $field): void
     {
         $filter = [
             'glue'     => 'and',
@@ -288,7 +245,8 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
         $this->assertFalse($contactSegmentFilterCrate->hasTimeParts());
     }
 
-    public function specialFieldsToConvertToEmptyProvider()
+    /** @return array<int, array{0: string}> */
+    public static function specialFieldsToConvertToEmptyProvider(): array
     {
         return [
             ['page_id'],
@@ -296,5 +254,18 @@ class ContactSegmentFilterCrateTest extends \PHPUnit\Framework\TestCase
             ['redirect_id'],
             ['notification'],
         ];
+    }
+
+    public function testBehaviorsTypeFilter(): void
+    {
+        $filter = [
+            'object'     => 'behaviors',
+        ];
+
+        $contactSegmentFilterCrate = new ContactSegmentFilterCrate($filter);
+
+        $this->assertFalse($contactSegmentFilterCrate->isContactType());
+        $this->assertFalse($contactSegmentFilterCrate->isCompanyType());
+        $this->assertTrue($contactSegmentFilterCrate->isBehaviorsType());
     }
 }

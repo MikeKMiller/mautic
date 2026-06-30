@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2018 Mautic Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://www.mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Tests\Functional\Services\SyncService\TestExamples\Sync\SyncDataExchange;
 
 use Mautic\IntegrationsBundle\Sync\DAO\Sync\Order\ObjectChangeDAO;
@@ -26,12 +17,12 @@ use Mautic\IntegrationsBundle\Tests\Functional\Services\SyncService\TestExamples
 
 class ExampleSyncDataExchange implements SyncDataExchangeInterface
 {
-    const OBJECT_LEAD = 'integration_lead';
+    public const OBJECT_LEAD = 'integration_lead';
 
     /**
      * @var array
      */
-    const FIELDS = [
+    public const FIELDS = [
         'id'            => [
             'label' => 'ID',
             'type'  => NormalizedValueDAO::INT_TYPE,
@@ -54,19 +45,10 @@ class ExampleSyncDataExchange implements SyncDataExchangeInterface
         ],
     ];
 
-    /**
-     * @var array
-     */
-    private $payload = ['create' => [], 'update' => []];
+    private array $payload = ['create' => [], 'update' => []];
 
-    /**
-     * @var ValueNormalizer
-     */
-    private $valueNormalizer;
+    private ValueNormalizer $valueNormalizer;
 
-    /**
-     * ExampleSyncDataExchange constructor.
-     */
     public function __construct()
     {
         // Using the default normalizer for this example but each integration may need it's own if
@@ -84,10 +66,7 @@ class ExampleSyncDataExchange implements SyncDataExchangeInterface
 
         $orderedObjects = $syncOrderDAO->getUnidentifiedObjects();
         foreach ($orderedObjects as $objectName => $unidentifiedObjects) {
-            /**
-             * @var mixed
-             * @var ObjectChangeDAO $unidentifiedObject
-             */
+            /** @var ObjectChangeDAO $unidentifiedObject */
             foreach ($unidentifiedObjects as $unidentifiedObject) {
                 // Use getFields here to ensure we have values for required fields in addition to one way mapped fields
                 // Can also use getUnchangedFields, getChangedFields, or getRequiredFields
@@ -118,7 +97,7 @@ class ExampleSyncDataExchange implements SyncDataExchangeInterface
         $orderedObjects = $syncOrderDAO->getIdentifiedObjects();
         foreach ($orderedObjects as $objectName => $identifiedObjects) {
             /**
-             * @var mixed
+             * @var mixed           $id
              * @var ObjectChangeDAO $identifiedObject
              */
             foreach ($identifiedObjects as $id => $identifiedObject) {
@@ -158,7 +137,7 @@ class ExampleSyncDataExchange implements SyncDataExchangeInterface
                     );
 
                     break;
-                case 201: //created
+                case 201: // created
                     $syncOrderDAO->addObjectMapping(
                         $changeObject,
                         $result['object'],
@@ -207,11 +186,8 @@ class ExampleSyncDataExchange implements SyncDataExchangeInterface
         $requestedObjects = $requestDAO->getObjects();
         foreach ($requestedObjects as $requestedObject) {
             $objectName   = $requestedObject->getObject();
-            $fromDateTime = $requestedObject->getFromDateTime();
-            $toDatetime   = $requestedObject->getToDateTime();
-            $mappedFields = $requestedObject->getFields();
 
-            $updatedPeople = $this->getReportPayload($objectName, $fromDateTime, $toDatetime, $mappedFields);
+            $updatedPeople = $this->getReportPayload();
             foreach ($updatedPeople as $person) {
                 // If the integration knows modified timestamps per field, use that. Otherwise, we're using the complete object's
                 // last modified timestamp.
@@ -226,7 +202,7 @@ class ExampleSyncDataExchange implements SyncDataExchangeInterface
 
                     // If we know for certain that this specific field was modified at a specific date/time, set the change timestamp
                     // on the field itself for the judge to weigh certain versus possible changes
-                    //$reportFieldDAO->setChangeTimestamp($fieldChangeTimestamp);
+                    // $reportFieldDAO->setChangeTimestamp($fieldChangeTimestamp);
 
                     $objectDAO->addField($reportFieldDAO);
                 }
@@ -238,24 +214,18 @@ class ExampleSyncDataExchange implements SyncDataExchangeInterface
         return $syncReport;
     }
 
-    /**
-     * @return array
-     */
-    public function getOrderPayload()
+    public function getOrderPayload(): array
     {
         return $this->payload;
     }
 
     /**
-     * @param $object
-     *
-     * @return mixed
+     * @return array<mixed[]>
      */
-    private function getReportPayload($object, \DateTimeInterface $fromDateTime, \DateTimeInterface $toDateTime, array $mappedFields)
+    private function getReportPayload(): array
     {
         // Query integration's API for objects changed between $fromDateTime and $toDateTime with the requested fields in $mappedFields if that's
         // applicable to the integration. I.e. Salesforce supports querying for specific fields in it's SOQL
-
         return [
             [
                 'id'            => 1,
@@ -288,10 +258,7 @@ class ExampleSyncDataExchange implements SyncDataExchangeInterface
         ];
     }
 
-    /**
-     * @return array
-     */
-    private function deliverPayload()
+    private function deliverPayload(): array
     {
         $now      = new \DateTime('now', new \DateTimeZone('UTC'));
         $response = [];

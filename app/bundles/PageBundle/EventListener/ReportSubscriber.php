@@ -1,75 +1,51 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\EventListener;
 
 use Mautic\CoreBundle\Helper\Chart\ChartQuery;
 use Mautic\CoreBundle\Helper\Chart\LineChart;
 use Mautic\CoreBundle\Helper\Chart\PieChart;
 use Mautic\LeadBundle\Model\CompanyReportData;
+use Mautic\LeadBundle\Report\DncReportService;
 use Mautic\PageBundle\Entity\HitRepository;
 use Mautic\ReportBundle\Event\ReportBuilderEvent;
+use Mautic\ReportBundle\Event\ReportDataEvent;
 use Mautic\ReportBundle\Event\ReportGeneratorEvent;
 use Mautic\ReportBundle\Event\ReportGraphEvent;
 use Mautic\ReportBundle\ReportEvents;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class ReportSubscriber implements EventSubscriberInterface
 {
-    const CONTEXT_PAGES      = 'pages';
-    const CONTEXT_PAGE_HITS  = 'page.hits';
-    const CONTEXT_VIDEO_HITS = 'video.hits';
+    public const CONTEXT_PAGES      = 'pages';
 
-    /**
-     * @var CompanyReportData
-     */
-    private $companyReportData;
+    public const CONTEXT_PAGE_HITS  = 'page.hits';
 
-    /**
-     * @var HitRepository
-     */
-    private $hitRepository;
-
-    /**
-     * @var TranslatorInterface
-     */
-    private $translator;
+    public const CONTEXT_VIDEO_HITS = 'video.hits';
 
     public function __construct(
-        CompanyReportData $companyReportData,
-        HitRepository $hitRepository,
-        TranslatorInterface $translator
+        private readonly CompanyReportData $companyReportData,
+        private readonly HitRepository $hitRepository,
+        private readonly TranslatorInterface $translator,
+        private readonly DncReportService $dncReportService,
     ) {
-        $this->companyReportData = $companyReportData;
-        $this->hitRepository     = $hitRepository;
-        $this->translator        = $translator;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             ReportEvents::REPORT_ON_BUILD          => ['onReportBuilder', 0],
             ReportEvents::REPORT_ON_GENERATE       => ['onReportGenerate', 0],
             ReportEvents::REPORT_ON_GRAPH_GENERATE => ['onReportGraphGenerate', 0],
+            ReportEvents::REPORT_ON_DISPLAY        => ['onReportDisplay', 0],
         ];
     }
 
     /**
      * Add available tables and columns to the report builder lookup.
      */
-    public function onReportBuilder(ReportBuilderEvent $event)
+    public function onReportBuilder(ReportBuilderEvent $event): void
     {
         if (!$event->checkContext([self::CONTEXT_PAGES, self::CONTEXT_PAGE_HITS, self::CONTEXT_VIDEO_HITS])) {
             return;
@@ -158,6 +134,11 @@ class ReportSubscriber implements EventSubscriberInterface
                     'label'          => 'mautic.page.report.hits.date_left',
                     'type'           => 'datetime',
                     'groupByFormula' => 'DATE('.$hitPrefix.'date_left)',
+                ],
+                $hitPrefix.'time_spent' => [
+                    'label'   => 'mautic.page.report.hits.time_spent',
+                    'type'    => 'string',
+                    'formula' => 'IF('.$hitPrefix.'date_left IS NOT NULL, SEC_TO_TIME(TIMESTAMPDIFF(SECOND, '.$hitPrefix.'date_hit, '.$hitPrefix.'date_left)), \'\')',
                 ],
                 $hitPrefix.'country' => [
                     'label' => 'mautic.page.report.hits.country',
@@ -259,7 +240,7 @@ class ReportSubscriber implements EventSubscriberInterface
 
             $companyColumns = $this->companyReportData->getCompanyData();
 
-            $pageHitsColumns = array_merge(
+            $commonColumnsAndFilters = array_merge(
                 $columns,
                 $hitColumns,
                 $event->getCampaignByChannelColumns(),
@@ -268,9 +249,13 @@ class ReportSubscriber implements EventSubscriberInterface
                 $companyColumns
             );
 
+            $pageHitsColumns = array_merge($commonColumnsAndFilters, $this->dncReportService->getDncColumns());
+            $pageHitsFilters = array_merge($commonColumnsAndFilters, $this->dncReportService->getDncFilters());
+
             $data = [
                 'display_name' => 'mautic.page.hits',
                 'columns'      => $pageHitsColumns,
+                'filters'      => $pageHitsFilters,
             ];
             $event->addTable(self::CONTEXT_PAGE_HITS, $data, self::CONTEXT_PAGES);
 
@@ -373,7 +358,7 @@ class ReportSubscriber implements EventSubscriberInterface
     /**
      * Initialize the QueryBuilder object to generate reports from.
      */
-    public function onReportGenerate(ReportGeneratorEvent $event)
+    public function onReportGenerate(ReportGeneratorEvent $event): void
     {
         $context    = $event->getContext();
         $qb         = $event->getQueryBuilder();
@@ -387,8 +372,7 @@ class ReportSubscriber implements EventSubscriberInterface
                 $event->addCategoryLeftJoin($qb, 'p');
                 break;
             case self::CONTEXT_PAGE_HITS:
-                $event->applyDateFilters($qb, 'date_hit', 'ph');
-
+                $event->applyDateFiltersWithoutNullValues($qb, 'date_hit', 'ph');
                 $qb->from(MAUTIC_TABLE_PREFIX.'page_hits', 'ph')
                     ->leftJoin('ph', MAUTIC_TABLE_PREFIX.'pages', 'p', 'ph.page_id = p.id')
                     ->leftJoin('p', MAUTIC_TABLE_PREFIX.'pages', 'tp', 'p.id = tp.id')
@@ -424,7 +408,7 @@ class ReportSubscriber implements EventSubscriberInterface
     /**
      * Initialize the QueryBuilder object to generate reports from.
      */
-    public function onReportGraphGenerate(ReportGraphEvent $event)
+    public function onReportGraphGenerate(ReportGraphEvent $event): void
     {
         // Context check, we only want to fire for Lead reports
         if (!$event->checkContext(self::CONTEXT_PAGE_HITS)) {
@@ -483,7 +467,7 @@ class ReportSubscriber implements EventSubscriberInterface
                         [
                             'data'      => $chart->render(),
                             'name'      => $g,
-                            'iconClass' => 'fa-clock-o',
+                            'iconClass' => 'ri-time-line',
                         ]
                     );
                     break;
@@ -505,7 +489,7 @@ class ReportSubscriber implements EventSubscriberInterface
                         [
                             'data'      => $chart->render(),
                             'name'      => $g,
-                            'iconClass' => 'fa-bookmark-o',
+                            'iconClass' => 'ri-information-2-line',
                         ]
                     );
                     break;
@@ -514,7 +498,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $queryBuilder->select('ph.page_language, COUNT(distinct(ph.id)) as the_count')
                         ->groupBy('ph.page_language')
                         ->andWhere($qb->expr()->isNotNull('ph.page_language'));
-                    $data  = $queryBuilder->execute()->fetchAll();
+                    $data  = $queryBuilder->executeQuery()->fetchAllAssociative();
                     $chart = new PieChart();
 
                     foreach ($data as $lang) {
@@ -526,15 +510,15 @@ class ReportSubscriber implements EventSubscriberInterface
                         [
                             'data'      => $chart->render(),
                             'name'      => $g,
-                            'iconClass' => 'fa-globe',
+                            'iconClass' => 'ri-earth-line',
                         ]
                     );
                     break;
                 case 'mautic.page.graph.pie.devices':
                     $queryBuilder->select('ds.device, COUNT(distinct(ph.id)) as the_count')
                         ->groupBy('ds.device');
-                    $data  = $queryBuilder->execute()->fetchAll();
-                    $chart = new PieChart();
+                    $data     = $queryBuilder->executeQuery()->fetchAllAssociative();
+                    $chart    = new PieChart();
 
                     foreach ($data as $device) {
                         $label = substr(empty($device['device']) ? $this->translator->trans('mautic.core.no.info') : $device['device'], 0, 12);
@@ -546,7 +530,7 @@ class ReportSubscriber implements EventSubscriberInterface
                         [
                             'data'      => $chart->render(),
                             'name'      => $g,
-                            'iconClass' => 'fa-globe',
+                            'iconClass' => 'ri-earth-line',
                         ]
                     );
                     break;
@@ -557,7 +541,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-sign-in';
+                    $graphData['iconClass'] = 'ri-login-box-line';
                     $event->setGraph($g, $graphData);
                     break;
 
@@ -568,7 +552,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-eye';
+                    $graphData['iconClass'] = 'ri-eye-line';
                     $graphData['link']      = 'mautic_page_action';
                     $event->setGraph($g, $graphData);
                     break;
@@ -580,7 +564,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-eye';
+                    $graphData['iconClass'] = 'ri-eye-line';
                     $graphData['link']      = 'mautic_page_action';
                     $event->setGraph($g, $graphData);
                     break;
@@ -588,5 +572,16 @@ class ReportSubscriber implements EventSubscriberInterface
 
             unset($queryBuilder);
         }
+    }
+
+    public function onReportDisplay(ReportDataEvent $event): void
+    {
+        $data = $event->getData();
+
+        if ($event->checkContext([self::CONTEXT_PAGE_HITS])) {
+            $data = $this->dncReportService->processDncStatusDisplay($data);
+        }
+
+        $event->setData($data);
     }
 }

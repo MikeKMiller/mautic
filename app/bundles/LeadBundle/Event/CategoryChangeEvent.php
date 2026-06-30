@@ -1,87 +1,59 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Event;
 
 use Mautic\CategoryBundle\Entity\Category;
 use Mautic\LeadBundle\Entity\Lead;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
-/**
- * Class CategoryChangeEvent.
- */
 class CategoryChangeEvent extends Event
 {
-    private $lead;
-    private $leads;
-    private $category;
-    private $added;
+    private ?Lead $lead = null;
 
     /**
-     * CategoryChangeEvent constructor.
-     *
-     * @param      $leads
-     * @param bool $added
+     * @var Lead[]|null
      */
-    public function __construct($leads, Category $category, $added = true)
-    {
+    private ?array $leads = null;
+
+    /**
+     * @param Lead|Lead[] $leads
+     */
+    public function __construct(
+        Lead|array $leads,
+        private readonly Category $category,
+        private readonly bool $added = true,
+    ) {
         if (is_array($leads)) {
             $this->leads = $leads;
         } else {
             $this->lead = $leads;
         }
-        $this->category = $category;
-        $this->added    = $added;
     }
 
-    /**
-     * Returns the Lead entity.
-     *
-     * @return Lead
-     */
-    public function getLead()
+    public function getLead(): ?Lead
     {
         return $this->lead;
     }
 
     /**
      * Returns batch array of leads.
-     *
-     * @return array
      */
-    public function getLeads()
+    public function getLeads(): ?array
     {
         return $this->leads;
     }
 
-    /**
-     * @return Category
-     */
-    public function getCategory()
+    public function getCategory(): Category
     {
         return $this->category;
     }
 
-    /**
-     * @return bool
-     */
-    public function wasAdded()
+    public function wasAdded(): bool
     {
         return $this->added;
     }
 
-    /**
-     * @return bool
-     */
-    public function wasRemoved()
+    public function wasRemoved(): bool
     {
         return !$this->added;
     }

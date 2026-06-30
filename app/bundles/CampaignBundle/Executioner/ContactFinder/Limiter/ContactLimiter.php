@@ -1,76 +1,33 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Executioner\ContactFinder\Limiter;
 
 use Mautic\CampaignBundle\Executioner\Exception\NoContactsFoundException;
 
-/**
- * Class ContactLimiter.
- */
 class ContactLimiter
 {
-    /**
-     * @var int|null
-     */
-    private $batchLimit;
+    private readonly int $batchLimit;
 
-    /**
-     * @var int|null
-     */
-    private $contactId;
+    private readonly ?int $contactId;
 
-    /**
-     * @var int|null
-     */
-    private $minContactId;
+    private readonly ?int $minContactId;
 
-    /**
-     * @var int|null
-     */
-    private $batchMinContactId;
+    private ?int $batchMinContactId = null;
 
-    /**
-     * @var int|null
-     */
-    private $maxContactId;
+    private readonly ?int $maxContactId;
 
-    /**
-     * @var array
-     */
-    private $contactIdList;
+    private ?int $threadId = null;
 
-    /**
-     * @var int|null
-     */
-    private $threadId;
-
-    /**
-     * @var int|null
-     */
-    private $maxThreads;
+    private ?int $maxThreads = null;
 
     /**
      * @var int|null
      */
     private $campaignLimit;
 
-    /**
-     * @var int|null
-     */
-    private $campaignLimitUsed;
+    private ?int $campaignLimitUsed = null;
 
     /**
-     * ContactLimiter constructor.
-     *
      * @param int      $batchLimit
      * @param int|null $contactId
      * @param int|null $minContactId
@@ -84,16 +41,15 @@ class ContactLimiter
         $contactId = null,
         $minContactId = null,
         $maxContactId = null,
-        array $contactIdList = [],
+        private readonly array $contactIdList = [],
         $threadId = null,
         $maxThreads = null,
-        $campaignLimit = null
+        $campaignLimit = null,
     ) {
         $this->batchLimit    = ($batchLimit) ? (int) $batchLimit : 100;
         $this->contactId     = ($contactId) ? (int) $contactId : null;
         $this->minContactId  = ($minContactId) ? (int) $minContactId : null;
         $this->maxContactId  = ($maxContactId) ? (int) $maxContactId : null;
-        $this->contactIdList = $contactIdList;
 
         if ($threadId && $maxThreads) {
             $this->threadId     = (int) $threadId;
@@ -110,42 +66,27 @@ class ContactLimiter
         }
     }
 
-    /**
-     * @return int
-     */
-    public function getBatchLimit()
+    public function getBatchLimit(): int
     {
         return $this->batchLimit;
     }
 
-    /**
-     * @return int|null
-     */
-    public function getContactId()
+    public function getContactId(): ?int
     {
         return $this->contactId;
     }
 
-    /**
-     * @return int|null
-     */
-    public function getMinContactId()
+    public function getMinContactId(): ?int
     {
-        return ($this->batchMinContactId) ? $this->batchMinContactId : $this->minContactId;
+        return $this->batchMinContactId ?: $this->minContactId;
     }
 
-    /**
-     * @return int|null
-     */
-    public function getMaxContactId()
+    public function getMaxContactId(): ?int
     {
         return $this->maxContactId;
     }
 
-    /**
-     * @return array
-     */
-    public function getContactIdList()
+    public function getContactIdList(): array
     {
         return $this->contactIdList;
     }
@@ -153,11 +94,9 @@ class ContactLimiter
     /**
      * @param int $id
      *
-     * @return $this
-     *
      * @throws NoContactsFoundException
      */
-    public function setBatchMinContactId($id)
+    public function setBatchMinContactId($id): static
     {
         // Prevent a never ending loop if the contact ID never changes due to being the last batch of contacts
         if ($this->minContactId && $this->minContactId > (int) $id) {
@@ -179,28 +118,19 @@ class ContactLimiter
         return $this;
     }
 
-    /**
-     * @return $this
-     */
-    public function resetBatchMinContactId()
+    public function resetBatchMinContactId(): static
     {
         $this->batchMinContactId =  null;
 
         return $this;
     }
 
-    /**
-     * @return int|null
-     */
-    public function getMaxThreads()
+    public function getMaxThreads(): ?int
     {
         return $this->maxThreads;
     }
 
-    /**
-     * @return int|null
-     */
-    public function getThreadId()
+    public function getThreadId(): ?int
     {
         return $this->threadId;
     }
@@ -213,10 +143,7 @@ class ContactLimiter
         return $this->campaignLimit;
     }
 
-    /**
-     * @return bool
-     */
-    public function hasCampaignLimit()
+    public function hasCampaignLimit(): bool
     {
         return null !== $this->campaignLimit;
     }
@@ -236,17 +163,13 @@ class ContactLimiter
     }
 
     /**
-     * @param $reduction
-     *
-     * @return $this
-     *
      * @throws \Exception
      */
-    public function reduceCampaignLimitRemaining($reduction)
+    public function reduceCampaignLimitRemaining($reduction): static
     {
         if (!$this->hasCampaignLimit()) {
             throw new \Exception('Campaign Limit was not set');
-        } elseif ($this->campaignLimit <= ($this->campaignLimitUsed + $reduction)) {
+        } elseif ($this->campaignLimit < ($this->campaignLimitUsed + $reduction)) {
             throw new \Exception('Campaign Limit exceeded');
         }
         $this->campaignLimitUsed += $reduction;
@@ -254,10 +177,7 @@ class ContactLimiter
         return $this;
     }
 
-    /**
-     * @return $this
-     */
-    public function resetCampaignLimitRemaining()
+    public function resetCampaignLimitRemaining(): static
     {
         $this->campaignLimitUsed = 0;
 

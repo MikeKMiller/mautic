@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 return [
     'routes'   => [
         'main'   => [],
@@ -21,7 +12,7 @@ return [
     'services' => [
         'events'    => [
             'mautic.cache.clear_cache_subscriber' => [
-                'class'     => \Mautic\CacheBundle\EventListener\CacheClearSubscriber::class,
+                'class'     => Mautic\CacheBundle\EventListener\CacheClearSubscriber::class,
                 'tags'      => ['kernel.cache_clearer'],
                 'arguments' => [
                     'mautic.cache.provider',
@@ -29,38 +20,20 @@ return [
                 ],
             ],
         ],
-        'forms'     => [],
-        'helpers'   => [],
-        'menus'     => [],
         'other'     => [
-            'mautic.cache.provider'           => [
-                'class'     => \Mautic\CacheBundle\Cache\CacheProvider::class,
-                'arguments' => [
-                    'mautic.helper.core_parameters',
-                    'service_container',
-                ],
-            ],
             'mautic.cache.adapter.filesystem' => [
-                'class'     => \Mautic\CacheBundle\Cache\Adapter\FilesystemTagAwareAdapter::class,
+                'class'     => Mautic\CacheBundle\Cache\Adapter\FilesystemTagAwareAdapter::class,
                 'arguments' => [
                     '%mautic.cache_prefix%',
                     '%mautic.cache_lifetime%',
+                    '%mautic.tmp_path%',
                 ],
                 'tag'       => 'mautic.cache.adapter',
             ],
             'mautic.cache.adapter.memcached'  => [
-                'class'     => \Mautic\CacheBundle\Cache\Adapter\MemcachedTagAwareAdapter::class,
+                'class'     => Mautic\CacheBundle\Cache\Adapter\MemcachedTagAwareAdapter::class,
                 'arguments' => [
                     '%mautic.cache_adapter_memcached%',
-                    '%mautic.cache_prefix%',
-                    '%mautic.cache_lifetime%',
-                ],
-                'tag'       => 'mautic.cache.adapter',
-            ],
-            'mautic.cache.adapter.redis'      => [
-                'class'     => \Mautic\CacheBundle\Cache\Adapter\RedisTagAwareAdapter::class,
-                'arguments' => [
-                    '%mautic.cache_adapter_redis%',
                     '%mautic.cache_prefix%',
                     '%mautic.cache_lifetime%',
                 ],
@@ -73,6 +46,7 @@ return [
 
     'parameters' => [
         'cache_adapter'           => 'mautic.cache.adapter.filesystem',
+        'cache_adapter_tag_aware' => 'mautic.cache.adapter.filesystem',
         'cache_prefix'            => '',
         'cache_lifetime'          => 86400,
         'cache_adapter_memcached' => [

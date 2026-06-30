@@ -1,16 +1,8 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Segment\Decorator\Date\Other;
 
+use Doctrine\DBAL\Query\Expression\CompositeExpression;
 use Mautic\LeadBundle\Segment\ContactSegmentFilterCrate;
 use Mautic\LeadBundle\Segment\Decorator\Date\DateOptionParameters;
 use Mautic\LeadBundle\Segment\Decorator\DateDecorator;
@@ -19,31 +11,13 @@ use Mautic\LeadBundle\Segment\Decorator\FilterDecoratorInterface;
 class DateRelativeInterval implements FilterDecoratorInterface
 {
     /**
-     * @var DateDecorator
-     */
-    private $dateDecorator;
-
-    /**
-     * @var string
-     */
-    private $originalValue;
-
-    /**
-     * @var DateOptionParameters
-     */
-    private $dateOptionParameters;
-
-    /**
      * @param string $originalValue
      */
     public function __construct(
-        DateDecorator $dateDecorator,
-        $originalValue,
-        DateOptionParameters $dateOptionParameters
+        private readonly DateDecorator $dateDecorator,
+        private $originalValue,
+        private readonly DateOptionParameters $dateOptionParameters,
     ) {
-        $this->dateDecorator        = $dateDecorator;
-        $this->originalValue        = $originalValue;
-        $this->dateOptionParameters = $dateOptionParameters;
     }
 
     /**
@@ -54,10 +28,7 @@ class DateRelativeInterval implements FilterDecoratorInterface
         return $this->dateDecorator->getField($contactSegmentFilterCrate);
     }
 
-    /**
-     * @return string
-     */
-    public function getTable(ContactSegmentFilterCrate $contactSegmentFilterCrate)
+    public function getTable(ContactSegmentFilterCrate $contactSegmentFilterCrate): string
     {
         return $this->dateDecorator->getTable($contactSegmentFilterCrate);
     }
@@ -90,40 +61,39 @@ class DateRelativeInterval implements FilterDecoratorInterface
     /**
      * @return array|bool|float|string|null
      */
-    public function getParameterValue(ContactSegmentFilterCrate $contactSegmentFilterCrate)
+    public function getParameterValue(ContactSegmentFilterCrate $contactSegmentFilterCrate): mixed
     {
         $date = $this->dateOptionParameters->getDefaultDate();
         $date->modify($this->originalValue);
 
         $operator = $this->getOperator($contactSegmentFilterCrate);
         $format   = 'Y-m-d';
-        if ('like' === $operator || 'notLike' === $operator) {
+
+        $isLikeOperator = 'like' === $operator || 'notLike' === $operator;
+        if (!$isLikeOperator && $contactSegmentFilterCrate->hasTimeParts()) {
+            $format .= ' H:i:s';
+        }
+        if ($isLikeOperator) {
             $format .= '%';
         }
+        if (!$contactSegmentFilterCrate->hasTimeParts() && 'gt' === $operator) {
+            $format .= ' 23:59:59';
+        }
 
-        return $date->toLocalString($format);
+        return $date->toUtcString($format);
     }
 
-    /**
-     * @return string
-     */
-    public function getQueryType(ContactSegmentFilterCrate $contactSegmentFilterCrate)
+    public function getQueryType(ContactSegmentFilterCrate $contactSegmentFilterCrate): string
     {
         return $this->dateDecorator->getQueryType($contactSegmentFilterCrate);
     }
 
-    /**
-     * @return bool|string
-     */
-    public function getAggregateFunc(ContactSegmentFilterCrate $contactSegmentFilterCrate)
+    public function getAggregateFunc(ContactSegmentFilterCrate $contactSegmentFilterCrate): string|bool
     {
         return $this->dateDecorator->getAggregateFunc($contactSegmentFilterCrate);
     }
 
-    /**
-     * @return \Mautic\LeadBundle\Segment\Query\Expression\CompositeExpression|string|null
-     */
-    public function getWhere(ContactSegmentFilterCrate $contactSegmentFilterCrate)
+    public function getWhere(ContactSegmentFilterCrate $contactSegmentFilterCrate): CompositeExpression|string|null
     {
         return $this->dateDecorator->getWhere($contactSegmentFilterCrate);
     }

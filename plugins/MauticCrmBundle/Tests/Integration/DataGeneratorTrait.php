@@ -1,41 +1,20 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticCrmBundle\Tests\Integration;
 
 use MauticPlugin\MauticCrmBundle\Integration\ConnectwiseIntegration;
 
 trait DataGeneratorTrait
 {
-    /**
-     * @var int
-     */
-    protected $page = 1;
+    protected int $page = 1;
 
-    /**
-     * @var int
-     */
-    protected $id = 0;
+    protected int $id = 0;
 
-    /**
-     * @var array
-     */
-    protected $generatedRecords = [];
+    /** @var array<int, array{id: int}> */
+    protected array $generatedRecords = [];
 
-    /**
-     * @param $maxPages
-     *
-     * @return array
-     */
-    protected function generateData($maxPages)
+    /** @return array<int, array{id: int}> */
+    protected function generateData(int $maxPages): array
     {
         $pageSize = ($this->page === $maxPages) ? ConnectwiseIntegration::PAGESIZE / 2 : ConnectwiseIntegration::PAGESIZE;
         $fakeData = [];
@@ -55,7 +34,7 @@ trait DataGeneratorTrait
         return $fakeData;
     }
 
-    protected function reset()
+    protected function reset(): void
     {
         $this->id               = 0;
         $this->page             = 1;

@@ -1,69 +1,94 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CategoryBundle\Entity\Category;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Symfony\Component\Serializer\Attribute\Groups;
 
-/**
- * Class LeadCategory.
- */
+#[ApiResource(
+    shortName: 'Contact Category',
+    operations: [
+        new GetCollection(uriTemplate: '/contactcategories', security: "is_granted('lead:leads:viewown')"),
+        new Post(uriTemplate: '/contactcategories', security: "is_granted('lead:leads:create')"),
+        new Get(uriTemplate: '/contactcategories/{id}', security: "is_granted('lead:leads:viewown', object)"),
+        new Put(uriTemplate: '/contactcategories/{id}', security: "is_granted('lead:leads:editown', object)"),
+        new Patch(uriTemplate: '/contactcategories/{id}', security: "is_granted('lead:leads:editother', object)"),
+        new Delete(uriTemplate: '/contactcategories/{id}', security: "is_granted('lead:leads:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['leadcategory:read'],
+        'swagger_definition_name' => 'Read',
+        'api_included'            => ['category'],
+    ],
+    denormalizationContext: [
+        'groups'                  => ['leadcategory:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
 class LeadCategory
 {
     /**
      * @var int
      */
+    #[Groups(['leadcategory:read'])]
     private $id;
 
     /**
      * @var Category
      **/
+    #[Groups(['leadcategory:read', 'leadcategory:write'])]
     private $category;
 
     /**
      * @var Lead
      */
+    #[Groups(['leadcategory:read', 'leadcategory:write'])]
     private $lead;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
+    #[Groups(['leadcategory:read', 'leadcategory:write'])]
     private $dateAdded;
 
     /**
      * @var bool
      */
+    #[Groups(['leadcategory:read', 'leadcategory:write'])]
     private $manuallyRemoved = false;
 
     /**
      * @var bool
      */
+    #[Groups(['leadcategory:read', 'leadcategory:write'])]
     private $manuallyAdded = false;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('lead_categories')
-            ->setCustomRepositoryClass('Mautic\LeadBundle\Entity\LeadCategoryRepository');
+            ->setCustomRepositoryClass(LeadCategoryRepository::class);
 
         $builder->addId();
 
-        $builder->createManyToOne('category', 'Mautic\CategoryBundle\Entity\Category')
+        $builder->createManyToOne('category', Category::class)
             ->addJoinColumn('category_id', 'id', false, false, 'CASCADE')
             ->build();
 
-        $builder->addLead(false, 'CASCADE', false);
+        $builder->createManyToOne('lead', Lead::class)
+            ->addJoinColumn('lead_id', 'id', false, false, 'CASCADE')
+            ->isOwnershipParent()
+            ->build();
 
         $builder->addDateAdded();
 
@@ -77,7 +102,7 @@ class LeadCategory
     }
 
     /**
-     * @return mixed
+     * @return int|null
      */
     public function getId()
     {
@@ -85,7 +110,7 @@ class LeadCategory
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateAdded()
     {
@@ -95,13 +120,13 @@ class LeadCategory
     /**
      * @param \DateTime $date
      */
-    public function setDateAdded($date)
+    public function setDateAdded($date): void
     {
         $this->dateAdded = $date;
     }
 
     /**
-     * @return mixed
+     * @return Lead|null
      */
     public function getLead()
     {
@@ -111,7 +136,7 @@ class LeadCategory
     /**
      * @param mixed $lead
      */
-    public function setLead($lead)
+    public function setLead($lead): void
     {
         $this->lead = $lead;
     }
@@ -127,7 +152,7 @@ class LeadCategory
     /**
      * @param Category $category
      */
-    public function setCategory($category)
+    public function setCategory($category): void
     {
         $this->category = $category;
     }
@@ -143,7 +168,7 @@ class LeadCategory
     /**
      * @param bool $manuallyRemoved
      */
-    public function setManuallyRemoved($manuallyRemoved)
+    public function setManuallyRemoved($manuallyRemoved): void
     {
         $this->manuallyRemoved = $manuallyRemoved;
     }
@@ -167,7 +192,7 @@ class LeadCategory
     /**
      * @param bool $manuallyAdded
      */
-    public function setManuallyAdded($manuallyAdded)
+    public function setManuallyAdded($manuallyAdded): void
     {
         $this->manuallyAdded = $manuallyAdded;
     }
@@ -178,5 +203,10 @@ class LeadCategory
     public function wasManuallyAdded()
     {
         return $this->manuallyAdded;
+    }
+
+    public function getPermissionUser(): mixed
+    {
+        return $this->getLead()?->getPermissionUser();
     }
 }

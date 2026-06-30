@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ReportBundle\Form\DataTransformer;
 
 use Mautic\CoreBundle\Helper\DateTimeHelper;
@@ -17,28 +8,25 @@ use Symfony\Component\Form\Extension\Core\Type\DateTimeType;
 use Symfony\Component\Form\Extension\Core\Type\DateType;
 use Symfony\Component\Form\Extension\Core\Type\TimeType;
 
+/**
+ * @implements DataTransformerInterface<array<mixed>, array<mixed>>
+ */
 class ReportFilterDataTransformer implements DataTransformerInterface
 {
     /**
-     * @var string
-     */
-    private $columns;
-
-    /**
      * @param array $columns
      */
-    public function __construct($columns)
-    {
-        $this->columns = $columns;
+    public function __construct(
+        private $columns,
+    ) {
     }
 
     /**
-     * {@inheritdoc}
-     *
      * @return array
      */
-    public function transform($filters)
+    public function transform(mixed $value): mixed
     {
+        $filters = $value;
         if (!is_array($filters)) {
             return [];
         }
@@ -49,9 +37,23 @@ class ReportFilterDataTransformer implements DataTransformerInterface
                 return $filters;
             }
             $type = $this->columns[$f['column']]['type'];
-            if (in_array($type, ['datetime', 'date', 'time', DateTimeType::class, DateType::class, TimeType::class])) {
-                $dt         = new DateTimeHelper($f['value'], '', 'utc');
-                $f['value'] = $dt->toLocalString();
+            if (in_array($type, ['datetime', 'time', DateTimeType::class, DateType::class, TimeType::class])) {
+                // Skip datetime parsing for string-like conditions
+                if (isset($f['condition']) && in_array($f['condition'], ['like', 'notLike', 'startsWith', 'endsWith', 'contains'])) {
+                    continue;
+                }
+                $dt         = new DateTimeHelper($f['value'], null, 'utc');
+
+                if (in_array($type, ['date', DateType::class])) {
+                    // Pass the specific format for a date
+                    $f['value'] = $dt->toLocalString('Y-m-d');
+                } elseif (in_array($type, ['time', TimeType::class])) {
+                    // Pass the specific format for a time
+                    $f['value'] = $dt->toLocalString('H:i:s');
+                } else {
+                    // Call without arguments for the default datetime format
+                    $f['value'] = $dt->toLocalString();
+                }
             }
         }
 
@@ -59,12 +61,11 @@ class ReportFilterDataTransformer implements DataTransformerInterface
     }
 
     /**
-     * {@inheritdoc}
-     *
      * @return array
      */
-    public function reverseTransform($filters)
+    public function reverseTransform(mixed $value): mixed
     {
+        $filters = $value;
         if (!is_array($filters)) {
             return [];
         }
@@ -75,8 +76,12 @@ class ReportFilterDataTransformer implements DataTransformerInterface
                 return $filters;
             }
             $type = $this->columns[$f['column']]['type'];
-            if (in_array($type, ['datetime', 'date', 'time'])) {
-                $dt         = new DateTimeHelper($f['value'], '', 'local');
+            if (in_array($type, ['datetime', 'time'])) {
+                // Skip datetime parsing for string-like conditions
+                if (isset($f['condition']) && in_array($f['condition'], ['like', 'notLike', 'startsWith', 'endsWith', 'contains'])) {
+                    continue;
+                }
+                $dt         = new DateTimeHelper($f['value'], null, 'local');
                 $f['value'] = $dt->toUtcString();
             }
         }

@@ -1,47 +1,47 @@
 <?php
 
-/*
- * @copyright   2019 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\EmailBundle\Tests\EventListener;
 
-use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityManagerInterface;
 use Mautic\CoreBundle\Event\DetermineWinnerEvent;
 use Mautic\EmailBundle\Entity\Email;
+use Mautic\EmailBundle\Entity\Stat;
 use Mautic\EmailBundle\Entity\StatRepository;
 use Mautic\EmailBundle\EventListener\DetermineWinnerSubscriber;
+use Mautic\PageBundle\Entity\Hit;
 use Mautic\PageBundle\Entity\HitRepository;
-use Symfony\Component\Translation\TranslatorInterface;
+use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
 {
-    private $em;
-    private $translator;
+    /**
+     * @var MockObject&EntityManagerInterface
+     */
+    private MockObject $em;
 
     /**
-     * @var DetermineWinnerSubscriber
+     * @var MockObject&TranslatorInterface
      */
-    private $subscriber;
+    private MockObject $translator;
+
+    private DetermineWinnerSubscriber $subscriber;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->em         = $this->createMock(EntityManager::class);
+        $this->em         = $this->createMock(EntityManagerInterface::class);
         $this->translator = $this->createMock(TranslatorInterface::class);
         $this->subscriber = new DetermineWinnerSubscriber($this->em, $this->translator);
     }
 
-    public function testOnDetermineOpenRateWinner()
+    public function testOnDetermineOpenRateWinner(): void
     {
         $parentMock = $this->createMock(Email::class);
-        $children   = [2 => $this->createMock(Email::class)];
+        $children   = [2 => $this->createStub(Email::class)];
         $repoMock   = $this->createMock(StatRepository::class);
         $ids        = [1, 2];
         $parameters = ['parent' => $parentMock, 'children' => $children];
@@ -53,30 +53,18 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
                 'totalCount' => 5,
                 'readCount'  => 0,
                 'readRate'   => 0,
-                ],
+            ],
             2 => [
                 'totalCount' => 6,
                 'readCount'  => 3,
                 'readRate'   => 50,
-                ],
+            ],
         ];
 
-        $this->translator->method('trans')
-            ->withConsecutive(
-                ['mautic.email.abtest.label.opened'],
-                ['mautic.email.abtest.label.sent'],
-                ['mautic.email.abtest.label.opened'],
-                ['mautic.email.abtest.label.sent'],
-                ['mautic.email.abtest.label.opened'],
-                ['mautic.email.abtest.label.sent'])
-            ->willReturnOnConsecutiveCalls(
-                'opened',
-                'sent',
-                'opened',
-                'sent',
-                'opened',
-                'sent'
-            );
+        $this->translator->expects($this->atLeast(3))->method('trans')->willReturnMap([
+            ['mautic.email.abtest.label.opened', [], null, null, 'opened'],
+            ['mautic.email.abtest.label.sent', [], null, null, 'sent'],
+        ]);
 
         $this->em->expects($this->once())
             ->method('getRepository')
@@ -112,10 +100,10 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals($abTestResults['support']['data'], $expectedData);
     }
 
-    public function testOnDetermineOClickthroughRateWinner()
+    public function testOnDetermineOClickthroughRateWinner(): void
     {
         $parentMock    = $this->createMock(Email::class);
-        $children      = [2 => $this->createMock(Email::class)];
+        $children      = [2 => $this->createStub(Email::class)];
         $pageRepoMock  = $this->createMock(HitRepository::class);
         $emailRepoMock = $this->createMock(StatRepository::class);
         $ids           = [1, 2];
@@ -133,30 +121,27 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
             2 => 153,
         ];
 
-        $this->translator->method('trans')
-            ->withConsecutive(
-                ['mautic.email.abtest.label.clickthrough'],
-                ['mautic.email.abtest.label.opened'],
-                ['mautic.email.abtest.label.clickthrough'],
-                ['mautic.email.abtest.label.opened'],
-                ['mautic.email.abtest.label.clickthrough'],
-                ['mautic.email.abtest.label.opened'])
-            ->willReturnOnConsecutiveCalls(
-                'clickthrough',
-                'opened',
-                'clickthrough',
-                'opened',
-                'clickthrough',
-                'opened'
-            );
+        $this->translator->expects($this->atLeast(3))->method('trans')->willReturnMap(
+            [
+                ['mautic.email.abtest.label.clickthrough', [], null, null, 'clickthrough'],
+                ['mautic.email.abtest.label.opened', [], null, null, 'opened'],
+            ]
+        );
 
-        $this->em->expects($this->at(0))
-            ->method('getRepository')
-            ->willReturn($pageRepoMock);
+        $matcher = $this->exactly(2);
 
-        $this->em->expects($this->at(1))
-            ->method('getRepository')
-            ->willReturn($emailRepoMock);
+        $this->em->expects($matcher)->method('getRepository')->willReturnCallback(function (...$parameters) use ($matcher, $pageRepoMock, $emailRepoMock) {
+            if (1 === $matcher->numberOfInvocations()) {
+                $this->assertSame(Hit::class, $parameters[0]);
+
+                return $pageRepoMock;
+            }
+            if (2 === $matcher->numberOfInvocations()) {
+                $this->assertSame(Stat::class, $parameters[0]);
+
+                return $emailRepoMock;
+            }
+        });
 
         $parentMock->expects($this->once())
             ->method('getRelatedEntityIds')

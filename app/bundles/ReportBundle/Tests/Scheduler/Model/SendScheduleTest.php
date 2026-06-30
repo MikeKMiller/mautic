@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ReportBundle\Tests\Scheduler\Model;
 
 use Mautic\EmailBundle\Helper\MailHelper;
@@ -19,38 +10,30 @@ use Mautic\ReportBundle\Scheduler\Model\FileHandler;
 use Mautic\ReportBundle\Scheduler\Model\MessageSchedule;
 use Mautic\ReportBundle\Scheduler\Model\SendSchedule;
 use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 
 class SendScheduleTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @var Report
-     */
-    private $report;
+    private Report $report;
+
+    private Scheduler $scheduler;
+
+    private SendSchedule $sendSchedule;
 
     /**
-     * @var Scheduler
+     * @var MockObject&MailHelper
      */
-    private $scheduler;
+    private MockObject $mailHelperMock;
 
     /**
-     * @var SendSchedule
+     * @var MockObject&MessageSchedule
      */
-    private $sendSchedule;
+    private MockObject $messageSchedule;
 
     /**
-     * @var MockObject|MailHelper
+     * @var MockObject&FileHandler
      */
-    private $mailHelperMock;
-
-    /**
-     * @var MockObject|MessageSchedule
-     */
-    private $messageSchedule;
-
-    /**
-     * @var MockObject|FileHandler
-     */
-    private $fileHandler;
+    private MockObject $fileHandler;
 
     protected function setUp(): void
     {
@@ -61,6 +44,7 @@ class SendScheduleTest extends \PHPUnit\Framework\TestCase
         $this->mailHelperMock  = $this->createMock(MailHelper::class);
         $this->messageSchedule = $this->createMock(MessageSchedule::class);
         $this->fileHandler     = $this->createMock(FileHandler::class);
+        $eventDispatcher       = $this->createMock(EventDispatcher::class);
 
         $this->mailHelperMock->expects($this->once())
             ->method('getMailer')
@@ -69,11 +53,12 @@ class SendScheduleTest extends \PHPUnit\Framework\TestCase
         $this->sendSchedule = new SendSchedule(
             $this->mailHelperMock,
             $this->messageSchedule,
-            $this->fileHandler
+            $this->fileHandler,
+            $eventDispatcher
         );
     }
 
-    public function testSendScheduleWithCsvFile()
+    public function testSendScheduleWithCsvFile(): void
     {
         $this->report->setToAddress('john@doe.com, doe@john.com');
 
@@ -118,7 +103,7 @@ class SendScheduleTest extends \PHPUnit\Framework\TestCase
         $this->sendSchedule->send($this->scheduler, '/path/to/report.csv');
     }
 
-    public function testSendScheduleWithZipFile()
+    public function testSendScheduleWithZipFile(): void
     {
         $this->report->setToAddress('john@doe.com, doe@john.com');
 
@@ -132,16 +117,21 @@ class SendScheduleTest extends \PHPUnit\Framework\TestCase
             ->with($this->report)
             ->willReturn('Message');
 
-        $this->fileHandler->expects($this->exactly(2))
+        $matcher = $this->exactly(2);
+        $this->fileHandler->expects($matcher)
             ->method('fileCanBeAttached')
-            ->withConsecutive(
-                ['/path/to/report.csv'],
-                ['/path/to/report.zip']
-            )
-            ->will($this->onConsecutiveCalls(
-                $this->throwException(new FileTooBigException()),
-                null
-            ));
+            ->with($this->callback(function ($arg) use ($matcher): true {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('/path/to/report.csv', $arg);
+
+                    throw new FileTooBigException();
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('/path/to/report.zip', $arg);
+                }
+
+                return true;
+            }));
 
         $this->fileHandler->expects($this->once())
             ->method('zipIt')
@@ -175,7 +165,7 @@ class SendScheduleTest extends \PHPUnit\Framework\TestCase
         $this->sendSchedule->send($this->scheduler, '/path/to/report.csv');
     }
 
-    public function testSendScheduleWithoutFile()
+    public function testSendScheduleWithoutFile(): void
     {
         $this->report->setToAddress('john@doe.com, doe@john.com');
 
@@ -194,9 +184,19 @@ class SendScheduleTest extends \PHPUnit\Framework\TestCase
             ->with('path-to-a-file')
             ->willReturn('path-to-a-zip-file');
 
-        $this->fileHandler->expects($this->exactly(2))
+        $matcher = $this->exactly(2);
+        $this->fileHandler->expects($matcher)
             ->method('fileCanBeAttached')
-            ->withConsecutive(['path-to-a-file'], ['path-to-a-zip-file'])
+            ->with($this->callback(function ($arg) use ($matcher): true {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('path-to-a-file', $arg);
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('path-to-a-zip-file', $arg);
+                }
+
+                return true;
+            }))
             ->will($this->throwException(new FileTooBigException()));
 
         $this->mailHelperMock->expects($this->once())

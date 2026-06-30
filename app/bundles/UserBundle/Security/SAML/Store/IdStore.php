@@ -1,37 +1,18 @@
 <?php
 
-/*
- * @copyright   2019 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\UserBundle\Security\SAML\Store;
 
-use Doctrine\Common\Persistence\ObjectManager;
+use Doctrine\Persistence\ObjectManager;
 use LightSaml\Provider\TimeProvider\TimeProviderInterface;
 use LightSaml\Store\Id\IdStoreInterface;
 use Mautic\UserBundle\Entity\IdEntry;
 
 class IdStore implements IdStoreInterface
 {
-    /**
-     * @var ObjectManager
-     */
-    private $manager;
-
-    /**
-     * @var TimeProviderInterface
-     */
-    private $timeProvider;
-
-    public function __construct(ObjectManager $manager, TimeProviderInterface $timeProvider)
-    {
-        $this->manager      = $manager;
-        $this->timeProvider = $timeProvider;
+    public function __construct(
+        private readonly ObjectManager $manager,
+        private readonly TimeProviderInterface $timeProvider,
+    ) {
     }
 
     /**
@@ -63,10 +44,6 @@ class IdStore implements IdStoreInterface
             return false;
         }
 
-        if ($idEntry->getExpiryTime()->getTimestamp() < $this->timeProvider->getTimestamp()) {
-            return false;
-        }
-
-        return true;
+        return $idEntry->getExpiryTime()->getTimestamp() >= $this->timeProvider->getTimestamp();
     }
 }

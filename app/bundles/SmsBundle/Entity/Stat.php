@@ -1,16 +1,8 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\SmsBundle\Entity;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
@@ -18,53 +10,52 @@ use Mautic\CoreBundle\Entity\IpAddress;
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Entity\LeadList;
 
-/**
- * Class Stat.
- */
 class Stat
 {
+    public const TABLE_NAME = 'sms_message_stats';
+
     /**
-     * @var int
+     * @var string
      */
     private $id;
 
     /**
-     * @var Sms
+     * @var Sms|null
      */
     private $sms;
 
     /**
-     * @var \Mautic\LeadBundle\Entity\Lead
+     * @var Lead|null
      */
     private $lead;
 
     /**
-     * @var \Mautic\LeadBundle\Entity\LeadList
+     * @var LeadList|null
      */
     private $list;
 
     /**
-     * @var \Mautic\CoreBundle\Entity\IpAddress
+     * @var IpAddress|null
      */
     private $ipAddress;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateSent;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $trackingHash;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $source;
 
     /**
-     * @var int
+     * @var int|null
      */
     private $sourceId;
 
@@ -79,16 +70,16 @@ class Stat
     private $details = [];
 
     /**
-     * @var bool
+     * @var bool|null
      */
     private $isFailed = false;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
-        $builder->setTable('sms_message_stats')
-            ->setCustomRepositoryClass('Mautic\SmsBundle\Entity\StatRepository')
+        $builder->setTable(self::TABLE_NAME)
+            ->setCustomRepositoryClass(StatRepository::class)
             ->addIndex(['sms_id', 'lead_id'], 'stat_sms_search')
             ->addIndex(['tracking_hash'], 'stat_sms_hash_search')
             ->addIndex(['source', 'source_id'], 'stat_sms_source_search')
@@ -103,7 +94,7 @@ class Stat
 
         $builder->addLead(true, 'SET NULL');
 
-        $builder->createManyToOne('list', 'Mautic\LeadBundle\Entity\LeadList')
+        $builder->createManyToOne('list', LeadList::class)
             ->addJoinColumn('list_id', 'id', true, false, 'SET NULL')
             ->build();
 
@@ -136,15 +127,13 @@ class Stat
             ->nullable()
             ->build();
 
-        $builder->addField('details', 'json_array');
+        $builder->addField('details', Types::JSON);
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('stat')
             ->addProperties(
@@ -164,26 +153,20 @@ class Stat
             ->build();
     }
 
-    /**
-     * @return int
-     */
-    public function getId()
+    public function getId(): int
     {
-        return $this->id;
+        return (int) $this->id;
     }
 
     /**
-     * @return Sms
+     * @return Sms|null
      */
     public function getSms()
     {
         return $this->sms;
     }
 
-    /**
-     * @return Stat
-     */
-    public function setSms(Sms $sms)
+    public function setSms(Sms $sms): static
     {
         $this->sms = $sms;
 
@@ -191,17 +174,14 @@ class Stat
     }
 
     /**
-     * @return Lead
+     * @return Lead|null
      */
     public function getLead()
     {
         return $this->lead;
     }
 
-    /**
-     * @return Stat
-     */
-    public function setLead(Lead $lead)
+    public function setLead(Lead $lead): static
     {
         $this->lead = $lead;
 
@@ -209,17 +189,14 @@ class Stat
     }
 
     /**
-     * @return LeadList
+     * @return LeadList|null
      */
     public function getList()
     {
         return $this->list;
     }
 
-    /**
-     * @return Stat
-     */
-    public function setList(LeadList $list)
+    public function setList(LeadList $list): static
     {
         $this->list = $list;
 
@@ -227,17 +204,14 @@ class Stat
     }
 
     /**
-     * @return IpAddress
+     * @return IpAddress|null
      */
     public function getIpAddress()
     {
         return $this->ipAddress;
     }
 
-    /**
-     * @return Stat
-     */
-    public function setIpAddress(IpAddress $ipAddress)
+    public function setIpAddress(IpAddress $ipAddress): static
     {
         $this->ipAddress = $ipAddress;
 
@@ -245,7 +219,7 @@ class Stat
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getDateSent()
     {
@@ -254,10 +228,8 @@ class Stat
 
     /**
      * @param \DateTime $dateSent
-     *
-     * @return Stat
      */
-    public function setDateSent($dateSent)
+    public function setDateSent($dateSent): static
     {
         $this->dateSent = $dateSent;
 
@@ -265,7 +237,7 @@ class Stat
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getTrackingHash()
     {
@@ -274,10 +246,8 @@ class Stat
 
     /**
      * @param string $trackingHash
-     *
-     * @return Stat
      */
-    public function setTrackingHash($trackingHash)
+    public function setTrackingHash($trackingHash): static
     {
         $this->trackingHash = $trackingHash;
 
@@ -285,7 +255,7 @@ class Stat
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getSource()
     {
@@ -294,10 +264,8 @@ class Stat
 
     /**
      * @param string $source
-     *
-     * @return Stat
      */
-    public function setSource($source)
+    public function setSource($source): static
     {
         $this->source = $source;
 
@@ -305,7 +273,7 @@ class Stat
     }
 
     /**
-     * @return int
+     * @return int|null
      */
     public function getSourceId()
     {
@@ -314,10 +282,8 @@ class Stat
 
     /**
      * @param int $sourceId
-     *
-     * @return Stat
      */
-    public function setSourceId($sourceId)
+    public function setSourceId($sourceId): static
     {
         $this->sourceId = $sourceId;
 
@@ -325,17 +291,14 @@ class Stat
     }
 
     /**
-     * @return array
+     * @return array<array-key, mixed>
      */
     public function getTokens()
     {
         return $this->tokens;
     }
 
-    /**
-     * @return Stat
-     */
-    public function setTokens(array $tokens)
+    public function setTokens(array $tokens): static
     {
         $this->tokens = $tokens;
 
@@ -344,10 +307,8 @@ class Stat
 
     /**
      * @param bool $isFailed
-     *
-     * @return Stat
      */
-    public function setIsFailed($isFailed)
+    public function setIsFailed($isFailed): static
     {
         $this->isFailed = $isFailed;
 
@@ -355,7 +316,7 @@ class Stat
     }
 
     /**
-     * @return bool
+     * @return bool|null
      */
     public function isFailed()
     {
@@ -363,7 +324,7 @@ class Stat
     }
 
     /**
-     * @return array
+     * @return array<array-key, mixed>
      */
     public function getDetails()
     {
@@ -372,10 +333,8 @@ class Stat
 
     /**
      * @param array $details
-     *
-     * @return Stat
      */
-    public function setDetails($details)
+    public function setDetails($details): static
     {
         $this->details = $details;
 
@@ -385,10 +344,8 @@ class Stat
     /**
      * @param string $type
      * @param string $detail
-     *
-     * @return Stat
      */
-    public function addDetail($type, $detail)
+    public function addDetail($type, $detail): static
     {
         $this->details[$type][] = $detail;
 

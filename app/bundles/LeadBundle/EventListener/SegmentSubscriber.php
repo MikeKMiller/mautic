@@ -1,55 +1,57 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\LeadBundle\EventListener;
 
+use Mautic\CoreBundle\Exception\DeleteEntityDependencyException;
+use Mautic\CoreBundle\Exception\RecordCanNotUnpublishException;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Helper\IpLookupHelper;
 use Mautic\CoreBundle\Model\AuditLogModel;
 use Mautic\LeadBundle\Event\LeadListEvent as SegmentEvent;
+use Mautic\LeadBundle\Helper\SegmentCountCacheHelper;
 use Mautic\LeadBundle\LeadEvents;
+use Mautic\LeadBundle\Model\ListModel;
+use Mautic\LeadBundle\Validator\SegmentUsedInCampaignsValidator;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class SegmentSubscriber implements EventSubscriberInterface
 {
-    /**
-     * @var IpLookupHelper
-     */
-    private $ipLookupHelper;
-
-    /**
-     * @var AuditLogModel
-     */
-    private $auditLogModel;
-
-    public function __construct(IpLookupHelper $ipLookupHelper, AuditLogModel $auditLogModel)
-    {
-        $this->ipLookupHelper = $ipLookupHelper;
-        $this->auditLogModel  = $auditLogModel;
+    public function __construct(
+        private readonly IpLookupHelper $ipLookupHelper,
+        private readonly AuditLogModel $auditLogModel,
+        private readonly ListModel $listModel,
+        private readonly SegmentUsedInCampaignsValidator $segmentUsedInCampaignsValidator,
+        private readonly CoreParametersHelper $coreParametersHelper,
+        private readonly SegmentCountCacheHelper $segmentCountCacheHelper,
+        private readonly TranslatorInterface $translator,
+    ) {
     }
 
-    /**
-     * @return array
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
-            LeadEvents::LIST_POST_SAVE   => ['onSegmentPostSave', 0],
-            LeadEvents::LIST_POST_DELETE => ['onSegmentDelete', 0],
+            LeadEvents::LIST_POST_SAVE     => ['onSegmentPostSave', 0],
+            LeadEvents::ON_LIST_DELETE     => ['onSegmentDelete', 0],
+            LeadEvents::LIST_POST_DELETE   => [
+                ['onSegmentPostDelete', 0],
+                ['clearSegmentCountCache', 0],
+            ],
+            LeadEvents::LIST_PRE_DELETE   => [
+                ['onSegmentPreDelete', 0],
+            ],
+            LeadEvents::LIST_PRE_UNPUBLISH => [
+                ['onSegmentPreUnpublish', 0],
+            ],
         ];
     }
 
     /**
      * Add a segment entry to the audit log.
      */
-    public function onSegmentPostSave(SegmentEvent $event)
+    public function onSegmentPostSave(SegmentEvent $event): void
     {
         $segment = $event->getList();
         if ($details = $event->getChanges()) {
@@ -66,9 +68,68 @@ class SegmentSubscriber implements EventSubscriberInterface
     }
 
     /**
+     * @throws RecordCanNotUnpublishException
+     */
+    public function onSegmentPreUnpublish(SegmentEvent $event): void
+    {
+        $leadList = $event->getList();
+        $lists    = $this->listModel->getSegmentsWithDependenciesOnSegment($leadList->getId());
+        if (count($lists)) {
+            $message = $this->translator->trans(
+                'mautic.lead_list.is_in_use.unpublish',
+                [
+                    '%segments%'     => implode(',', $lists),
+                    '%segmentNames%' => $leadList->getName(),
+                ],
+                'validators');
+            throw new RecordCanNotUnpublishException($message);
+        }
+
+        if ($this->validateSegmentsUsedInCampaigns($event, 'unpublish')) {
+            throw new RecordCanNotUnpublishException($this->segmentUsedInCampaignsValidator->getErrorMessage());
+        }
+    }
+
+    /**
+     * @throws DeleteEntityDependencyException
+     */
+    public function onSegmentPreDelete(SegmentEvent $event): void
+    {
+        $leadList = $event->getList();
+        $lists    = $this->listModel->getSegmentsWithDependenciesOnSegment($leadList->getId());
+
+        if (count($lists)) {
+            $message = $this->translator->trans(
+                'mautic.lead_list.is_in_use.delete',
+                [
+                    '%segments%'     => implode(',', $lists),
+                    '%segmentNames%' => $leadList->getName(),
+                ],
+                'validators');
+            $event->addDependencyError($message);
+        }
+
+        if ($this->validateSegmentsUsedInCampaigns($event, 'delete')) {
+            $event->addDependencyError($this->segmentUsedInCampaignsValidator->getErrorMessage());
+        }
+    }
+
+    public function onSegmentDelete(SegmentEvent $event): void
+    {
+        if ($this->coreParametersHelper->get('delete_segment_in_background', false)) {
+            return;
+        }
+
+        $list = $event->getList();
+
+        $this->listModel->removeLeadsByListId($list->getId());
+        $this->listModel->hardDeleteEntity($list);
+    }
+
+    /**
      * Add a segment delete entry to the audit log.
      */
-    public function onSegmentDelete(SegmentEvent $event)
+    public function onSegmentPostDelete(SegmentEvent $event): void
     {
         $segment = $event->getList();
         $log     = [
@@ -80,5 +141,16 @@ class SegmentSubscriber implements EventSubscriberInterface
             'ipAddress' => $this->ipLookupHelper->getIpAddressFromRequest(),
         ];
         $this->auditLogModel->writeToLog($log);
+    }
+
+    public function clearSegmentCountCache(SegmentEvent $event): void
+    {
+        $segment = $event->getList();
+        $this->segmentCountCacheHelper->deleteSegmentContactCount($segment->deletedId);
+    }
+
+    private function validateSegmentsUsedInCampaigns(SegmentEvent $event, string $action): bool
+    {
+        return $this->segmentUsedInCampaignsValidator->validate($event->getList(), $action);
     }
 }

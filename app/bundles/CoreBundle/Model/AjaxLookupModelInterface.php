@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Model;
 
 use Mautic\CoreBundle\Entity\CommonRepository;
@@ -17,21 +8,21 @@ use Mautic\CoreBundle\Entity\CommonRepository;
  * Interface AjaxLookupModelInterface.
  *
  * Defines methods required by AjaxLookupControllerTrait to find matching records
+ *
+ * @template T of object
  */
 interface AjaxLookupModelInterface
 {
     /**
-     * @param        $type
-     * @param string $filter
-     * @param int    $limit
-     * @param int    $start
+     * @param string|array<int,string> $filter
+     * @param array<string, mixed>     $options
      *
      * @return mixed
      */
-    public function getLookupResults($type, $filter = '', $limit = 10, $start = 0);
+    public function getLookupResults(string $type, string|array $filter = '', int $limit = 10, int $start = 0, array $options = []);
 
     /**
-     * @return CommonRepository
+     * @return CommonRepository<T>
      */
     public function getRepository();
 }

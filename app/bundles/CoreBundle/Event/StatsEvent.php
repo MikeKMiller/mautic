@@ -1,33 +1,20 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Event;
 
-use Doctrine\ORM\EntityRepository;
 use Mautic\CoreBundle\Entity\CommonRepository;
 use Mautic\UserBundle\Entity\User;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
 /**
- * Class StatsEvent.
  * Used to get statistical data from subscribed tables.
  */
 class StatsEvent extends Event
 {
     /**
      * Database table containing statistical data available to get the results from.
-     *
-     * @var string
      */
-    protected $table;
+    protected string $table;
 
     /**
      * Array of columns to fetch.
@@ -38,17 +25,13 @@ class StatsEvent extends Event
 
     /**
      * The page where to start with.
-     *
-     * @var int
      */
-    protected $start;
+    protected int $start;
 
     /**
      * The rows per page limit.
-     *
-     * @var int
      */
-    protected $limit;
+    protected int $limit;
 
     /**
      * Database tables which the subscribers already asked for.
@@ -61,13 +44,6 @@ class StatsEvent extends Event
      * @var array
      */
     protected $tableColumns = [];
-
-    /**
-     * Array of order by statements.
-     *
-     * @var array
-     */
-    protected $order = [];
 
     /**
      * Array of where filters.
@@ -93,41 +69,34 @@ class StatsEvent extends Event
     /**
      * Source repository to fetch the results from.
      *
-     * @var CommonRepository
+     * @var CommonRepository<object>
      */
     protected $repository;
 
     /**
-     * @var User
-     */
-    protected $user;
-
-    /**
-     * StatsEvent constructor.
-     *
-     * @param     $table
      * @param int $start
      * @param int $limit
      */
-    public function __construct($table, $start, $limit, array $order, array $where, User $user)
-    {
+    public function __construct(
+        $table,
+        $start,
+        $limit,
+        protected array $order,
+        array $where,
+        protected User $user,
+    ) {
         $this->table = strtolower(trim(str_replace(MAUTIC_TABLE_PREFIX, '', strip_tags($table))));
         $this->start = (int) $start;
         $this->limit = (int) $limit;
-        $this->order = $order;
         $this->where = $where;
-        $this->user  = $user;
     }
 
     /**
      * Returns if event is for this table.
      *
-     * @param                       $table
-     * @param EntityRepository|null $repository
-     *
-     * @return bool
+     * @param CommonRepository<object>|null $repository
      */
-    public function isLookingForTable($table, CommonRepository $repository = null)
+    public function isLookingForTable($table, ?CommonRepository $repository = null): bool
     {
         $this->tables[] = $table = str_replace(MAUTIC_TABLE_PREFIX, '', $table);
         if ($repository) {
@@ -140,9 +109,9 @@ class StatsEvent extends Event
     /**
      * Set the source repository to fetch the results from.
      *
-     * @return string
+     * @param CommonRepository<object> $repository
      */
-    public function setRepository(CommonRepository $repository, array $permissions = [])
+    public function setRepository(CommonRepository $repository, array $permissions = []): static
     {
         $this->repository = $repository;
         $this->setResults(
@@ -167,10 +136,7 @@ class StatsEvent extends Event
         return $this->select;
     }
 
-    /**
-     * @return $this
-     */
-    public function setSelect(array $select = null)
+    public function setSelect(?array $select = null): static
     {
         $this->select = $select;
 
@@ -179,30 +145,24 @@ class StatsEvent extends Event
 
     /**
      * Returns the start.
-     *
-     * @return int
      */
-    public function getStart()
+    public function getStart(): int
     {
         return $this->start;
     }
 
     /**
      * Returns the limit.
-     *
-     * @return int
      */
-    public function getLimit()
+    public function getLimit(): int
     {
         return $this->limit;
     }
 
     /**
      * Returns the order.
-     *
-     * @return array
      */
-    public function getOrder()
+    public function getOrder(): array
     {
         return $this->order;
     }
@@ -217,10 +177,7 @@ class StatsEvent extends Event
         return $this->where;
     }
 
-    /**
-     * @return $this
-     */
-    public function addWhere(array $where)
+    public function addWhere(array $where): static
     {
         $this->where[] = $where;
 
@@ -230,7 +187,7 @@ class StatsEvent extends Event
     /**
      * Add an array of results and if so, stop propagation.
      */
-    public function setResults(array $results)
+    public function setResults(array $results): void
     {
         $this->results    = $results;
         $this->hasResults = true;
@@ -261,8 +218,6 @@ class StatsEvent extends Event
     }
 
     /**
-     * @param null $table
-     *
      * @return mixed
      */
     public function getTableColumns($table = null)
@@ -282,10 +237,7 @@ class StatsEvent extends Event
         return $this->hasResults;
     }
 
-    /**
-     * @return User
-     */
-    public function getUser()
+    public function getUser(): User
     {
         return $this->user;
     }

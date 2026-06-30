@@ -2,39 +2,33 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\Helper;
 
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Helper\PageHelper;
+use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
 
 class PageHelperTest extends \PHPUnit\Framework\TestCase
 {
-    private $session;
-    private $coreParametersHelper;
-    private $pageHelper;
+    private MockObject&SessionInterface $session;
+
+    private PageHelper $pageHelper;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->session              = $this->createMock(SessionInterface::class);
-        $this->coreParametersHelper = $this->createMock(CoreParametersHelper::class);
-        $this->pageHelper           = new PageHelper($this->session, $this->coreParametersHelper, 'mautic.test', 0);
+        $requestStack               = $this->createMock(RequestStack::class);
+        $coreParametersHelper       = $this->createMock(CoreParametersHelper::class);
+        $this->pageHelper           = new PageHelper($requestStack, $coreParametersHelper, 'mautic.test', 0);
+
+        $requestStack->method('getSession')->willReturn($this->session);
     }
 
-    /**
-     * @dataProvider PageProvider
-     */
-    public function testCountPage(int $count, int $limit, int $page)
+    #[\PHPUnit\Framework\Attributes\DataProvider('PageProvider')]
+    public function testCountPage(int $count, int $limit, int $page): void
     {
         $this->session->expects($this->once())
             ->method('get')
@@ -44,7 +38,8 @@ class PageHelperTest extends \PHPUnit\Framework\TestCase
         $this->assertSame($page, $this->pageHelper->countPage($count));
     }
 
-    public function pageProvider()
+    /** @return array<int, array{0: int, 1: int, 2: int}> */
+    public static function pageProvider(): array
     {
         return [
             [0, 10, 1],
@@ -59,10 +54,8 @@ class PageHelperTest extends \PHPUnit\Framework\TestCase
         ];
     }
 
-    /**
-     * @dataProvider startProvider
-     */
-    public function testCountStart(int $page, int $limit, int $start)
+    #[\PHPUnit\Framework\Attributes\DataProvider('startProvider')]
+    public function testCountStart(int $page, int $limit, int $start): void
     {
         $this->session->expects($this->once())
             ->method('get')
@@ -72,7 +65,8 @@ class PageHelperTest extends \PHPUnit\Framework\TestCase
         $this->assertSame($start, $this->pageHelper->countPage($page));
     }
 
-    public function startProvider()
+    /** @return array<int, array{0: int, 1: int, 2: int}> */
+    public static function startProvider(): array
     {
         return [
             [0, 10, 1],

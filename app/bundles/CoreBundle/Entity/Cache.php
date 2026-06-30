@@ -1,33 +1,27 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
+/**
+ * @deprecated since Mautic 5.0, to be removed in 6.0 with no replacement. Fails some tests if removed though.
+ */
 class Cache
 {
     /**
-     * @var int
+     * @var mixed
      */
     private $id;
 
     /**
-     * @var string
+     * @var mixed
      */
     private $data;
 
     /**
-     * @var int
+     * @var int|null
      */
     private $lifetime;
 
@@ -36,7 +30,7 @@ class Cache
      */
     private $time;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
         $builder->setTable('cache_items');
@@ -66,8 +60,8 @@ class Cache
             [
                 'columnName' => 'item_time',
                 'options'    => [
-                        'unsigned' => true,
-                    ],
+                    'unsigned' => true,
+                ],
             ]
         );
     }
@@ -82,10 +76,8 @@ class Cache
 
     /**
      * @param int $id
-     *
-     * @return Cache
      */
-    public function setId($id)
+    public function setId($id): static
     {
         $this->id = $id;
 
@@ -102,10 +94,8 @@ class Cache
 
     /**
      * @param string $data
-     *
-     * @return Cache
      */
-    public function setData($data)
+    public function setData($data): static
     {
         $this->data = $data;
 
@@ -113,7 +103,7 @@ class Cache
     }
 
     /**
-     * @return int
+     * @return int|null
      */
     public function getLifetime()
     {
@@ -122,10 +112,8 @@ class Cache
 
     /**
      * @param int $lifetime
-     *
-     * @return Cache
      */
-    public function setLifetime($lifetime)
+    public function setLifetime($lifetime): static
     {
         $this->lifetime = $lifetime;
 
@@ -133,7 +121,7 @@ class Cache
     }
 
     /**
-     * @return int
+     * @return int|null
      */
     public function getTime()
     {
@@ -142,10 +130,8 @@ class Cache
 
     /**
      * @param int $time
-     *
-     * @return Cache
      */
-    public function setTime($time)
+    public function setTime($time): static
     {
         $this->time = $time;
 

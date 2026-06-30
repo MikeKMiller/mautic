@@ -1,23 +1,12 @@
 <?php
 
-/*
- * @copyright   2015 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Event;
 
 use Mautic\CampaignBundle\Entity\LeadEventLog;
 use Mautic\LeadBundle\Entity\Lead;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
 /**
- * Class CampaignExecutionEvent.
- *
  * @deprecated 2.13.0; to be removed in 3.0
  */
 class CampaignExecutionEvent extends Event
@@ -26,7 +15,7 @@ class CampaignExecutionEvent extends Event
     use ContextTrait;
 
     /**
-     * @var Lead
+     * @var Lead|mixed
      */
     protected $lead;
 
@@ -46,19 +35,9 @@ class CampaignExecutionEvent extends Event
     protected $systemTriggered;
 
     /**
-     * @var bool|array
-     */
-    protected $result;
-
-    /**
      * @var array
      */
     protected $eventSettings;
-
-    /**
-     * @var LeadEventLog|null
-     */
-    protected $log;
 
     /**
      * @var bool
@@ -76,21 +55,22 @@ class CampaignExecutionEvent extends Event
     protected $channelId;
 
     /**
-     * @param bool $result
+     * @param bool|mixed[]|string|null $result
      */
-    public function __construct(array $args, $result, LeadEventLog $log = null)
-    {
+    public function __construct(
+        array $args,
+        protected $result,
+        protected ?LeadEventLog $log = null,
+    ) {
         $this->lead            = $args['lead'];
         $this->event           = $args['event'];
         $this->eventDetails    = $args['eventDetails'];
         $this->systemTriggered = $args['systemTriggered'];
         $this->eventSettings   = $args['eventSettings'];
-        $this->result          = $result;
-        $this->log             = $log;
     }
 
     /**
-     * @return Lead
+     * @return Lead|mixed
      */
     public function getLead()
     {
@@ -105,7 +85,7 @@ class CampaignExecutionEvent extends Event
     public function getLeadFields()
     {
         $lead         = $this->getLead();
-        $isLeadEntity = ($lead instanceof Lead);
+        $isLeadEntity = $lead instanceof Lead;
 
         // In case Lead is a scalar value:
         if (!$isLeadEntity && !is_array($lead)) {
@@ -151,7 +131,7 @@ class CampaignExecutionEvent extends Event
     }
 
     /**
-     * @return bool
+     * @return bool|mixed[]|string|null
      */
     public function getResult()
     {
@@ -159,11 +139,9 @@ class CampaignExecutionEvent extends Event
     }
 
     /**
-     * @param $result
-     *
-     * @return $this
+     * @param bool|mixed[]|string|null $result
      */
-    public function setResult($result)
+    public function setResult($result): static
     {
         $this->result = $result;
 
@@ -173,11 +151,9 @@ class CampaignExecutionEvent extends Event
     /**
      * Set the result to failed.
      *
-     * @param null $reason
-     *
-     * @return $this
+     * @param string|null $reason
      */
-    public function setFailed($reason = null)
+    public function setFailed($reason = null): static
     {
         $this->result = [
             'failed' => 1,
@@ -197,10 +173,8 @@ class CampaignExecutionEvent extends Event
 
     /**
      * Set a custom log entry to override auto-handling of the log entry.
-     *
-     * @return $this
      */
-    public function setLogEntry(LeadEventLog $log)
+    public function setLogEntry(LeadEventLog $log): static
     {
         $this->logUpdatedByListener = true;
         $this->log                  = $log;
@@ -208,10 +182,7 @@ class CampaignExecutionEvent extends Event
         return $this;
     }
 
-    /**
-     * @return LeadEventLog
-     */
-    public function getLogEntry()
+    public function getLogEntry(): ?LeadEventLog
     {
         return $this->log;
     }
@@ -229,21 +200,17 @@ class CampaignExecutionEvent extends Event
     /**
      * @param string          $channel
      * @param string|int|null $channelId
-     *
-     * @return $this
      */
-    public function setChannel($channel, $channelId = null)
+    public function setChannel($channel, $channelId = null): void
     {
         if (null !== $this->log) {
             // Set the channel since we have the resource
-            $this->log->setChannel($channel)
-                      ->setChannelId($channelId);
+            $this->log->setChannel($channel);
+            $this->log->setChannelId($channelId);
         }
 
         $this->channel   = $channel;
         $this->channelId = $channelId;
-
-        return $this;
     }
 
     /**

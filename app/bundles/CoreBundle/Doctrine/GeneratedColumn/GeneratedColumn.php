@@ -2,67 +2,33 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Doctrine\GeneratedColumn;
 
 final class GeneratedColumn implements GeneratedColumnInterface
 {
-    /**
-     * @var string
-     */
-    private $tableName;
+    private readonly string $tablePrefix;
 
-    /**
-     * @var string
-     */
-    private $tablePrefix = '';
+    private readonly string $columnName;
 
-    /**
-     * @var string
-     */
-    private $columnName;
+    private bool $stored = false;
 
-    /**
-     * @var string
-     */
-    private $columnType;
+    private ?string $originalDateColumn = null;
 
-    /**
-     * @var string
-     */
-    private $as;
+    private ?string $timeUnit = null;
 
-    /**
-     * @var string|null
-     */
-    private $originalDateColumn;
+    private array $indexColumns = [];
 
-    /**
-     * @var string
-     */
-    private $timeUnit;
+    private ?string $filterDateColumn = null;
 
-    /**
-     * @var array
-     */
-    private $indexColumns = [];
-
-    public function __construct(string $tableName, string $columnName, string $columnType, string $as)
-    {
-        $this->as             = $as;
-        $this->tableName      = $tableName;
+    public function __construct(
+        private readonly string $tableName,
+        string $columnName,
+        private readonly string $columnType,
+        private readonly string $as,
+    ) {
         $this->indexColumns[] = $columnName;
-        $this->tablePrefix    = MAUTIC_TABLE_PREFIX;
+        $this->tablePrefix    = (string) MAUTIC_TABLE_PREFIX;
         $this->columnName     = $columnName;
-        $this->columnType     = $columnType;
     }
 
     public function getTableName(): string
@@ -75,9 +41,19 @@ final class GeneratedColumn implements GeneratedColumnInterface
         return $this->columnName;
     }
 
+    public function setStored(bool $stored): void
+    {
+        $this->stored = $stored;
+    }
+
     public function addIndexColumn(string $indexColumn): void
     {
         $this->indexColumns[] = $indexColumn;
+    }
+
+    public function prependIndexColumn(string $indexColumn): void
+    {
+        array_unshift($this->indexColumns, $indexColumn);
     }
 
     public function setOriginalDateColumn(string $originalDateColumn, string $timeUnit): void
@@ -91,20 +67,32 @@ final class GeneratedColumn implements GeneratedColumnInterface
         return $this->originalDateColumn;
     }
 
-    public function getTimeUnit(): string
+    public function getTimeUnit(): ?string
     {
         return $this->timeUnit;
     }
 
     public function getAlterTableSql(): string
     {
-        return "ALTER TABLE {$this->getTableName()} ADD {$this->getColumnName()} {$this->getColumnDefinition()};
-            ALTER TABLE {$this->getTableName()} ADD INDEX `{$this->getIndexName()}`({$this->indexColumnsToString()})";
+        return "ALTER TABLE {$this->getTableName()} {$this->getAddColumnSql()};
+            ALTER TABLE {$this->getTableName()} {$this->getAddIndexSql()}";
+    }
+
+    public function getAddColumnSql(): string
+    {
+        return "ADD {$this->getColumnName()} {$this->getColumnDefinition()}";
+    }
+
+    public function getAddIndexSql(): string
+    {
+        return "ADD INDEX `{$this->getIndexName()}`({$this->indexColumnsToString()})";
     }
 
     public function getColumnDefinition(): string
     {
-        return "{$this->columnType} AS ({$this->as}) COMMENT '(DC2Type:generated)'";
+        $stored = $this->stored ? ' STORED' : '';
+
+        return "{$this->columnType} AS ({$this->as}){$stored} COMMENT '(DC2Type:generated)'";
     }
 
     public function getIndexColumns(): array
@@ -115,6 +103,16 @@ final class GeneratedColumn implements GeneratedColumnInterface
     public function getIndexName(): string
     {
         return $this->tablePrefix.$this->indexColumnsToString('_');
+    }
+
+    public function getFilterDateColumn(): ?string
+    {
+        return $this->filterDateColumn;
+    }
+
+    public function setFilterDateColumn(?string $filterDateColumn): void
+    {
+        $this->filterDateColumn = $filterDateColumn;
     }
 
     private function indexColumnsToString(string $separator = ', '): string

@@ -1,44 +1,35 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Report;
 
 use Mautic\FormBundle\Entity\Field;
 use Mautic\LeadBundle\Model\FieldModel;
+use Mautic\LeadBundle\Model\LeadModel;
 use Mautic\LeadBundle\Model\ListModel;
+use Mautic\LeadBundle\Report\DncReportService;
 use Mautic\LeadBundle\Report\FieldsBuilder;
 use Mautic\UserBundle\Model\UserModel;
 
 class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
 {
-    public function testGetLeadColumns()
+    public function testGetLeadColumns(): void
     {
-        $fieldModel = $this->getMockBuilder(FieldModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $fieldModel = $this->createMock(FieldModel::class);
 
-        $listModel = $this->getMockBuilder(ListModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $listModel = $this->createStub(ListModel::class);
 
-        $userModel = $this->getMockBuilder(UserModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $userModel = $this->createStub(UserModel::class);
 
-        $fieldModel->expects($this->exactly(2)) //We have 2 asserts
+        $leadModel = $this->createStub(LeadModel::class);
+
+        $fieldModel->expects($this->exactly(2)) // We have 2 asserts
             ->method('getLeadFields')
             ->with()
             ->willReturn($this->getFields());
 
-        $fieldsBuilder = new FieldsBuilder($fieldModel, $listModel, $userModel);
+        $dncReportService = $this->createStub(DncReportService::class);
+
+        $fieldsBuilder = new FieldsBuilder($fieldModel, $listModel, $userModel, $leadModel, $dncReportService);
 
         $expected = [
             'l.id' => [
@@ -55,6 +46,11 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
                 'type'           => 'datetime',
                 'groupByFormula' => 'DATE(l.date_identified)',
             ],
+            'l.date_added' => [
+                'label'          => 'mautic.core.date.added',
+                'type'           => 'datetime',
+                'groupByFormula' => 'DATE(l.date_added)',
+            ],
             'l.points' => [
                 'label' => 'mautic.lead.points',
                 'type'  => 'int',
@@ -62,7 +58,6 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
             'l.owner_id' => [
                 'label' => 'mautic.lead.report.owner_id',
                 'type'  => 'int',
-                'link'  => 'mautic_user_action',
             ],
             'u.first_name' => [
                 'label' => 'mautic.lead.report.owner_firstname',
@@ -70,6 +65,10 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
             ],
             'u.last_name' => [
                 'label' => 'mautic.lead.report.owner_lastname',
+                'type'  => 'string',
+            ],
+            'l.generated_email_domain' => [
+                'label' => 'mautic.lead.report.generated_email_domain',
                 'type'  => 'string',
             ],
             'x.title' => [
@@ -105,19 +104,13 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
         $this->assertSame($expected, $columns);
     }
 
-    public function testGetLeadFilter()
+    public function testGetLeadFilter(): void
     {
-        $fieldModel = $this->getMockBuilder(FieldModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $fieldModel = $this->createMock(FieldModel::class);
 
-        $listModel = $this->getMockBuilder(ListModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $listModel = $this->createMock(ListModel::class);
 
-        $userModel = $this->getMockBuilder(UserModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $userModel = $this->createMock(UserModel::class);
 
         $fieldModel->expects($this->once())
         ->method('getLeadFields')
@@ -147,14 +140,38 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
             ->with()
             ->willReturn($userSegments);
 
-        $users = ['John', 'Doe'];
+        $users = [
+            0 => ['id' => 1, 'firstName' => 'John', 'lastName' => 'Doe'],
+            1 => ['id' => 2, 'firstName' => 'Joe', 'lastName' => 'Smith'],
+        ];
 
         $userModel->expects($this->once())
             ->method('getUserList')
             ->with()
             ->willReturn($users);
 
-        $fieldsBuilder = new FieldsBuilder($fieldModel, $listModel, $userModel);
+        $tagList = [
+            [
+                'value' => '1',
+                'label' => 'A',
+            ],
+            [
+                'value' => '2',
+                'label' => 'B',
+            ],
+            [
+                'value' => '3',
+                'label' => 'C',
+            ],
+        ];
+        $leadModel = $this->createMock(LeadModel::class);
+        $leadModel->method('getTagList')
+            ->with()
+            ->willReturn($tagList);
+
+        $dncReportService = $this->createStub(DncReportService::class);
+
+        $fieldsBuilder = new FieldsBuilder($fieldModel, $listModel, $userModel, $leadModel, $dncReportService);
 
         $expected = [
             'l.id' => [
@@ -171,6 +188,11 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
                 'type'           => 'datetime',
                 'groupByFormula' => 'DATE(l.date_identified)',
             ],
+            'l.date_added' => [
+                'label'          => 'mautic.core.date.added',
+                'type'           => 'datetime',
+                'groupByFormula' => 'DATE(l.date_added)',
+            ],
             'l.points' => [
                 'label' => 'mautic.lead.points',
                 'type'  => 'int',
@@ -178,7 +200,6 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
             'l.owner_id' => [
                 'label' => 'mautic.lead.report.owner_id',
                 'type'  => 'int',
-                'link'  => 'mautic_user_action',
             ],
             'u.first_name' => [
                 'label' => 'mautic.lead.report.owner_firstname',
@@ -186,6 +207,10 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
             ],
             'u.last_name' => [
                 'label' => 'mautic.lead.report.owner_lastname',
+                'type'  => 'string',
+            ],
+            'l.generated_email_domain' => [
+                'label' => 'mautic.lead.report.generated_email_domain',
                 'type'  => 'string',
             ],
             'x.title' => [
@@ -225,12 +250,27 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
                     'eq' => 'mautic.core.operator.equals',
                 ],
             ],
+            'tag' => [
+                'label' => 'mautic.core.filter.tags',
+                'type'  => 'multiselect',
+                'list'  => [
+                    1 => 'A',
+                    2 => 'B',
+                    3 => 'C',
+                ],
+                'operators' => [
+                    'in'       => 'mautic.core.operator.in',
+                    'notIn'    => 'mautic.core.operator.notin',
+                    'empty'    => 'mautic.core.operator.isempty',
+                    'notEmpty' => 'mautic.core.operator.isnotempty',
+                ],
+            ],
             'x.owner_id' => [
                 'label' => 'mautic.lead.list.filter.owner',
                 'type'  => 'select',
                 'list'  => [
-                    0 => 'John',
-                    1 => 'Doe',
+                    1 => 'John Doe',
+                    2 => 'Joe Smith',
                 ],
             ],
         ];
@@ -239,26 +279,24 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
         $this->assertSame($expected, $columns);
     }
 
-    public function testGetCompanyColumns()
+    public function testGetCompanyColumns(): void
     {
-        $fieldModel = $this->getMockBuilder(FieldModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $fieldModel = $this->createMock(FieldModel::class);
 
-        $listModel = $this->getMockBuilder(ListModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $listModel = $this->createStub(ListModel::class);
 
-        $userModel = $this->getMockBuilder(UserModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $userModel = $this->createStub(UserModel::class);
 
-        $fieldModel->expects($this->exactly(2)) //We have 2 asserts
+        $fieldModel->expects($this->exactly(2)) // We have 2 asserts
         ->method('getCompanyFields')
             ->with()
             ->willReturn($this->getFields());
 
-        $fieldsBuilder = new FieldsBuilder($fieldModel, $listModel, $userModel);
+        $leadModel = $this->createStub(LeadModel::class);
+
+        $dncReportService = $this->createStub(DncReportService::class);
+
+        $fieldsBuilder = new FieldsBuilder($fieldModel, $listModel, $userModel, $leadModel, $dncReportService);
 
         $expected = [
             'comp.id' => [
@@ -324,10 +362,8 @@ class FieldsBuilderTest extends \PHPUnit\Framework\TestCase
         $this->assertSame($expected, $columns);
     }
 
-    /**
-     * @return array
-     */
-    private function getFields()
+    /** @return array<int, Field> */
+    private function getFields(): array
     {
         $titleField = new Field();
         $titleField->setLabel('Title');

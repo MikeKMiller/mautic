@@ -1,25 +1,13 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Segment\IntegrationCampaign;
 
 use Mautic\LeadBundle\Segment\IntegrationCampaign\IntegrationCampaignParts;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(IntegrationCampaignParts::class)]
 class IntegrationCampaignPartsTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @covers \Mautic\LeadBundle\Segment\IntegrationCampaign\IntegrationCampaignParts::getIntegrationName()
-     * @covers \Mautic\LeadBundle\Segment\IntegrationCampaign\IntegrationCampaignParts::getCampaignId()
-     */
-    public function testConnectwise()
+    public function testConnectwise(): void
     {
         $field             = 'Connectwise::283';
         $doNotContactParts = new IntegrationCampaignParts($field);
@@ -28,11 +16,7 @@ class IntegrationCampaignPartsTest extends \PHPUnit\Framework\TestCase
         $this->assertSame('283', $doNotContactParts->getCampaignId());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\IntegrationCampaign\IntegrationCampaignParts::getIntegrationName()
-     * @covers \Mautic\LeadBundle\Segment\IntegrationCampaign\IntegrationCampaignParts::getCampaignId()
-     */
-    public function testSalesforceExplicit()
+    public function testSalesforceExplicit(): void
     {
         $field             = 'Salesforce::22';
         $doNotContactParts = new IntegrationCampaignParts($field);
@@ -41,11 +25,7 @@ class IntegrationCampaignPartsTest extends \PHPUnit\Framework\TestCase
         $this->assertSame('22', $doNotContactParts->getCampaignId());
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Segment\IntegrationCampaign\IntegrationCampaignParts::getIntegrationName()
-     * @covers \Mautic\LeadBundle\Segment\IntegrationCampaign\IntegrationCampaignParts::getCampaignId()
-     */
-    public function testSalesforceDefault()
+    public function testSalesforceDefault(): void
     {
         $field             = '44';
         $doNotContactParts = new IntegrationCampaignParts($field);

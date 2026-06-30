@@ -1,13 +1,6 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\CoreBundle\Tests\Unit\EventListener;
 
@@ -16,86 +9,93 @@ use Mautic\CoreBundle\Entity\CommonRepository;
 use Mautic\CoreBundle\Event\StatsEvent;
 use Mautic\CoreBundle\EventListener\CommonStatsSubscriber;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Test\ReflectionHelper;
 use Mautic\UserBundle\Entity\User;
+use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 
 class CommonStatsSubscriberTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var CorePermissions|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&CorePermissions
      */
-    private $security;
+    private MockObject $security;
 
     /**
-     * @var EntityManager|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&User
      */
-    private $entityManager;
+    private MockObject $user;
 
     /**
-     * @var User|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&CommonRepository
      */
-    private $user;
+    private MockObject $repository;
 
     /**
-     * @var CommonRepository|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&StatsEvent
      */
-    private $repository;
+    private MockObject $statsEvent;
 
     /**
-     * @var StatsEvent|\PHPUnit\Framework\MockObject\MockObject
+     * @var CommonStatsSubscriber|MockObject
      */
-    private $statsEvent;
-
-    /**
-     * @var CommonStatsSubscriber|\PHPUnit\Framework\MockObject\MockObject
-     */
-    private $subscirber;
+    private MockObject $subscirber;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->security      = $this->createMock(CorePermissions::class);
-        $this->entityManager = $this->createMock(EntityManager::class);
+        $entityManager       = $this->createMock(EntityManager::class);
         $this->user          = $this->createMock(User::class);
         $this->repository    = $this->createMock(CommonRepository::class);
         $this->statsEvent    = $this->createMock(StatsEvent::class);
-        $this->subscirber    = $this->getMockForAbstractClass(
-            CommonStatsSubscriber::class,
-            [
-                $this->security,
-                $this->entityManager,
-            ]
-        );
+        $this->subscirber    = $this->getMockBuilder(CommonStatsSubscriber::class)
+            ->setConstructorArgs(
+                [
+                    $this->security,
+                    $entityManager,
+                ]
+            )
+            ->onlyMethods([])
+            ->getMock();
     }
 
-    public function testOnStatsFetchForRestrictedUsers()
+    public function testOnStatsFetchForRestrictedUsers(): void
     {
-        $this->setProperty($this->subscirber, 'repositories', [$this->repository]);
-        $this->setProperty($this->subscirber, 'permissions', ['emails_stats' => ['lead' => 'lead:leads']]);
+        ReflectionHelper::setValue($this->subscirber, 'repositories', [$this->repository]);
+        ReflectionHelper::setValue($this->subscirber, 'permissions', ['emails_stats' => ['lead' => 'lead:leads']]);
 
         $this->user->expects($this->once())
             ->method('getId')
             ->willReturn(9);
+        $matcher = $this->exactly(2);
 
-        $this->security->expects($this->at(0))
-            ->method('checkPermissionExists')
-            ->with('lead:leads:view')
-            ->willReturn(true);
+        $this->security->expects($matcher)
+            ->method('checkPermissionExists')->willReturnCallback(function (...$parameters) use ($matcher): true {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('lead:leads:view', $parameters[0]);
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('lead:leads:viewother', $parameters[0]);
+                }
 
-        $this->security->expects($this->at(1))
-            ->method('isGranted')
-            ->with('lead:leads:view')
-            ->willReturn(false);
+                return true;
+            });
+        $matcher = $this->exactly(2);
 
-        $this->security->expects($this->at(2))
-            ->method('checkPermissionExists')
-            ->with('lead:leads:viewother')
-            ->willReturn(true);
+        $this->security->expects($matcher)
+            ->method('isGranted')->willReturnCallback(function (...$parameters) use ($matcher) {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('lead:leads:view', $parameters[0]);
 
-        $this->security->expects($this->at(3))
-            ->method('isGranted')
-            ->with('lead:leads:viewother')
-            ->willReturn(true);
+                    return false;
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('lead:leads:viewother', $parameters[0]);
+
+                    return true;
+                }
+            });
 
         $this->repository->expects($this->once())
             ->method('getTableName')
@@ -129,17 +129,17 @@ class CommonStatsSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->subscirber->onStatsFetch($this->statsEvent);
     }
 
-    public function testOnStatsFetchForViewAllUsers()
+    public function testOnStatsFetchForViewAllUsers(): void
     {
-        $this->setProperty($this->subscirber, 'repositories', [$this->repository]);
-        $this->setProperty($this->subscirber, 'permissions', ['emails_stats' => ['lead' => 'lead:leads']]);
+        ReflectionHelper::setValue($this->subscirber, 'repositories', [$this->repository]);
+        ReflectionHelper::setValue($this->subscirber, 'permissions', ['emails_stats' => ['lead' => 'lead:leads']]);
 
-        $this->security->expects($this->at(0))
+        $this->security->expects($this->once())
             ->method('checkPermissionExists')
             ->with('lead:leads:view')
             ->willReturn(true);
 
-        $this->security->expects($this->at(1))
+        $this->security->expects($this->once())
             ->method('isGranted')
             ->with('lead:leads:view')
             ->willReturn(true);
@@ -164,12 +164,12 @@ class CommonStatsSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->subscirber->onStatsFetch($this->statsEvent);
     }
 
-    public function testOnStatsFetchForAdminUsers()
+    public function testOnStatsFetchForAdminUsers(): void
     {
-        $this->setProperty($this->subscirber, 'repositories', [$this->repository]);
-        $this->setProperty($this->subscirber, 'permissions', ['emails_stats' => ['lead' => 'admin']]);
+        ReflectionHelper::setValue($this->subscirber, 'repositories', [$this->repository]);
+        ReflectionHelper::setValue($this->subscirber, 'permissions', ['emails_stats' => ['lead' => 'admin']]);
 
-        $this->security->expects($this->at(0))
+        $this->security->expects($this->once())
             ->method('isAdmin')
             ->willReturn(true);
 
@@ -189,34 +189,40 @@ class CommonStatsSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->subscirber->onStatsFetch($this->statsEvent);
     }
 
-    public function testOnStatsFetchForNoPermissionUsers()
+    public function testOnStatsFetchForNoPermissionUsers(): void
     {
-        $this->setProperty($this->subscirber, 'repositories', [$this->repository]);
-        $this->setProperty($this->subscirber, 'permissions', ['emails_stats' => ['lead' => 'lead:leads']]);
+        ReflectionHelper::setValue($this->subscirber, 'repositories', [$this->repository]);
+        ReflectionHelper::setValue($this->subscirber, 'permissions', ['emails_stats' => ['lead' => 'lead:leads']]);
 
         $this->repository->expects($this->once())
             ->method('getTableName')
             ->willReturn('emails_stats');
+        $matcher = $this->exactly(2);
 
-        $this->security->expects($this->at(0))
-            ->method('checkPermissionExists')
-            ->with('lead:leads:view')
-            ->willReturn(true);
+        $this->security->expects($matcher)
+            ->method('checkPermissionExists')->willReturnCallback(function (...$parameters) use ($matcher): true {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('lead:leads:view', $parameters[0]);
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('lead:leads:viewother', $parameters[0]);
+                }
 
-        $this->security->expects($this->at(1))
-            ->method('isGranted')
-            ->with('lead:leads:view')
-            ->willReturn(false);
+                return true;
+            });
+        $matcher = $this->exactly(2);
 
-        $this->security->expects($this->at(2))
-            ->method('checkPermissionExists')
-            ->with('lead:leads:viewother')
-            ->willReturn(true);
+        $this->security->expects($matcher)
+            ->method('isGranted')->willReturnCallback(function (...$parameters) use ($matcher): false {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('lead:leads:view', $parameters[0]);
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('lead:leads:viewother', $parameters[0]);
+                }
 
-        $this->security->expects($this->at(3))
-            ->method('isGranted')
-            ->with('lead:leads:viewother')
-            ->willReturn(false);
+                return false;
+            });
 
         $this->statsEvent->expects($this->once())
             ->method('isLookingForTable')
@@ -228,13 +234,5 @@ class CommonStatsSubscriberTest extends \PHPUnit\Framework\TestCase
 
         $this->expectException(AccessDeniedException::class);
         $this->subscirber->onStatsFetch($this->statsEvent);
-    }
-
-    private function setProperty($object, $property, $value)
-    {
-        $reflection         = new \ReflectionClass($object);
-        $reflectionProperty = $reflection->getProperty($property);
-        $reflectionProperty->setAccessible(true);
-        $reflectionProperty->setValue($object, $value);
     }
 }

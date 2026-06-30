@@ -1,88 +1,69 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Event;
 
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Entity\LeadList;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
-/**
- * Class ListChangeEvent.
- */
 class ListChangeEvent extends Event
 {
-    private $lead;
-    private $leads;
-    private $list;
-    private $added;
+    private ?Lead $lead = null;
 
     /**
-     * ListChangeEvent constructor.
-     *
-     * @param      $leads
-     * @param bool $added
+     * @var Lead[]|null
      */
-    public function __construct($leads, LeadList $list, $added = true)
-    {
+    private ?array $leads = null;
+
+    /**
+     * @param Lead[]|Lead $leads
+     */
+    public function __construct(
+        Lead|array $leads,
+        private readonly LeadList $list,
+        private readonly bool $added = true,
+        private readonly ?\DateTime $date = null,
+    ) {
         if (is_array($leads)) {
             $this->leads = $leads;
         } else {
             $this->lead = $leads;
         }
-        $this->list  = $list;
-        $this->added = $added;
     }
 
     /**
      * Returns the Lead entity.
-     *
-     * @return Lead
      */
-    public function getLead()
+    public function getLead(): ?Lead
     {
         return $this->lead;
     }
 
-    /**
-     * Returns batch array of leads.
-     *
-     * @return array
-     */
-    public function getLeads()
-    {
-        return $this->leads;
-    }
-
-    /**
-     * @return LeadList
-     */
-    public function getList()
+    public function getList(): LeadList
     {
         return $this->list;
     }
 
     /**
-     * @return bool
+     * Returns batch array of leads.
      */
-    public function wasAdded()
+    public function getLeads(): ?array
+    {
+        return $this->leads;
+    }
+
+    public function wasAdded(): bool
     {
         return $this->added;
     }
 
-    /**
-     * @return bool
-     */
-    public function wasRemoved()
+    public function wasRemoved(): bool
     {
         return !$this->added;
+    }
+
+    public function getDate(): ?\DateTime
+    {
+        return $this->date;
     }
 }

@@ -1,79 +1,104 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\UserBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\CacheInvalidateInterface;
 use Mautic\CoreBundle\Entity\FormEntity;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
+use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 
-/**
- * Class Role.
- */
-class Role extends FormEntity
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('user:roles:viewown')"),
+        new Post(security: "is_granted('user:roles:create')"),
+        new Get(security: "is_granted('user:roles:viewown', object)"),
+        new Put(security: "is_granted('user:roles:editown', object)"),
+        new Patch(security: "is_granted('user:roles:editother', object)"),
+        new Delete(security: "is_granted('user:roles:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['role:read'],
+        'swagger_definition_name' => 'Read',
+        'api_included'            => ['permissions'],
+    ],
+    denormalizationContext: [
+        'groups'                  => ['role:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Role extends FormEntity implements CacheInvalidateInterface, UuidInterface
 {
+    use UuidTrait;
+
+    public const CACHE_NAMESPACE = 'Role';
+
     /**
      * @var int
      */
+    #[Groups(['role:read'])]
     private $id;
 
     /**
      * @var string
      */
+    #[Groups(['role:read', 'role:write'])]
     private $name;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['role:read', 'role:write'])]
     private $description;
 
     /**
      * @var bool
      */
+    #[Groups(['role:read', 'role:write'])]
     private $isAdmin = false;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int, Permission>
      */
+    #[Groups(['role:read', 'role:write'])]
     private $permissions;
 
     /**
      * @var array
      */
+    #[Groups(['role:read', 'role:write'])]
     private $rawPermissions;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int, User>
      */
     private $users;
 
-    /**
-     * Constructor.
-     */
     public function __construct()
     {
         $this->permissions = new ArrayCollection();
         $this->users       = new ArrayCollection();
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('roles')
-            ->setCustomRepositoryClass('Mautic\UserBundle\Entity\RoleRepository');
+            ->setCustomRepositoryClass(RoleRepository::class);
 
         $builder->addIdColumns();
 
@@ -97,9 +122,11 @@ class Role extends FormEntity
             ->mappedBy('role')
             ->fetchExtraLazy()
             ->build();
+
+        static::addUuidField($builder);
     }
 
-    public static function loadValidatorMetadata(ClassMetadata $metadata)
+    public static function loadValidatorMetadata(ClassMetadata $metadata): void
     {
         $metadata->addPropertyConstraint('name', new Assert\NotBlank(
             ['message' => 'mautic.core.name.required']
@@ -108,10 +135,8 @@ class Role extends FormEntity
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('role')
             ->addListProperties(
@@ -129,7 +154,7 @@ class Role extends FormEntity
     /**
      * Get id.
      *
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
@@ -140,10 +165,8 @@ class Role extends FormEntity
      * Set name.
      *
      * @param string $name
-     *
-     * @return Role
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->isChanged('name', $name);
         $this->name = $name;
@@ -154,7 +177,7 @@ class Role extends FormEntity
     /**
      * Get name.
      *
-     * @return string
+     * @return string|null
      */
     public function getName()
     {
@@ -163,10 +186,8 @@ class Role extends FormEntity
 
     /**
      * Add permissions.
-     *
-     * @return Role
      */
-    public function addPermission(Permission $permissions)
+    public function addPermission(Permission $permissions): static
     {
         $permissions->setRole($this);
 
@@ -178,7 +199,7 @@ class Role extends FormEntity
     /**
      * Remove permissions.
      */
-    public function removePermission(Permission $permissions)
+    public function removePermission(Permission $permissions): void
     {
         $this->permissions->removeElement($permissions);
     }
@@ -186,7 +207,7 @@ class Role extends FormEntity
     /**
      * Get permissions.
      *
-     * @return \Doctrine\Common\Collections\Collection
+     * @return ArrayCollection<int, Permission>
      */
     public function getPermissions()
     {
@@ -197,10 +218,8 @@ class Role extends FormEntity
      * Set description.
      *
      * @param string $description
-     *
-     * @return Role
      */
-    public function setDescription($description)
+    public function setDescription($description): static
     {
         $this->isChanged('description', $description);
         $this->description = $description;
@@ -211,7 +230,7 @@ class Role extends FormEntity
     /**
      * Get description.
      *
-     * @return string
+     * @return string|null
      */
     public function getDescription()
     {
@@ -222,10 +241,8 @@ class Role extends FormEntity
      * Set isAdmin.
      *
      * @param bool $isAdmin
-     *
-     * @return Role
      */
-    public function setIsAdmin($isAdmin)
+    public function setIsAdmin($isAdmin): static
     {
         $this->isChanged('isAdmin', $isAdmin);
         $this->isAdmin = $isAdmin;
@@ -256,7 +273,7 @@ class Role extends FormEntity
     /**
      * Simply used to store a readable format of permissions for the changelog.
      */
-    public function setRawPermissions(array $permissions)
+    public function setRawPermissions(array $permissions): void
     {
         $this->isChanged('rawPermissions', $permissions);
         $this->rawPermissions = $permissions;
@@ -265,7 +282,7 @@ class Role extends FormEntity
     /**
      * Get rawPermissions.
      *
-     * @return array
+     * @return array|null
      */
     public function getRawPermissions()
     {
@@ -274,10 +291,8 @@ class Role extends FormEntity
 
     /**
      * Add users.
-     *
-     * @return Role
      */
-    public function addUser(User $users)
+    public function addUser(User $users): static
     {
         $this->users[] = $users;
 
@@ -287,7 +302,7 @@ class Role extends FormEntity
     /**
      * Remove users.
      */
-    public function removeUser(User $users)
+    public function removeUser(User $users): void
     {
         $this->users->removeElement($users);
     }
@@ -295,10 +310,18 @@ class Role extends FormEntity
     /**
      * Get users.
      *
-     * @return \Doctrine\Common\Collections\Collection
+     * @return ArrayCollection<int, User>
      */
     public function getUsers()
     {
         return $this->users;
+    }
+
+    public function getCacheNamespacesToDelete(): array
+    {
+        return [
+            self::CACHE_NAMESPACE,
+            User::CACHE_NAMESPACE,
+        ];
     }
 }

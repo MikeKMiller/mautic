@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2019 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Tests\EventListener;
 
 use Mautic\EmailBundle\EmailEvents;
@@ -25,45 +16,42 @@ use PHPUnit\Framework\MockObject\MockObject;
 class WebhookSubscriberTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var MockObject|WebhookModel
+     * @var MockObject&WebhookModel
      */
-    private $webhookModel;
+    private MockObject $webhookModel;
 
-    /**
-     * @var WebhookSubscriber
-     */
-    private $subscriber;
+    private WebhookSubscriber $subscriber;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->webhookModel = $this->createMock(WebhookModel::class);
-        $this->subscriber   = new WebhookSubscriber($this->webhookModel);
+        $this->subscriber   = new WebhookSubscriber($this->webhookModel, true);
     }
 
     public function testOnWebhookBuild(): void
     {
-        $event = $this->createMock(WebhookBuilderEvent::class);
+        $event   = $this->createMock(WebhookBuilderEvent::class);
+        $matcher = $this->exactly(2);
 
-        $event->expects($this->exactly(2))
-            ->method('addEvent')
-            ->withConsecutive(
-                [
-                    EmailEvents::EMAIL_ON_SEND,
-                    [
+        $event->expects($matcher)
+            ->method('addEvent')->willReturnCallback(function (...$parameters) use ($matcher): void {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame(EmailEvents::EMAIL_ON_SEND, $parameters[0]);
+                    $this->assertSame([
                         'label'       => 'mautic.email.webhook.event.send',
                         'description' => 'mautic.email.webhook.event.send_desc',
-                    ],
-                ],
-                [
-                    EmailEvents::EMAIL_ON_OPEN,
-                    [
+                    ], $parameters[1]);
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame(EmailEvents::EMAIL_ON_OPEN, $parameters[0]);
+                    $this->assertSame([
                         'label'       => 'mautic.email.webhook.event.open',
                         'description' => 'mautic.email.webhook.event.open_desc',
-                    ],
-                ]
-            );
+                    ], $parameters[1]);
+                }
+            });
 
         $this->subscriber->onWebhookBuild($event);
     }
@@ -85,8 +73,8 @@ class WebhookSubscriberTest extends \PHPUnit\Framework\TestCase
     public function testOnEmailSend(): void
     {
         $event   = $this->createMock(EmailSendEvent::class);
-        $contact = $this->createMock(Lead::class);
-        $email   = $this->createMock(Email::class);
+        $contact = $this->createStub(Lead::class);
+        $email   = $this->createStub(Email::class);
         $tokens  = ['{unsubscribe_text}' => '<a href=\"https://...'];
         $headers = ['List-Unsubscribe' => '<a href=\"https://...'];
         $source  = ['List-Unsubscribe' => '<a href=\"https://...']; // todo find out real source example

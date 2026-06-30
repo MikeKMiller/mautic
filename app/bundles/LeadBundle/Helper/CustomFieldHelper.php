@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Helper;
 
 use Mautic\CoreBundle\Helper\DateTimeHelper;
@@ -18,9 +9,11 @@ use Mautic\CoreBundle\Helper\DateTimeHelper;
  */
 class CustomFieldHelper
 {
-    const TYPE_BOOLEAN = 'boolean';
-    const TYPE_NUMBER  = 'number';
-    const TYPE_SELECT  = 'select';
+    public const TYPE_BOOLEAN = 'boolean';
+
+    public const TYPE_NUMBER  = 'number';
+
+    public const TYPE_SELECT  = 'select';
 
     /**
      * Fixes value type for specific field types.
@@ -37,19 +30,12 @@ class CustomFieldHelper
             return null;
         }
 
-        switch ($type) {
-            case self::TYPE_NUMBER:
-                $value = (float) $value;
-                break;
-            case self::TYPE_BOOLEAN:
-                $value = (bool) $value;
-                break;
-            case self::TYPE_SELECT:
-                $value = (string) $value;
-                break;
-        }
-
-        return $value;
+        return match ($type) {
+            self::TYPE_NUMBER  => is_numeric($value) || '' === $value ? (float) $value : $value,
+            self::TYPE_BOOLEAN => (bool) $value,
+            self::TYPE_SELECT  => is_scalar($value) ? (string) $value : $value,
+            default            => $value,
+        };
     }
 
     /**
@@ -57,7 +43,7 @@ class CustomFieldHelper
      *
      * @return mixed|string|null
      */
-    public static function fieldValueTransfomer(array $field, $value)
+    public static function fieldValueTransfomer(array $field, $value, ?DateTimeHelper $dateTimeHelper = null)
     {
         if (null === $value) {
             // do not transform null values
@@ -74,16 +60,22 @@ class CustomFieldHelper
                     return null;
                 }
 
-                $dtHelper = new DateTimeHelper($value, null, 'local');
+                if (!($value instanceof \DateTimeInterface) && !is_string($value)) {
+                    throw new \InvalidArgumentException('Wrong type given. String or DateTimeInterface expected.');
+                }
+
+                $dtHelper = $dateTimeHelper ?: new DateTimeHelper($value, null, 'local');
+                $dtHelper->setDateTime($value);
+
                 switch ($type) {
                     case 'datetime':
-                        $value = $dtHelper->toLocalString('Y-m-d H:i:s');
+                        $value = $dtHelper->toUtcString('Y-m-d H:i:s');
                         break;
                     case 'date':
-                        $value = $dtHelper->toLocalString('Y-m-d');
+                        $value = $dtHelper->toUtcString('Y-m-d');
                         break;
                     case 'time':
-                        $value = $dtHelper->toLocalString('H:i:s');
+                        $value = $dtHelper->toUtcString('H:i:s');
                         break;
                 }
                 break;
@@ -94,12 +86,17 @@ class CustomFieldHelper
 
     /**
      * Transform all fields values.
+     *
+     * @param mixed[] $fields
+     * @param mixed[] $values
+     *
+     * @return mixed[]
      */
-    public static function fieldsValuesTransformer(array $fields, array $values)
+    public static function fieldsValuesTransformer(array $fields, array $values, ?DateTimeHelper $dateTimeHelper = null): array
     {
         foreach ($values as $alias => &$value) {
-            if (!empty($fields[$alias])) {
-                $value = self::fieldValueTransfomer($fields[$alias], $value);
+            if (!empty($fields[$alias]) && is_array($fields[$alias])) {
+                $value = self::fieldValueTransfomer($fields[$alias], $value, $dateTimeHelper);
             }
         }
 

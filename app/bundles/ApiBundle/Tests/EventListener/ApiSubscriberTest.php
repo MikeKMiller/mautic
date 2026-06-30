@@ -1,84 +1,67 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ApiBundle\Tests\EventListener;
 
 use Mautic\ApiBundle\EventListener\ApiSubscriber;
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Tests\CommonMocks;
+use Mautic\CoreBundle\Translation\Translator;
 use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\HttpFoundation\HeaderBag;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\ParameterBag;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpKernel\Event\GetResponseEvent;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Component\HttpKernel\Event\RequestEvent;
 
 class ApiSubscriberTest extends CommonMocks
 {
     /**
-     * @var CoreParametersHelper|MockObject
+     * @var MockObject&CoreParametersHelper
      */
-    private $coreParametersHelper;
+    private MockObject $coreParametersHelper;
 
     /**
-     * @var TranslatorInterface|MockObject
+     * @var MockObject&Request
      */
-    private $translator;
+    private MockObject $request;
 
     /**
-     * @var Request|MockObject
+     * @var MockObject&RequestEvent
      */
-    private $request;
+    private MockObject $event;
 
-    /**
-     * @var GetResponseEvent|MockObject
-     */
-    private $event;
-
-    /**
-     * @var ApiSubscriber
-     */
-    private $subscriber;
+    private ApiSubscriber $subscriber;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->coreParametersHelper = $this->createMock(CoreParametersHelper::class);
-        $this->translator           = $this->createMock(TranslatorInterface::class);
+        $translator                 = $this->createMock(Translator::class);
         $this->request              = $this->createMock(Request::class);
-        $this->request->headers     = new ParameterBag();
-        $this->event                = $this->createMock(GetResponseEvent::class);
+        $this->request->headers     = new HeaderBag();
+        $this->event                = $this->createMock(RequestEvent::class);
         $this->subscriber           = new ApiSubscriber(
             $this->coreParametersHelper,
-            $this->translator
+            $translator
         );
     }
 
-    public function testOnKernelRequestWhenNotMasterRequest()
+    public function testOnKernelRequestWhenNotMasterRequest(): void
     {
         $this->event->expects($this->once())
-            ->method('isMasterRequest')
+            ->method('isMainRequest')
             ->willReturn(false);
 
         $this->coreParametersHelper->expects($this->never())
             ->method('get');
 
-        $this->assertNull($this->subscriber->onKernelRequest($this->event));
+        $this->subscriber->onKernelRequest($this->event);
     }
 
-    public function testOnKernelRequestOnApiRequestWhenApiDisabled()
+    public function testOnKernelRequestOnApiRequestWhenApiDisabled(): void
     {
         $this->event->expects($this->once())
-            ->method('isMasterRequest')
+            ->method('isMainRequest')
             ->willReturn(true);
 
         $this->event->expects($this->once())
@@ -98,18 +81,18 @@ class ApiSubscriberTest extends CommonMocks
             ->method('setResponse')
             ->with($this->isInstanceOf(JsonResponse::class))
             ->willReturnCallback(
-                function (JsonResponse $response) {
-                    $this->assertEquals(403, $response->getStatusCode());
+                function (JsonResponse $response): void {
+                    $this->assertSame(403, $response->getStatusCode());
                 }
             );
 
         $this->subscriber->onKernelRequest($this->event);
     }
 
-    public function testOnKernelRequestOnApiRequestWhenApiEnabled()
+    public function testOnKernelRequestOnApiRequestWhenApiEnabled(): void
     {
         $this->event->expects($this->once())
-            ->method('isMasterRequest')
+            ->method('isMainRequest')
             ->willReturn(true);
 
         $this->event->expects($this->once())
@@ -119,11 +102,21 @@ class ApiSubscriberTest extends CommonMocks
         $this->request->expects($this->once())
             ->method('getRequestUri')
             ->willReturn('/api/endpoint');
+        $matcher = $this->exactly(2);
 
-        $this->coreParametersHelper->expects($this->exactly(2))
-            ->method('get')
-            ->withConsecutive(['api_enabled'], ['api_enable_basic_auth'])
-            ->willReturnOnConsecutiveCalls(true, true);
+        $this->coreParametersHelper->expects($matcher)
+            ->method('get')->willReturnCallback(function (...$parameters) use ($matcher) {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('api_enabled', $parameters[0]);
+
+                    return true;
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('api_enable_basic_auth', $parameters[0]);
+
+                    return true;
+                }
+            });
 
         $this->subscriber->onKernelRequest($this->event);
     }

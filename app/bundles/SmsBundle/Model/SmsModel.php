@@ -1,83 +1,79 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\SmsBundle\Model;
 
 use Doctrine\DBAL\Query\QueryBuilder;
-use Mautic\ChannelBundle\Entity\MessageQueue;
-use Mautic\ChannelBundle\Model\MessageQueueModel;
+use Doctrine\ORM\EntityManagerInterface;
 use Mautic\CoreBundle\Event\TokenReplacementEvent;
 use Mautic\CoreBundle\Helper\CacheStorageHelper;
 use Mautic\CoreBundle\Helper\Chart\ChartQuery;
 use Mautic\CoreBundle\Helper\Chart\LineChart;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Model\AjaxLookupModelInterface;
 use Mautic\CoreBundle\Model\FormModel;
+use Mautic\CoreBundle\Model\GlobalSearchInterface;
+use Mautic\CoreBundle\Model\TranslationModelTrait;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\LeadBundle\Entity\DoNotContact;
 use Mautic\LeadBundle\Entity\DoNotContactRepository;
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Model\LeadModel;
 use Mautic\PageBundle\Model\TrackableModel;
+use Mautic\SmsBundle\Collection\RecipientCollection;
 use Mautic\SmsBundle\Entity\Sms;
 use Mautic\SmsBundle\Entity\Stat;
+use Mautic\SmsBundle\Event\DncEvent;
+use Mautic\SmsBundle\Event\FilterEvent;
+use Mautic\SmsBundle\Event\QueueEvent;
 use Mautic\SmsBundle\Event\SmsEvent;
 use Mautic\SmsBundle\Event\SmsSendEvent;
+use Mautic\SmsBundle\Exception\PrimaryTransportNotEnabledException;
 use Mautic\SmsBundle\Form\Type\SmsType;
+use Mautic\SmsBundle\Helper\DTO\SmsRecipientDTO;
 use Mautic\SmsBundle\Sms\TransportChain;
 use Mautic\SmsBundle\SmsEvents;
-use Symfony\Component\EventDispatcher\Event;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Form\FormFactoryInterface;
+use Symfony\Component\Form\FormInterface;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Contracts\EventDispatcher\Event;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-class SmsModel extends FormModel implements AjaxLookupModelInterface
+/**
+ * @extends FormModel<Sms>
+ *
+ * @implements AjaxLookupModelInterface<Sms>
+ */
+class SmsModel extends FormModel implements AjaxLookupModelInterface, GlobalSearchInterface
 {
-    /**
-     * @var TrackableModel
-     */
-    protected $pageTrackableModel;
+    use TranslationModelTrait;
 
-    /**
-     * @var LeadModel
-     */
-    protected $leadModel;
-
-    /**
-     * @var MessageQueueModel
-     */
-    protected $messageQueueModel;
-
-    /**
-     * @var TransportChain
-     */
-    protected $transport;
-
-    /**
-     * @var CacheStorageHelper
-     */
-    private $cacheStorageHelper;
-
-    public function __construct(TrackableModel $pageTrackableModel, LeadModel $leadModel, MessageQueueModel $messageQueueModel, TransportChain $transport, CacheStorageHelper $cacheStorageHelper)
-    {
-        $this->pageTrackableModel = $pageTrackableModel;
-        $this->leadModel          = $leadModel;
-        $this->messageQueueModel  = $messageQueueModel;
-        $this->transport          = $transport;
-        $this->cacheStorageHelper = $cacheStorageHelper;
+    public function __construct(
+        protected TrackableModel $pageTrackableModel,
+        protected LeadModel $leadModel,
+        protected TransportChain $transport,
+        private CacheStorageHelper $cacheStorageHelper,
+        EntityManagerInterface $em,
+        CorePermissions $security,
+        EventDispatcherInterface $dispatcher,
+        UrlGeneratorInterface $router,
+        TranslatorInterface $translator,
+        UserHelper $userHelper,
+        LoggerInterface $mauticLogger,
+        CoreParametersHelper $coreParametersHelper,
+    ) {
+        parent::__construct($em, $security, $dispatcher, $router, $translator, $userHelper, $mauticLogger, $coreParametersHelper);
     }
 
     /**
-     * {@inheritdoc}
-     *
      * @return \Mautic\SmsBundle\Entity\SmsRepository
      */
     public function getRepository()
     {
-        return $this->em->getRepository('MauticSmsBundle:Sms');
+        return $this->em->getRepository(Sms::class);
     }
 
     /**
@@ -85,34 +81,40 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
      */
     public function getStatRepository()
     {
-        return $this->em->getRepository('MauticSmsBundle:Stat');
+        return $this->em->getRepository(Stat::class);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getPermissionBase()
+    public function getDoNotContactRepository(): DoNotContactRepository
+    {
+        return $this->em->getRepository(DoNotContact::class);
+    }
+
+    public function getPermissionBase(): string
     {
         return 'sms:smses';
+    }
+
+    public function saveEntity($entity, $unlock = true): void
+    {
+        parent::saveEntity($entity, $unlock);
+
+        $this->postTranslationEntitySave($entity);
     }
 
     /**
      * Save an array of entities.
      *
-     * @param  $entities
-     * @param  $unlock
-     *
-     * @return array
+     * @param iterable<Sms> $entities
      */
-    public function saveEntities($entities, $unlock = true)
+    public function saveEntities($entities, $unlock = true): void
     {
-        //iterate over the results so the events are dispatched on each delete
+        // iterate over the results so the events are dispatched on each delete
         $batchSize = 20;
         $i         = 0;
         foreach ($entities as $entity) {
-            $isNew = ($entity->getId()) ? false : true;
+            $isNew = !(bool) $entity->getId();
 
-            //set some defaults
+            // set some defaults
             $this->setTimestamps($entity, $isNew, $unlock);
 
             if ($dispatchEvent = $entity instanceof Sms) {
@@ -133,19 +135,11 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
     }
 
     /**
-     * {@inheritdoc}
+     * @param mixed[] $options
      *
-     * @param       $entity
-     * @param       $formFactory
-     * @param null  $action
-     * @param array $options
-     *
-     * @return mixed
-     *
-     * @throws \Symfony\Component\HttpKernel\Exception\NotFoundHttpException
      * @throws MethodNotAllowedHttpException
      */
-    public function createForm($entity, $formFactory, $action = null, $options = [])
+    public function createForm($entity, FormFactoryInterface $formFactory, $action = null, $options = []): FormInterface
     {
         if (!$entity instanceof Sms) {
             throw new MethodNotAllowedHttpException(['Sms']);
@@ -159,12 +153,8 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
 
     /**
      * Get a specific entity or generate a new one if id is empty.
-     *
-     * @param $id
-     *
-     * @return Sms|null
      */
-    public function getEntity($id = null)
+    public function getEntity($id = null): ?Sms
     {
         if (null === $id) {
             $entity = new Sms();
@@ -198,186 +188,210 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
     }
 
     /**
-     * @param       $sendTo
-     * @param array $options
-     *
-     * @return array
+     * @param Lead|int|array<Lead>|array<int> $sendTo
+     * @param array                           $options
+     * @param array<int, Lead>                $contacts
      */
-    public function sendSms(Sms $sms, $sendTo, $options = [])
+    public function sendSms(Sms $sms, $sendTo, $options = [], array &$contacts = []): array
     {
-        $channel = (isset($options['channel'])) ? $options['channel'] : null;
-        $listId  = (isset($options['listId'])) ? $options['listId'] : null;
+        $channel = $options['channel'] ?? null;
+        $listId  = $options['listId'] ?? null;
+        $sendTo  = is_array($sendTo) ? $sendTo : [$sendTo];
 
-        if ($sendTo instanceof Lead) {
-            $sendTo = [$sendTo];
-        } elseif (!is_array($sendTo)) {
-            $sendTo = [$sendTo];
-        }
-
-        $sentCount       = 0;
-        $failedCount     = 0;
+        $sentCount       = [];
+        $stats           = [];
         $results         = [];
-        $contacts        = [];
+        $contacts        = []; // Shall we reset the passed contacts param here?
         $fetchContacts   = [];
-        foreach ($sendTo as $lead) {
-            if (!$lead instanceof Lead) {
-                $fetchContacts[] = $lead;
+        foreach ($sendTo as $contact) {
+            if ($contact instanceof Lead) {
+                $contacts[$contact->getId()] = $contact;
             } else {
-                $contacts[$lead->getId()] = $lead;
+                $fetchContacts[] = $contact;
             }
         }
 
         if ($fetchContacts) {
-            $foundContacts = $this->leadModel->getEntities(
-                [
-                    'ids' => $fetchContacts,
-                ]
-            );
+            /** @var Lead[] $foundContacts */
+            $foundContacts = $this->leadModel->getEntities(['ids' => $fetchContacts]);
 
             foreach ($foundContacts as $contact) {
                 $contacts[$contact->getId()] = $contact;
             }
         }
-        $contactIds = array_keys($contacts);
 
-        /** @var DoNotContactRepository $dncRepo */
-        $dncRepo = $this->em->getRepository('MauticLeadBundle:DoNotContact');
-        $dnc     = $dncRepo->getChannelList('sms', $contactIds);
-
-        if (!empty($dnc)) {
-            foreach ($dnc as $removeMeId => $removeMeReason) {
-                $results[$removeMeId] = [
+        if (!$sms->isPublished()) {
+            foreach ($contacts as $contactId => $contact) {
+                $results[$contactId] = [
                     'sent'   => false,
-                    'status' => 'mautic.sms.campaign.failed.not_contactable',
+                    'status' => 'mautic.sms.campaign.failed.unpublished',
                 ];
-
-                unset($contacts[$removeMeId], $contactIds[$removeMeId]);
             }
+
+            return $results;
         }
 
-        if (!empty($contacts)) {
-            $messageQueue    = (isset($options['resend_message_queue'])) ? $options['resend_message_queue'] : null;
-            $campaignEventId = (is_array($channel) && 'campaign.event' === $channel[0] && !empty($channel[1])) ? $channel[1] : null;
+        $dncEvent = new DncEvent($contacts);
+        $this->dispatcher->dispatch($dncEvent, SmsEvents::DNC_FILTER_CONTACTS_ON_SEND);
 
-            $queued = $this->messageQueueModel->processFrequencyRules(
-                $contacts,
-                'sms',
-                $sms->getId(),
-                $campaignEventId,
-                3,
-                MessageQueue::PRIORITY_NORMAL,
-                $messageQueue,
-                'sms_message_stats'
+        foreach ($dncEvent->getRemovedContacts() as $contactId) {
+            $results[$contactId] = [
+                'sent'   => false,
+                'status' => 'mautic.sms.campaign.failed.not_contactable',
+            ];
+        }
+
+        $contacts = $dncEvent->getContacts(); // The contacts param is reset here too, no?
+
+        // Check if any contacts remain. If not, return early.
+        if (empty($contacts)) {
+            return $results;
+        }
+
+        $queueEvent = new QueueEvent($contacts, array_merge($options, ['sms_id' => $sms->getId()]));
+        $this->dispatcher->dispatch($queueEvent, SmsEvents::QUEUE_FILTER_CONTACTS_ON_SEND);
+
+        foreach ($queueEvent->getQueuedContacts() as $contactId) {
+            $results[$contactId] = [
+                'sent'   => false,
+                'status' => 'mautic.sms.timeline.status.scheduled',
+            ];
+        }
+
+        $contacts = $queueEvent->getContacts();
+
+        // Check if any contacts remain. If not, return early.
+        if (!$contacts) {
+            return $results;
+        }
+
+        $filterEvent = new FilterEvent($contacts);
+        $this->dispatcher->dispatch($filterEvent, SmsEvents::FILTER_CONTACTS_ON_SEND);
+
+        foreach ($filterEvent->getRemovedContacts() as $contactId) {
+            $results[$contactId] = [
+                'sent'   => false,
+                'status' => 'mautic.sms.campaign.failed.missing_number',
+            ];
+        }
+
+        $contacts = $filterEvent->getContacts();
+
+        if (!$contacts) {
+            return $results;
+        }
+
+        $recipientCollections = [];
+
+        /** @var array<int, Stat> $stats */
+        $stats = [];
+
+        /** @var Lead $contact */
+        foreach ($contacts as $contact) {
+            [, $translatedSms] = $this->getTranslatedEntity($sms, $contact);
+            \assert($translatedSms instanceof Sms);
+
+            $stat    = $this->createStatEntry($translatedSms, $contact, $channel, false, $listId);
+            $stats[] = $stat;
+
+            $smsEvent = new SmsSendEvent($translatedSms->getMessage(), $contact);
+            $smsEvent->setSmsId($translatedSms->getId());
+            $this->dispatcher->dispatch($smsEvent, SmsEvents::SMS_ON_SEND);
+
+            $tokenEvent = $this->dispatcher->dispatch(
+                new TokenReplacementEvent(
+                    $smsEvent->getContent(),
+                    $contact,
+                    [
+                        'channel' => [
+                            'sms',          // Keep BC pre 2.14.1
+                            $translatedSms->getId(),  // Keep BC pre 2.14.1
+                            'sms' => $translatedSms->getId(),
+                        ],
+                        'stat'    => $stat->getTrackingHash(),
+                    ]
+                ),
+                SmsEvents::TOKEN_REPLACEMENT
             );
 
-            if ($queued) {
-                foreach ($queued as $queue) {
-                    $results[$queue] = [
-                        'sent'   => false,
-                        'status' => 'mautic.sms.timeline.status.scheduled',
-                    ];
+            if (!isset($recipientCollections[$translatedSms->getId()])) {
+                $recipientCollections[$translatedSms->getId()] = new RecipientCollection($translatedSms);
+            }
+            $recipientCollections[$translatedSms->getId()]->append(new SmsRecipientDTO($contact, $tokenEvent->getTokens(), $tokenEvent->getContent()));
 
-                    unset($contacts[$queue]);
+            unset($smsEvent, $tokenEvent);
+        }
+
+        foreach ($recipientCollections as $recipientCollection) {
+            $translatedSms = $recipientCollection->getSms();
+            $media         = $translatedSms->getMedia();
+
+            try {
+                // assumption made that the Sms message is same for all contacts
+                $message = $translatedSms->getMessage();
+                if ($media) {
+                    $this->transport->sendMMS($recipientCollection, $media);
+                } else {
+                    $this->transport->sendBatchSms($recipientCollection, $message);
                 }
+            } catch (PrimaryTransportNotEnabledException $e) {
+                $this->logger->warning($e->getMessage());
+
+                return $results;
             }
 
-            $stats = [];
-            // @todo we should allow batch sending based on transport, MessageBird does support 20 SMS at once
-            // the transport chain is already prepared for it
-            if (count($contacts)) {
-                /** @var Lead $lead */
-                foreach ($contacts as $lead) {
-                    $leadId          = $lead->getId();
-                    $stat            = $this->createStatEntry($sms, $lead, $channel, false, $listId);
+            $defaultSendResult = [
+                'sent'    => false,
+                'type'    => 'mautic.sms.sms',
+                'status'  => 'mautic.sms.timeline.status.delivered',
+                'id'      => $recipientCollection->getSms()->getId(),
+                'name'    => $recipientCollection->getSms()->getName(),
+            ];
 
-                    $leadPhoneNumber = $lead->getLeadPhoneNumber();
-
-                    if (empty($leadPhoneNumber)) {
-                        $results[$leadId] = [
-                            'sent'   => false,
-                            'status' => 'mautic.sms.campaign.failed.missing_number',
-                        ];
-
-                        continue;
-                    }
-
-                    $smsEvent = new SmsSendEvent($sms->getMessage(), $lead);
-                    $smsEvent->setSmsId($sms->getId());
-                    $this->dispatcher->dispatch(SmsEvents::SMS_ON_SEND, $smsEvent);
-
-                    $tokenEvent = $this->dispatcher->dispatch(
-                        SmsEvents::TOKEN_REPLACEMENT,
-                        new TokenReplacementEvent(
-                            $smsEvent->getContent(),
-                            $lead,
-                            [
-                                'channel' => [
-                                    'sms',          // Keep BC pre 2.14.1
-                                    $sms->getId(),  // Keep BC pre 2.14.1
-                                    'sms' => $sms->getId(),
-                                ],
-                                'stat'    => $stat->getTrackingHash(),
-                            ]
-                        )
-                    );
-
-                    $sendResult = [
-                        'sent'    => false,
-                        'type'    => 'mautic.sms.sms',
-                        'status'  => 'mautic.sms.timeline.status.delivered',
-                        'id'      => $sms->getId(),
-                        'name'    => $sms->getName(),
-                        'content' => $tokenEvent->getContent(),
-                    ];
-
-                    $metadata = $this->transport->sendSms($lead, $tokenEvent->getContent(), $stat);
-                    if (true !== $metadata) {
-                        $sendResult['status'] = $metadata;
-                        $stat->setIsFailed(true);
-                        if (is_string($metadata)) {
-                            $stat->addDetail('failed', $metadata);
-                        }
-                        ++$failedCount;
-                    } else {
-                        $sendResult['sent'] = true;
-                        ++$sentCount;
-                    }
-
-                    $stats[]            = $stat;
-                    unset($stat);
-                    $results[$leadId] = $sendResult;
-
-                    unset($smsEvent, $tokenEvent, $sendResult, $metadata);
+            foreach ($recipientCollection as $recipient) {
+                $defaultSendResult['content'] = $recipient->getFinalMessage();
+                if (true !== $recipient->getResult()) {
+                    $defaultSendResult['sent']   = false;
+                    $defaultSendResult['status'] = $recipient->getResult();
+                    unset($stats[$recipient->getKey()]);
+                } else {
+                    $defaultSendResult['sent']          = true;
+                    $defaultSendResult['status']        = 'mautic.sms.timeline.status.delivered';
+                    $sentCount[$translatedSms->getId()] = ($sentCount[$translatedSms->getId()] ?? 0) + 1;
                 }
+
+                $results[$recipient->getKey()] = $defaultSendResult;
             }
         }
 
-        if ($sentCount || $failedCount) {
-            $this->getRepository()->upCount($sms->getId(), 'sent', $sentCount);
+        if ($sentCount) {
+            $repo = $this->getRepository();
+            foreach ($sentCount as $id => $count) {
+                $repo->upCount($id, 'sent', $count);
+            }
+        }
+
+        if (count($stats)) {
             $this->getStatRepository()->saveEntities($stats);
 
             foreach ($stats as $stat) {
                 if (!$stat->isFailed()) {
                     $results[$stat->getLead()->getId()]['statId'] = $stat->getId();
                 }
-            }
 
-            $this->em->clear(Stat::class);
+                $this->getRepository()->detachEntity($stat);
+            }
         }
 
         return $results;
     }
 
     /**
-     * @param null $source
      * @param bool $persist
-     * @param null $listId
-     *
-     * @return Stat
      *
      * @throws \Exception
      */
-    public function createStatEntry(Sms $sms, Lead $lead, $source = null, $persist = true, $listId = null)
+    public function createStatEntry(Sms $sms, Lead $lead, $source = null, $persist = true, $listId = null): Stat
     {
         $stat = new Stat();
         $stat->setDateSent(new \DateTime());
@@ -401,16 +415,9 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
     }
 
     /**
-     * {@inheritdoc}
-     *
-     * @param $action
-     * @param $event
-     * @param $entity
-     * @param $isNew
-     *
-     * @throws \Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException
+     * @throws MethodNotAllowedHttpException
      */
-    protected function dispatchEvent($action, &$entity, $isNew = false, Event $event = null)
+    protected function dispatchEvent($action, &$entity, $isNew = false, ?Event $event = null): ?Event
     {
         if (!$entity instanceof Sms) {
             throw new MethodNotAllowedHttpException(['Sms']);
@@ -430,27 +437,27 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
                 $name = SmsEvents::SMS_POST_DELETE;
                 break;
             default:
-                return;
+                return null;
         }
 
         if ($this->dispatcher->hasListeners($name)) {
-            if (empty($event)) {
+            if (!$event instanceof Event) {
                 $event = new SmsEvent($entity, $isNew);
                 $event->setEntityManager($this->em);
             }
 
-            $this->dispatcher->dispatch($name, $event);
+            $this->dispatcher->dispatch($event, $name);
 
             return $event;
-        } else {
-            return;
         }
+
+        return null;
     }
 
     /**
      * Joins the page table and limits created_by to currently logged in user.
      */
-    public function limitQueryToCreator(QueryBuilder &$q)
+    public function limitQueryToCreator(QueryBuilder &$q): void
     {
         $q->join('t', MAUTIC_TABLE_PREFIX.'sms_messages', 's', 's.id = t.sms_id')
             ->andWhere('s.created_by = :userId')
@@ -460,14 +467,12 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
     /**
      * Get line chart data of hits.
      *
-     * @param char   $unit          {@link php.net/manual/en/function.date.php#refsect1-function.date-parameters}
-     * @param string $dateFormat
-     * @param array  $filter
-     * @param bool   $canViewOthers
-     *
-     * @return array
+     * @param ?string $unit          {@link php.net/manual/en/function.date.php#refsect1-function.date-parameters}
+     * @param string  $dateFormat
+     * @param array   $filter
+     * @param bool    $canViewOthers
      */
-    public function getHitsLineChartData($unit, \DateTime $dateFrom, \DateTime $dateTo, $dateFormat = null, $filter = [], $canViewOthers = true)
+    public function getHitsLineChartData($unit, \DateTime $dateFrom, \DateTime $dateTo, $dateFormat = null, $filter = [], $canViewOthers = true): array
     {
         $flag = null;
 
@@ -506,8 +511,6 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
     }
 
     /**
-     * @param $idHash
-     *
      * @return Stat
      */
     public function getSmsStatus($idHash)
@@ -517,9 +520,6 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
 
     /**
      * Search for an sms stat by sms and lead IDs.
-     *
-     * @param $smsId
-     * @param $leadId
      *
      * @return array
      */
@@ -536,26 +536,19 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
 
     /**
      * Get an array of tracked links.
-     *
-     * @param $smsId
-     *
-     * @return array
      */
-    public function getSmsClickStats($smsId)
+    public function getSmsClickStats($smsId): array
     {
         return $this->pageTrackableModel->getTrackableList('sms', $smsId);
     }
 
     /**
-     * @param        $type
      * @param string $filter
      * @param int    $limit
      * @param int    $start
      * @param array  $options
-     *
-     * @return array
      */
-    public function getLookupResults($type, $filter = '', $limit = 10, $start = 0, $options = [])
+    public function getLookupResults($type, $filter = '', $limit = 10, $start = 0, $options = []): array
     {
         $results = [];
         switch ($type) {
@@ -566,14 +559,17 @@ class SmsModel extends FormModel implements AjaxLookupModelInterface
                     $limit,
                     $start,
                     $this->security->isGranted($this->getPermissionBase().':viewother'),
-                    isset($options['sms_type']) ? $options['sms_type'] : null
+                    $options['sms_type'] ?? null,
+                    $options['top_level'] ?? '',
+                    $options['ignore_ids'] ?? [],
                 );
 
                 foreach ($entities as $entity) {
-                    $results[$entity['language']][$entity['id']] = $entity['name'];
+                    $mms                                         = !empty($entity['media']) ? '['.$this->translator->trans('mautic.sms.form.mms').'] ' : '';
+                    $results[$entity['language']][$entity['id']] = $mms.$entity['name'];
                 }
 
-                //sort by language
+                // sort by language
                 ksort($results);
 
                 break;

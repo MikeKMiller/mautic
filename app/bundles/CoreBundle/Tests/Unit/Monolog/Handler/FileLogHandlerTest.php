@@ -1,39 +1,30 @@
 <?php
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\Monolog\Handler;
 
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Monolog\Handler\FileLogHandler;
 use Monolog\Formatter\FormatterInterface;
-use Monolog\Logger;
+use Monolog\Level;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class FileLogHandlerTest extends TestCase
 {
     /**
-     * @var CoreParametersHelper|MockObject
+     * @var MockObject&CoreParametersHelper
      */
-    private $coreParametersHelper;
+    private MockObject $coreParametersHelper;
 
     /**
-     * @var FormatterInterface|MockObject
+     * @var FormatterInterface|\PHPUnit\Framework\MockObject\Stub
      */
-    private $formatter;
+    private \PHPUnit\Framework\MockObject\Stub $formatter;
 
     protected function setUp(): void
     {
         $this->coreParametersHelper = $this->createMock(CoreParametersHelper::class);
-        $this->formatter            = $this->createMock(FormatterInterface::class);
+        $this->formatter            = $this->createStub(FormatterInterface::class);
     }
 
     public function testPropertiesAreSetFromCoreParametersHelperWhenDebugModeEnabled(): void
@@ -55,8 +46,8 @@ class FileLogHandlerTest extends TestCase
             );
 
         $handler = new FileLogHandler($this->coreParametersHelper, $this->formatter);
-        $this->assertEquals(Logger::DEBUG, $handler->getLevel());
-        $this->assertEquals(spl_object_id($this->formatter), spl_object_id($handler->getFormatter()));
+        $this->assertSame(Level::Debug, $handler->getLevel());
+        $this->assertSame(spl_object_id($this->formatter), spl_object_id($handler->getFormatter()));
 
         $filename = $this->getProperty($handler, 'filename');
         $this->assertEquals('/var/logs/mautic_test.php', $filename);
@@ -83,8 +74,8 @@ class FileLogHandlerTest extends TestCase
             );
 
         $handler = new FileLogHandler($this->coreParametersHelper, $this->formatter);
-        $this->assertEquals(Logger::NOTICE, $handler->getLevel());
-        $this->assertNotEquals(spl_object_id($this->formatter), spl_object_id($handler->getFormatter()));
+        $this->assertSame(Level::Notice, $handler->getLevel());
+        $this->assertNotSame(spl_object_id($this->formatter), spl_object_id($handler->getFormatter()));
 
         $filename = $this->getProperty($handler, 'filename');
         $this->assertEquals('/var/logs/mautic_test.php', $filename);
@@ -92,11 +83,10 @@ class FileLogHandlerTest extends TestCase
         $this->assertEquals(7, $maxFiles);
     }
 
-    private function getProperty(FileLogHandler $handler, string $property)
+    private function getProperty(FileLogHandler $handler, string $property): mixed
     {
         $reflection = new \ReflectionClass($handler);
         $fileName   = $reflection->getProperty($property);
-        $fileName->setAccessible(true);
 
         return $fileName->getValue($handler);
     }

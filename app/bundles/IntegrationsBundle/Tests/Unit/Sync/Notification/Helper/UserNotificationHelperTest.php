@@ -2,57 +2,47 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2018 Mautic Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://www.mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Tests\Unit\Sync\Notification\Helper;
 
 use Mautic\IntegrationsBundle\Sync\Notification\Helper\OwnerProvider;
 use Mautic\IntegrationsBundle\Sync\Notification\Helper\RouteHelper;
 use Mautic\IntegrationsBundle\Sync\Notification\Helper\UserHelper;
+use Mautic\IntegrationsBundle\Sync\Notification\Helper\UserNotificationBuilder;
 use Mautic\IntegrationsBundle\Sync\Notification\Helper\UserNotificationHelper;
 use Mautic\IntegrationsBundle\Sync\Notification\Writer;
 use Mautic\IntegrationsBundle\Sync\SyncDataExchange\Internal\Object\Contact;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class UserNotificationHelperTest extends TestCase
 {
     /**
-     * @var Writer|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&Writer
      */
-    private $writer;
+    private MockObject $writer;
 
     /**
-     * @var UserHelper|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&UserHelper
      */
-    private $userHelper;
+    private MockObject $userHelper;
 
     /**
-     * @var OwnerProvider|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&OwnerProvider
      */
-    private $ownerProvider;
+    private MockObject $ownerProvider;
 
     /**
-     * @var RouteHelper|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&RouteHelper
      */
-    private $routeHelper;
+    private MockObject $routeHelper;
 
     /**
-     * @var TranslatorInterface|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&TranslatorInterface
      */
-    private $translator;
+    private MockObject $translator;
 
-    /**
-     * @var UserNotificationHelper
-     */
-    private $helper;
+    private UserNotificationHelper $helper;
 
     protected function setUp(): void
     {
@@ -61,13 +51,13 @@ class UserNotificationHelperTest extends TestCase
         $this->ownerProvider = $this->createMock(OwnerProvider::class);
         $this->routeHelper   = $this->createMock(RouteHelper::class);
         $this->translator    = $this->createMock(TranslatorInterface::class);
-        $this->helper        = new UserNotificationHelper(
-            $this->writer,
-            $this->userHelper,
+
+        $userNotificationBuilder = new UserNotificationBuilder($this->userHelper,
             $this->ownerProvider,
             $this->routeHelper,
             $this->translator
         );
+        $this->helper = new UserNotificationHelper($this->writer, $userNotificationBuilder);
     }
 
     public function testNotificationSentToOwner(): void
@@ -79,15 +69,19 @@ class UserNotificationHelperTest extends TestCase
 
         $this->userHelper->expects($this->never())
             ->method('getAdminUsers');
+        $matcher = $this->exactly(2);
 
-        $this->translator->expects($this->at(0))
-            ->method('trans')
-            ->with('mautic.integration.sync.user_notification.header', $this->anything())
-            ->willReturn('test');
-        $this->translator->expects($this->at(1))
-            ->method('trans')
-            ->with('mautic.integration.sync.user_notification.sync_error', $this->anything())
-            ->willReturn('test');
+        $this->translator->expects($matcher)
+            ->method('trans')->willReturnCallback(function (...$parameters) use ($matcher): string {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('mautic.integration.sync.user_notification.header', $parameters[0]);
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('mautic.integration.sync.user_notification.sync_error', $parameters[0]);
+                }
+
+                return 'test';
+            });
 
         $this->writer->expects($this->once())
             ->method('writeUserNotification');
@@ -108,15 +102,19 @@ class UserNotificationHelperTest extends TestCase
         $this->userHelper->expects($this->once())
             ->method('getAdminUsers')
             ->willReturn([1]);
+        $matcher = $this->exactly(2);
 
-        $this->translator->expects($this->at(0))
-            ->method('trans')
-            ->with('mautic.integration.sync.user_notification.header', $this->anything())
-            ->willReturn('test');
-        $this->translator->expects($this->at(1))
-            ->method('trans')
-            ->with('mautic.integration.sync.user_notification.sync_error', $this->anything())
-            ->willReturn('test');
+        $this->translator->expects($matcher)
+            ->method('trans')->willReturnCallback(function (...$parameters) use ($matcher): string {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('mautic.integration.sync.user_notification.header', $parameters[0]);
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('mautic.integration.sync.user_notification.sync_error', $parameters[0]);
+                }
+
+                return 'test';
+            });
 
         $this->writer->expects($this->once())
             ->method('writeUserNotification');

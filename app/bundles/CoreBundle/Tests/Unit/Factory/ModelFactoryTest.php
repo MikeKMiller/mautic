@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\Factory;
 
 use Mautic\CoreBundle\Factory\ModelFactory;
@@ -20,14 +11,14 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 class ModelFactoryTest extends TestCase
 {
     /**
-     * @var MockObject|ContainerInterface
+     * @var MockObject&ContainerInterface
      */
-    private $container;
+    private MockObject $container;
 
     /**
-     * @var ModelFactory
+     * @var ModelFactory<object>
      */
-    private $factory;
+    private ModelFactory $factory;
 
     protected function setUp(): void
     {
@@ -35,11 +26,11 @@ class ModelFactoryTest extends TestCase
         $this->factory   = new ModelFactory($this->container);
     }
 
-    public function testModelKeyIsLowerCaseToMatchServiceKeys()
+    public function testModelKeyIsLowerCaseToMatchServiceKeys(): void
     {
-        $pointTriggerModel = $this->createMock(TriggerModel::class);
+        $pointTriggerModel = $this->createStub(TriggerModel::class);
         $modelName         = 'point.triggerEvent';
-        $containerKey      = 'mautic.point.model.triggerevent';
+        $containerKey      = 'mautic.point.model.triggerEvent';
 
         $this->container->expects($this->once())
             ->method('has')

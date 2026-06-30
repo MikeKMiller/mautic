@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2019 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Tests\Unit\Auth\Support\Oauth2\Token;
 
 use Mautic\IntegrationsBundle\Auth\Support\Oauth2\Token\TokenPersistenceFactory;
@@ -20,12 +11,19 @@ use PHPUnit\Framework\TestCase;
 
 class TokenPersistenceFactoryTest extends TestCase
 {
-    private $integrationsHelper;
-    private $integration;
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&IntegrationsHelper
+     */
+    private \PHPUnit\Framework\MockObject\Stub $integrationsHelper;
 
-    public function setup(): void
+    /**
+     * @var \PHPUnit\Framework\MockObject\MockObject&Integration
+     */
+    private \PHPUnit\Framework\MockObject\MockObject $integration;
+
+    protected function setup(): void
     {
-        $this->integrationsHelper = $this->createMock(IntegrationsHelper::class);
+        $this->integrationsHelper = $this->createStub(IntegrationsHelper::class);
         $this->integration        = $this->createMock(Integration::class);
     }
 

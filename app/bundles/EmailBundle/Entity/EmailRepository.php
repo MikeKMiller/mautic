@@ -1,52 +1,59 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Entity;
 
-use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Query;
+use Doctrine\ORM\Query\Expr;
 use Doctrine\ORM\Tools\Pagination\Paginator;
 use Mautic\ChannelBundle\Entity\MessageQueue;
 use Mautic\CoreBundle\Entity\CommonRepository;
+use Mautic\CoreBundle\Helper\DateTimeHelper;
+use Mautic\CoreBundle\Helper\QueryBuilderManipulatorTrait;
 use Mautic\LeadBundle\Entity\DoNotContact;
+use Mautic\ProjectBundle\Entity\ProjectRepositoryTrait;
 
 /**
- * Class EmailRepository.
+ * @extends CommonRepository<Email>
  */
 class EmailRepository extends CommonRepository
 {
+    use ProjectRepositoryTrait;
+    use QueryBuilderManipulatorTrait;
+
+    public const EMAILS_PREFIX        = 'e';
+
+    public const DNC_PREFIX           = 'dnc';
+
+    public const TRACKABLE_PREFIX     = 'tr';
+
+    public const REDIRECT_PREFIX      = 'pr';
+
     /**
-     * Get an array of do not email emails.
+     * Get an array of do not email.
      *
      * @param array $leadIds
-     *
-     * @return array
      */
-    public function getDoNotEmailList($leadIds = [])
+    public function getDoNotEmailList($leadIds = []): array
     {
         $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
         $q->select('l.id, l.email')
             ->from(MAUTIC_TABLE_PREFIX.'lead_donotcontact', 'dnc')
             ->leftJoin('dnc', MAUTIC_TABLE_PREFIX.'leads', 'l', 'l.id = dnc.lead_id')
-            ->where('dnc.channel = "email"')
+            ->where($q->expr()->eq('dnc.channel', $q->expr()->literal('email')))
             ->andWhere($q->expr()->neq('l.email', $q->expr()->literal('')));
 
         if ($leadIds) {
             $q->andWhere(
-                $q->expr()->in('l.id', $leadIds)
-            );
+                $q->expr()->in('l.id', ':leadIds')
+            )
+            ->setParameter('leadIds', $leadIds, ArrayParameterType::INTEGER);
         }
 
-        $results = $q->execute()->fetchAll();
+        $results = $q->executeQuery()->fetchAllAssociative();
 
         $dnc = [];
         foreach ($results as $r) {
@@ -59,9 +66,9 @@ class EmailRepository extends CommonRepository
     /**
      * Check to see if an email is set as do not contact.
      *
-     * @param $email
+     * @param string $email
      *
-     * @return bool
+     * @return false|array{id: numeric-string, unsubscribed: bool, bounced: bool, manual: bool, comments: string}
      */
     public function checkDoNotEmail($email)
     {
@@ -69,11 +76,12 @@ class EmailRepository extends CommonRepository
         $q->select('dnc.*')
             ->from(MAUTIC_TABLE_PREFIX.'lead_donotcontact', 'dnc')
             ->leftJoin('dnc', MAUTIC_TABLE_PREFIX.'leads', 'l', 'l.id = dnc.lead_id')
-            ->where('dnc.channel = "email"')
+            ->where($q->expr()->eq('dnc.channel', $q->expr()->literal('email')))
             ->andWhere('l.email = :email')
             ->setParameter('email', $email);
 
-        $results = $q->execute()->fetchAll();
+        $results = $q->executeQuery()->fetchAllAssociative();
+
         $dnc     = count($results) ? $results[0] : null;
 
         if (null === $dnc) {
@@ -94,9 +102,9 @@ class EmailRepository extends CommonRepository
     /**
      * Delete DNC row.
      *
-     * @param $id
+     * @param int $id
      */
-    public function deleteDoNotEmailEntry($id)
+    public function deleteDoNotEmailEntry($id): void
     {
         $this->getEntityManager()->getConnection()->delete(MAUTIC_TABLE_PREFIX.'lead_donotcontact', ['id' => (int) $id]);
     }
@@ -111,8 +119,8 @@ class EmailRepository extends CommonRepository
         $q = $this->getEntityManager()
             ->createQueryBuilder()
             ->select('e')
-            ->from('MauticEmailBundle:Email', 'e', 'e.id');
-        if (empty($args['iterator_mode'])) {
+            ->from(Email::class, 'e', 'e.id');
+        if (empty($args['iterable_mode'])) {
             $q->leftJoin('e.category', 'c');
 
             if (empty($args['ignoreListJoin']) && (!isset($args['email_type']) || 'list' == $args['email_type'])) {
@@ -132,9 +140,10 @@ class EmailRepository extends CommonRepository
      */
     public function getSentReadCount()
     {
+        // Get entities
         $q = $this->getEntityManager()->createQueryBuilder();
         $q->select('SUM(e.sentCount) as sent_count, SUM(e.readCount) as read_count')
-            ->from('MauticEmailBundle:Email', 'e');
+            ->from(Email::class, 'e');
         $results = $q->getQuery()->getSingleResult(Query::HYDRATE_ARRAY);
 
         if (!isset($results['sent_count'])) {
@@ -148,14 +157,15 @@ class EmailRepository extends CommonRepository
     }
 
     /**
-     * @param      $emailId
-     * @param null $variantIds
-     * @param null $listIds
-     * @param bool $countOnly
-     * @param null $limit
-     * @param int  $minContactId
-     * @param int  $maxContactId
-     * @param bool $countWithMaxMin
+     * @param int            $emailId
+     * @param int[]|null     $variantIds
+     * @param int[]|null     $listIds
+     * @param bool           $countOnly
+     * @param int|null       $limit
+     * @param int|null       $minContactId
+     * @param int|null       $maxContactId
+     * @param bool           $countWithMaxMin
+     * @param \DateTime|null $maxDate
      *
      * @return QueryBuilder|int|array
      */
@@ -167,14 +177,18 @@ class EmailRepository extends CommonRepository
         $limit = null,
         $minContactId = null,
         $maxContactId = null,
-        $countWithMaxMin = false
+        $countWithMaxMin = false,
+        $maxDate = null,
+        ?int $maxThreads = null,
+        ?int $threadId = null,
+        ?\DateTimeInterface $sendStopDate = null,
     ) {
         // Do not include leads in the do not contact table
         $dncQb = $this->getEntityManager()->getConnection()->createQueryBuilder();
-        $dncQb->select('null')
+        $dncQb->select('dnc.lead_id')
             ->from(MAUTIC_TABLE_PREFIX.'lead_donotcontact', 'dnc')
             ->where(
-                $dncQb->expr()->andX(
+                $dncQb->expr()->and(
                     $dncQb->expr()->eq('dnc.lead_id', 'l.id'),
                     $dncQb->expr()->eq('dnc.channel', $dncQb->expr()->literal('email'))
                 )
@@ -182,10 +196,10 @@ class EmailRepository extends CommonRepository
 
         // Do not include contacts where the message is pending in the message queue
         $mqQb = $this->getEntityManager()->getConnection()->createQueryBuilder();
-        $mqQb->select('null')
+        $mqQb->select('mq.lead_id')
             ->from(MAUTIC_TABLE_PREFIX.'message_queue', 'mq')
             ->where(
-                $mqQb->expr()->andX(
+                $mqQb->expr()->and(
                     $mqQb->expr()->eq('mq.lead_id', 'l.id'),
                     $mqQb->expr()->neq('mq.status', $mqQb->expr()->literal(MessageQueue::STATUS_SENT)),
                     $mqQb->expr()->eq('mq.channel', $mqQb->expr()->literal('email'))
@@ -194,18 +208,19 @@ class EmailRepository extends CommonRepository
 
         // Do not include leads that have already been emailed
         $statQb = $this->getEntityManager()->getConnection()->createQueryBuilder();
-        $statQb->select('null')
-            ->from(MAUTIC_TABLE_PREFIX.'email_stats', 'stat')
-            ->where(
-                $statQb->expr()->eq('stat.lead_id', 'l.id')
-            );
+        $statQb->select('stat.lead_id')
+            ->from(MAUTIC_TABLE_PREFIX.'email_stats', 'stat');
+
+        $statQb->andWhere($statQb->expr()->isNotNull('stat.lead_id'));
 
         if ($variantIds) {
             if (!in_array($emailId, $variantIds)) {
-                $variantIds[] = (int) $emailId;
+                $variantIds[] = (string) $emailId;
             }
-            $statQb->andWhere($statQb->expr()->in('stat.email_id', $variantIds));
-            $mqQb->andWhere($mqQb->expr()->in('mq.channel_id', $variantIds));
+            $statQb->andWhere($statQb->expr()->in('stat.email_id', ':variantIds'))
+                ->setParameter('variantIds', $variantIds, ArrayParameterType::INTEGER);
+            $mqQb->andWhere($mqQb->expr()->in('mq.channel_id', ':variantIds'))
+                ->setParameter('variantIds', $variantIds, ArrayParameterType::INTEGER);
         } else {
             $statQb->andWhere($statQb->expr()->eq('stat.email_id', (int) $emailId));
             $mqQb->andWhere($mqQb->expr()->eq('mq.channel_id', (int) $emailId));
@@ -218,13 +233,10 @@ class EmailRepository extends CommonRepository
                 ->select('el.leadlist_id')
                 ->from(MAUTIC_TABLE_PREFIX.'email_list_xref', 'el')
                 ->where('el.email_id = '.(int) $emailId)
-                ->execute()
-                ->fetchAll();
+                ->executeQuery()
+                ->fetchAllAssociative();
 
-            $listIds = [];
-            foreach ($lists as $list) {
-                $listIds[] = $list['leadlist_id'];
-            }
+            $listIds = array_column($lists, 'leadlist_id');
 
             if (empty($listIds)) {
                 // Prevent fatal error
@@ -234,20 +246,33 @@ class EmailRepository extends CommonRepository
             $listIds = [$listIds];
         }
 
-        // Only include those in associated segments
-        $segmentQb = $this->getEntityManager()->getConnection()->createQueryBuilder();
-        $segmentQb->select('null')
-            ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'll')
-            ->where(
-                $segmentQb->expr()->andX(
-                    $segmentQb->expr()->eq('ll.lead_id', 'l.id'),
-                    $segmentQb->expr()->in('ll.leadlist_id', $listIds),
-                    $segmentQb->expr()->eq('ll.manually_removed', ':false')
-                )
-            );
-
         // Main query
         $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
+
+        // Only include those in associated segments
+        $segmentQb = $this->getEntityManager()->getConnection()->createQueryBuilder();
+        $segmentQb->select('ll.lead_id')
+            ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'll')
+            ->where(
+                $segmentQb->expr()->and(
+                    $segmentQb->expr()->eq('ll.lead_id', 'l.id'),
+                    $segmentQb->expr()->in('ll.leadlist_id', ':listIds'),
+                    $segmentQb->expr()->eq('ll.manually_removed', ':false')
+                )
+            )
+            ->setParameter('listIds', $listIds, ArrayParameterType::INTEGER)
+            ->setParameter('false', false, Types::BOOLEAN);
+
+        if (null !== $maxDate) {
+            $segmentQb->andWhere($segmentQb->expr()->lte('ll.date_added', ':max_date'));
+            $segmentQb->setParameter('max_date', $maxDate, Types::DATETIME_MUTABLE);
+        }
+
+        if ($sendStopDate) {
+            $segmentQb->andWhere($segmentQb->expr()->lt('ll.date_added', ':sendStopDate'));
+            $q->setParameter('sendStopDate', (new DateTimeHelper($sendStopDate))->toUtcString());
+        }
+
         if ($countOnly) {
             $q->select('count(*) as count');
             if ($countWithMaxMin) {
@@ -258,21 +283,44 @@ class EmailRepository extends CommonRepository
         }
 
         $q->from(MAUTIC_TABLE_PREFIX.'leads', 'l')
-            ->andWhere(sprintf('EXISTS (%s)', $segmentQb->getSQL()))
-            ->andWhere(sprintf('NOT EXISTS (%s)', $dncQb->getSQL()))
-            ->andWhere(sprintf('NOT EXISTS (%s)', $statQb->getSQL()))
-            ->andWhere(sprintf('NOT EXISTS (%s)', $mqQb->getSQL()))
-            ->setParameter('false', false, 'boolean');
+            ->andWhere(sprintf('l.id IN (%s)', $segmentQb->getSQL()))
+            ->andWhere(sprintf('l.id NOT IN (%s)', $dncQb->getSQL()))
+            ->andWhere(sprintf('l.id NOT IN (%s)', $statQb->getSQL()))
+            ->andWhere(sprintf('l.id NOT IN (%s)', $mqQb->getSQL()));
+
+        $this->copyParams($segmentQb, $q);
+        $this->copyParams($dncQb, $q);
+        $this->copyParams($statQb, $q);
+        $this->copyParams($mqQb, $q);
+
+        $excludedListQb = $this->getExcludedListQuery((int) $emailId);
+
+        if ($excludedListQb) {
+            $q->andWhere(sprintf('l.id NOT IN (%s)', $excludedListQb->getSQL()));
+            $this->copyParams($excludedListQb, $q);
+        }
+
+        // Do not include leads which are not subscribed to the category set for email.
+        $unsubscribeLeadsQb = $this->getCategoryUnsubscribedLeadsQuery((int) $emailId);
+        $q->andWhere(sprintf('l.id NOT IN (%s)', $unsubscribeLeadsQb->getSQL()));
 
         $q = $this->setMinMaxIds($q, 'l.id', $minContactId, $maxContactId);
 
         // Has an email
         $q->andWhere(
-            $q->expr()->andX(
+            $q->expr()->and(
                 $q->expr()->isNotNull('l.email'),
                 $q->expr()->neq('l.email', $q->expr()->literal(''))
             )
         );
+
+        if ($threadId && $maxThreads) {
+            if ($threadId <= $maxThreads) {
+                $q->andWhere('MOD((l.id + :threadShift), :maxThreads) = 0')
+                        ->setParameter('threadShift', $threadId - 1, \Doctrine\DBAL\ParameterType::INTEGER)
+                        ->setParameter('maxThreads', $maxThreads, \Doctrine\DBAL\ParameterType::INTEGER);
+            }
+        }
 
         if (!empty($limit)) {
             $q->setFirstResult(0)
@@ -283,14 +331,14 @@ class EmailRepository extends CommonRepository
     }
 
     /**
-     * @param      $emailId
-     * @param null $variantIds
-     * @param null $listIds
-     * @param bool $countOnly
-     * @param null $limit
-     * @param int  $minContactId
-     * @param int  $maxContactId
-     * @param bool $countWithMaxMin
+     * @param int        $emailId
+     * @param int[]|null $variantIds
+     * @param int[]|null $listIds
+     * @param bool       $countOnly
+     * @param int|null   $limit
+     * @param int|null   $minContactId
+     * @param int|null   $maxContactId
+     * @param bool       $countWithMaxMin
      *
      * @return array|int
      */
@@ -302,7 +350,10 @@ class EmailRepository extends CommonRepository
         $limit = null,
         $minContactId = null,
         $maxContactId = null,
-        $countWithMaxMin = false
+        $countWithMaxMin = false,
+        ?int $maxThreads = null,
+        ?int $threadId = null,
+        ?\DateTimeInterface $sendStopDate = null,
     ) {
         $q = $this->getEmailPendingQuery(
             $emailId,
@@ -312,38 +363,41 @@ class EmailRepository extends CommonRepository
             $limit,
             $minContactId,
             $maxContactId,
-            $countWithMaxMin
+            $countWithMaxMin,
+            null,
+            $maxThreads,
+            $threadId,
+            $sendStopDate
         );
 
-        if (!($q instanceof QueryBuilder)) {
+        if (!$q instanceof QueryBuilder) {
             return $q;
         }
 
-        $results = $q->execute()->fetchAll();
+        $results = $q->executeQuery()->fetchAllAssociative();
 
         if ($countOnly && $countWithMaxMin) {
             // returns array in format ['count' => #, ['min_id' => #, 'max_id' => #]]
             return $results[0];
         } elseif ($countOnly) {
             return (isset($results[0])) ? $results[0]['count'] : 0;
-        } else {
-            $leads = [];
-            foreach ($results as $r) {
-                $leads[$r['id']] = $r;
-            }
-
-            return $leads;
         }
+        $leads = [];
+        foreach ($results as $r) {
+            $leads[$r['id']] = $r;
+        }
+
+        return $leads;
     }
 
     /**
-     * @param string $search
-     * @param int    $limit
-     * @param int    $start
-     * @param bool   $viewOther
-     * @param bool   $topLevel
-     * @param null   $emailType
-     * @param null   $variantParentId
+     * @param string|array<int|string> $search
+     * @param int                      $limit
+     * @param int                      $start
+     * @param bool                     $viewOther
+     * @param bool                     $topLevel
+     * @param string|null              $emailType
+     * @param int|null                 $variantParentId
      *
      * @return array
      */
@@ -354,12 +408,18 @@ class EmailRepository extends CommonRepository
 
         if (!empty($search)) {
             if (is_array($search)) {
-                $search = array_map('intval', $search);
+                $search = array_map(intval(...), $search);
                 $q->andWhere($q->expr()->in('e.id', ':search'))
                     ->setParameter('search', $search);
             } else {
-                $q->andWhere($q->expr()->like('e.name', ':search'))
-                    ->setParameter('search', "%{$search}%");
+                $q->andWhere(
+                    $q->expr()->orX(
+                        $q->expr()->like('e.name', ':search'),
+                        $q->expr()->like('e.id', ':searchId')
+                    )
+                )
+                    ->setParameter('search', "%{$search}%")
+                    ->setParameter('searchId', $search);
             }
         }
 
@@ -369,10 +429,18 @@ class EmailRepository extends CommonRepository
         }
 
         if ($topLevel) {
-            if (true === $topLevel || 'variant' == $topLevel) {
-                $q->andWhere($q->expr()->isNull('e.variantParent'));
-            } elseif ('translation' == $topLevel) {
-                $q->andWhere($q->expr()->isNull('e.translationParent'));
+            if (true === $topLevel || '1' === $topLevel) {
+                $topLevel = ['variant', 'translation'];
+            } elseif (is_string($topLevel)) {
+                $topLevel = [$topLevel];
+            }
+
+            foreach ($topLevel as $type) {
+                match ($type) {
+                    'variant'     => $q->andWhere($q->expr()->isNull('e.variantParent')),
+                    'translation' => $q->andWhere($q->expr()->isNull('e.translationParent')),
+                    default       => null,
+                };
             }
         }
 
@@ -407,12 +475,108 @@ class EmailRepository extends CommonRepository
     }
 
     /**
-     * @param \Doctrine\ORM\QueryBuilder|QueryBuilder $q
-     * @param                                         $filter
-     *
-     * @return array
+     * @return array<string, int>
      */
-    protected function addCatchAllWhereClause($q, $filter)
+    public function getSentReadNotReadCount(QueryBuilder $queryBuilder): array
+    {
+        $queryBuilder->resetQueryPart('groupBy');
+        $queryBuilder->resetQueryParts(['join']);
+
+        $queryBuilder->select('SUM( e.sent_count) as sent_count, SUM( e.read_count) as read_count');
+        $results = $queryBuilder->executeQuery()->fetchAssociative();
+
+        if ($results) {
+            $results['sent_count'] = (int) $results['sent_count'];
+            $results['read_count'] = (int) $results['read_count'];
+            $results['not_read']   = $results['sent_count'] - $results['read_count'];
+        } else {
+            $results             = [];
+            $results['not_read'] = $results['sent_count'] = $results['read_count'] = 0;
+        }
+
+        return $results;
+    }
+
+    public function getUnsubscribedCount(QueryBuilder $queryBuilder): int
+    {
+        $queryBuilder->resetQueryParts(['join']);
+        $this->addDNCTableForEmails($queryBuilder);
+        $queryBuilder->select('e.id as email_id, dnc.lead_id');
+        $queryBuilder->andWhere('dnc.reason='.DoNotContact::UNSUBSCRIBED);
+
+        return $queryBuilder->executeQuery()->rowCount();
+    }
+
+    public function getUniqueClicks(QueryBuilder $queryBuilder): int
+    {
+        $this->addTrackableTablesForEmailStats($queryBuilder);
+        $queryBuilder->select('SUM( tr.unique_hits) as `unique_clicks`');
+
+        return (int) $queryBuilder->executeQuery()->fetchOne();
+    }
+
+    private function addTrackableTablesForEmailStats(QueryBuilder $qb): void
+    {
+        $trTable = MAUTIC_TABLE_PREFIX.'channel_url_trackables';
+        $prTable = MAUTIC_TABLE_PREFIX.'page_redirects';
+
+        if (!$this->isJoined($qb, $trTable, self::EMAILS_PREFIX, self::TRACKABLE_PREFIX)) {
+            $qb->leftJoin(
+                self::EMAILS_PREFIX,
+                $trTable,
+                self::TRACKABLE_PREFIX,
+                'e.id = tr.channel_id AND tr.channel = \'email\''
+            );
+        }
+        if (!$this->isJoined($qb, $prTable, self::TRACKABLE_PREFIX, self::REDIRECT_PREFIX)) {
+            $qb->leftJoin(
+                self::TRACKABLE_PREFIX,
+                $prTable,
+                self::REDIRECT_PREFIX,
+                'tr.redirect_id = pr.id'
+            );
+        }
+    }
+
+    /**
+     * Add the Do Not Contact table to the query builder.
+     */
+    private function addDNCTableForEmails(QueryBuilder $qb): void
+    {
+        $table = MAUTIC_TABLE_PREFIX.'lead_donotcontact';
+
+        if (!$this->isJoined($qb, $table, self::EMAILS_PREFIX, self::DNC_PREFIX)) {
+            $qb->leftJoin(
+                self::EMAILS_PREFIX,
+                $table,
+                self::DNC_PREFIX,
+                'e.id = dnc.channel_id AND dnc.channel=\'email\''
+            );
+        }
+    }
+
+    private function isJoined(QueryBuilder $query, string $table, string $fromAlias, string $alias): bool
+    {
+        $joins = $query->getQueryParts()['join'][$fromAlias] ?? null;
+
+        if (empty($joins)) {
+            return false;
+        }
+
+        foreach ($joins[$fromAlias] as $join) {
+            if ($join['joinTable'] == $table && $join['joinAlias'] == $alias) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param \Doctrine\ORM\QueryBuilder|QueryBuilder $q
+     * @param object                                  $filter
+     */
+    protected function addCatchAllWhereClause($q, $filter): array
     {
         return $this->addStandardCatchAllWhereClause($q, $filter, [
             'e.name',
@@ -422,22 +586,36 @@ class EmailRepository extends CommonRepository
 
     /**
      * @param \Doctrine\ORM\QueryBuilder|QueryBuilder $q
-     * @param                                         $filter
-     *
-     * @return array
+     * @param object                                  $filter
      */
-    protected function addSearchCommandWhereClause($q, $filter)
+    protected function addSearchCommandWhereClause($q, $filter): array
     {
-        list($expr, $parameters) = $this->addStandardSearchCommandWhereClause($q, $filter);
+        [$expr, $parameters] = $this->addStandardSearchCommandWhereClause($q, $filter);
         if ($expr) {
             return [$expr, $parameters];
         }
 
         $command         = $filter->command;
         $unique          = $this->generateRandomParameterName();
-        $returnParameter = false; //returning a parameter that is not used will lead to a Doctrine error
+        $returnParameter = false; // returning a parameter that is not used will lead to a Doctrine error
 
         switch ($command) {
+            case $this->translator->trans('mautic.email.email.searchcommand.isexpired'):
+            case $this->translator->trans('mautic.email.email.searchcommand.isexpired', [], null, 'en_US'):
+                $expr = sprintf(
+                    "(e.isPublished = :%1\$s AND e.publishDown IS NOT NULL AND e.publishDown <> '' AND e.publishDown < CURRENT_TIMESTAMP())",
+                    $unique
+                );
+                $forceParameters = [$unique => true];
+                break;
+            case $this->translator->trans('mautic.email.email.searchcommand.ispending'):
+            case $this->translator->trans('mautic.email.email.searchcommand.ispending', [], null, 'en_US'):
+                $expr = sprintf(
+                    "(e.isPublished = :%1\$s AND e.publishUp IS NOT NULL AND e.publishUp <> '' AND e.publishUp > CURRENT_TIMESTAMP())",
+                    $unique
+                );
+                $forceParameters = [$unique => true];
+                break;
             case $this->translator->trans('mautic.core.searchcommand.lang'):
                 $langUnique      = $this->generateRandomParameterName();
                 $langValue       = $filter->string.'_%';
@@ -445,12 +623,19 @@ class EmailRepository extends CommonRepository
                     $langUnique => $langValue,
                     $unique     => $filter->string,
                 ];
-                $expr = $q->expr()->orX(
-                    $q->expr()->eq('e.language', ":$unique"),
-                    $q->expr()->like('e.language', ":$langUnique")
-                );
+                $expr            = '('.$q->expr()->eq('e.language', ":$unique").' OR '.$q->expr()->like('e.language', ":$langUnique").')';
                 $returnParameter = true;
                 break;
+            case $this->translator->trans('mautic.project.searchcommand.name'):
+            case $this->translator->trans('mautic.project.searchcommand.name', [], null, 'en_US'):
+                return $this->handleProjectFilter(
+                    $this->_em->getConnection()->createQueryBuilder(),
+                    'email_id',
+                    'email_projects_xref',
+                    $this->getTableAlias(),
+                    $filter->string,
+                    $filter->not
+                );
         }
 
         if ($expr && $filter->not) {
@@ -468,36 +653,36 @@ class EmailRepository extends CommonRepository
     }
 
     /**
-     * @return array
+     * @return string[]
      */
-    public function getSearchCommands()
+    public function getSearchCommands(): array
     {
         $commands = [
             'mautic.core.searchcommand.ispublished',
             'mautic.core.searchcommand.isunpublished',
             'mautic.core.searchcommand.isuncategorized',
             'mautic.core.searchcommand.ismine',
+            'mautic.email.email.searchcommand.isexpired',
+            'mautic.email.email.searchcommand.ispending',
             'mautic.core.searchcommand.category',
             'mautic.core.searchcommand.lang',
+            'mautic.project.searchcommand.name',
         ];
 
         return array_merge($commands, parent::getSearchCommands());
     }
 
     /**
-     * @return string
+     * @return array<array<string>>
      */
-    protected function getDefaultOrder()
+    protected function getDefaultOrder(): array
     {
         return [
             ['e.name', 'ASC'],
         ];
     }
 
-    /**
-     * @return string
-     */
-    public function getTableAlias()
+    public function getTableAlias(): string
     {
         return 'e';
     }
@@ -505,13 +690,13 @@ class EmailRepository extends CommonRepository
     /**
      * Resets variant_start_date, variant_read_count, variant_sent_count.
      *
-     * @param $relatedIds
-     * @param $date
+     * @param string[]|string|int $relatedIds
+     * @param string              $date
      */
-    public function resetVariants($relatedIds, $date)
+    public function resetVariants($relatedIds, $date): void
     {
         if (!is_array($relatedIds)) {
-            $relatedIds = [(int) $relatedIds];
+            $relatedIds = [(string) $relatedIds];
         }
 
         $qb = $this->getEntityManager()->getConnection()->createQueryBuilder();
@@ -522,44 +707,110 @@ class EmailRepository extends CommonRepository
             ->set('variant_start_date', ':date')
             ->setParameter('date', $date)
             ->where(
-                $qb->expr()->in('id', $relatedIds)
+                $qb->expr()->in('id', ':relatedIds')
             )
-            ->execute();
+            ->setParameter('relatedIds', $relatedIds, ArrayParameterType::INTEGER)
+            ->executeStatement();
     }
 
     /**
-     * Up the read/sent counts.
+     * Clones email list cross-reference records and updates child emails to match the parent email.
      *
-     * @param int        $id
-     * @param string     $type
-     * @param int        $increaseBy
-     * @param bool|false $variant
+     * @param Email $entity the parent email entity
      */
-    public function upCount($id, $type = 'sent', $increaseBy = 1, $variant = false)
+    public function cloneFromParentToVariant(Email $entity): void
     {
-        if (!$increaseBy) {
+        /** @var Email $parent */
+        $parent    = $entity->getVariantParent() ?: $entity;
+        $hasParent = $entity->getVariantParent() instanceof \Mautic\CoreBundle\Entity\VariantEntityInterface;
+
+        if ($hasParent) {
+            $entity->setPublishUp($parent->getPublishUp());
+            $entity->setPublishDown($parent->getPublishDown());
+            $entity->setIsPublished($parent->getIsPublished());
+            $entity->setLists($parent->getLists()->toArray());
+        } else {
+            $variantsToUpdateFromParent = $entity->getVariantChildren()->toArray();
+            foreach ($variantsToUpdateFromParent as $variant) {
+                \assert($variant instanceof Email);
+                $variant->setPublishUp($parent->getPublishUp());
+                $variant->setPublishDown($parent->getPublishDown());
+                $variant->setIsPublished($parent->getIsPublished());
+                $variant->setLists(!empty($parent->getLists()) ? $parent->getLists()->toArray() : []);
+            }
+            $this->saveEntities($variantsToUpdateFromParent);
+        }
+    }
+
+    public function upCountSent(int $id, int $increaseBy = 1, bool $variant = false): void
+    {
+        if ($increaseBy <= 0) {
             return;
         }
 
-        $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
-
-        $q->update(MAUTIC_TABLE_PREFIX.'emails');
-        $q->set($type.'_count', $type.'_count + '.(int) $increaseBy);
-        $q->where('id = '.(int) $id);
+        $connection  = $this->getEntityManager()->getConnection();
+        $updateQuery = $connection->createQueryBuilder()
+            ->update(MAUTIC_TABLE_PREFIX.'emails')
+            ->set('sent_count', 'sent_count + :increaseBy')
+            ->where('id = :id');
 
         if ($variant) {
-            $q->set('variant_'.$type.'_count', 'variant_'.$type.'_count + '.(int) $increaseBy);
+            $updateQuery->set('variant_sent_count', 'variant_sent_count + :increaseBy');
         }
 
+        $updateQuery
+            ->setParameter('increaseBy', $increaseBy)
+            ->setParameter('id', $id);
+
         // Try to execute 3 times before throwing the exception
-        // to increase the chance the update will do its stuff.
         $retrialLimit = 3;
         while ($retrialLimit >= 0) {
             try {
-                $q->execute();
+                $updateQuery->executeStatement();
 
                 return;
-            } catch (DBALException $e) {
+            } catch (Exception $e) {
+                --$retrialLimit;
+                if (0 === $retrialLimit) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    public function incrementRead(int $emailId, string $statId, bool $isVariant = false): void
+    {
+        $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
+
+        $subQuery = $this->getEntityManager()->getConnection()->createQueryBuilder()
+            ->select('es.email_id')
+            ->from(MAUTIC_TABLE_PREFIX.'email_stats', 'es')
+            ->where('es.id = :statId')
+            ->andWhere('es.is_read = 1');
+
+        $q->update(MAUTIC_TABLE_PREFIX.'emails', 'e')
+            ->set('read_count', 'read_count + 1')
+            ->where(
+                $q->expr()->and(
+                    $q->expr()->eq('e.id', ':emailId'),
+                    $q->expr()->notIn('e.id', $subQuery->getSQL())
+                )
+            )
+            ->setParameter('emailId', $emailId)
+            ->setParameter('statId', $statId);
+
+        if ($isVariant) {
+            $q->set('variant_read_count', 'variant_read_count + 1');
+        }
+
+        // Try to execute 3 times before throwing the exception
+        $retrialLimit = 3;
+        while ($retrialLimit >= 0) {
+            try {
+                $q->executeStatement();
+
+                return;
+            } catch (Exception $e) {
                 --$retrialLimit;
                 if (0 === $retrialLimit) {
                     throw $e;
@@ -569,11 +820,14 @@ class EmailRepository extends CommonRepository
     }
 
     /**
-     * @param null $id
-     *
-     * @return \Doctrine\ORM\Internal\Hydration\IterableResult
+     * @return iterable<Email>
      */
-    public function getPublishedBroadcasts($id = null)
+    public function getPublishedBroadcastsIterable(?int $id = null): iterable
+    {
+        return $this->getPublishedBroadcastsQuery($id)->toIterable();
+    }
+
+    private function getPublishedBroadcastsQuery(?int $id = null): Query
     {
         $qb   = $this->createQueryBuilder($this->getTableAlias());
         $expr = $this->getPublishedByDateExpression($qb, null, true, true, false);
@@ -582,26 +836,23 @@ class EmailRepository extends CommonRepository
             $qb->expr()->eq($this->getTableAlias().'.emailType', $qb->expr()->literal('list'))
         );
 
-        if (!empty($id)) {
+        if (null !== $id && 0 !== $id) {
             $expr->add(
                 $qb->expr()->eq($this->getTableAlias().'.id', (int) $id)
             );
         }
         $qb->where($expr);
 
-        return $qb->getQuery()->iterate();
+        return $qb->getQuery();
     }
 
     /**
      * Set Max and/or Min ID where conditions to the query builder.
      *
-     * @param string $column
-     * @param int    $minContactId
-     * @param int    $maxContactId
-     *
-     * @return QueryBuilder
+     * @param int $minContactId
+     * @param int $maxContactId
      */
-    private function setMinMaxIds(QueryBuilder $q, $column, $minContactId, $maxContactId)
+    private function setMinMaxIds(QueryBuilder $q, string $column, $minContactId, $maxContactId): QueryBuilder
     {
         if ($minContactId && is_numeric($minContactId)) {
             $q->andWhere($column.' >= :minContactId');
@@ -616,24 +867,65 @@ class EmailRepository extends CommonRepository
         return $q;
     }
 
-    /**
-     * Is one of emails unpublished?
-     *
-     * @return bool
-     */
-    public function isOneUnpublished(array $ids)
+    private function getCategoryUnsubscribedLeadsQuery(int $emailId): QueryBuilder
     {
-        $result = $this->getEntityManager()
-            ->createQueryBuilder()
-            ->select($this->getTableAlias().'.id')
-            ->from('MauticEmailBundle:Email', $this->getTableAlias(), $this->getTableAlias().'.id')
-            ->where($this->getTableAlias().'.id IN (:ids)')
-            ->setParameter('ids', $ids)
-            ->andWhere('e.isPublished = 0')
-            ->setMaxResults(1)
-            ->getQuery()
-            ->getOneOrNullResult();
+        $qb = $this->getEntityManager()->getConnection()
+            ->createQueryBuilder();
 
-        return (bool) $result;
+        return $qb->select('lc.lead_id')
+            ->from(MAUTIC_TABLE_PREFIX.'lead_categories', 'lc')
+            ->innerJoin('lc', MAUTIC_TABLE_PREFIX.'emails', 'e', 'e.category_id = lc.category_id')
+            ->where($qb->expr()->eq('e.id', $emailId))
+            ->andWhere('lc.manually_removed = 1');
+    }
+
+    private function getExcludedListQuery(int $emailId): ?QueryBuilder
+    {
+        $connection = $this->getEntityManager()
+            ->getConnection();
+        $excludedListIds = $connection->createQueryBuilder()
+            ->select('eel.leadlist_id')
+            ->from(MAUTIC_TABLE_PREFIX.'email_list_excluded', 'eel')
+            ->where('eel.email_id = :emailId')
+            ->setParameter('emailId', $emailId)
+            ->executeQuery()
+            ->fetchFirstColumn();
+
+        if (!$excludedListIds) {
+            return null;
+        }
+
+        $queryBuilder = $connection->createQueryBuilder();
+        $queryBuilder->select('ll.lead_id')
+            /**
+             * Uses FORCE INDEX to ensure the PRIMARY key (leadlist_id, lead_id) is used,
+             * preventing full table scans on large lead_lists_leads tables.
+             */
+            ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads ll FORCE INDEX (`PRIMARY`)')
+            ->where($queryBuilder->expr()->in('ll.leadlist_id', ':excludedListIds'))
+            ->setParameter('excludedListIds', $excludedListIds, ArrayParameterType::INTEGER);
+
+        return $queryBuilder;
+    }
+
+    /**
+     * Gets emails with published variants.
+     *
+     * @return array<Email>
+     */
+    public function getPublishedEmailsWithVariant(): array
+    {
+        $qb   = $this->getEntityManager()->createQueryBuilder();
+        $expr = $this->getPublishedByDateExpression($qb, $this->getTableAlias());
+
+        $qb->select($this->getTableAlias())
+            ->from(Email::class, $this->getTableAlias())
+            ->innerJoin(Email::class, 'v', Expr\Join::WITH, $qb->expr()->andX(
+                $qb->expr()->eq($this->getTableAlias(), 'v.variantParent'),
+                $qb->expr()->eq('v.isPublished', true)
+            ))
+            ->where($expr);
+
+        return $qb->getQuery()->getResult();
     }
 }

@@ -1,28 +1,16 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Tests\MonitoredEmail\Processor\FeedbackLoop;
 
 use Mautic\EmailBundle\MonitoredEmail\Exception\FeedbackLoopNotFound;
 use Mautic\EmailBundle\MonitoredEmail\Message;
 use Mautic\EmailBundle\MonitoredEmail\Processor\FeedbackLoop\Parser;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(Parser::class)]
 class ParserTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @testdox Test that an email is found inside a feedback report
-     *
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Processor\FeedbackLoop\Parser::parse()
-     */
-    public function testEmailIsFoundInFeedbackLoopEmail()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test that an email is found inside a feedback report')]
+    public function testEmailIsFoundInFeedbackLoopEmail(): void
     {
         $message            = new Message();
         $message->fblReport = <<<'BODY'
@@ -45,15 +33,11 @@ BODY;
         $parser = new Parser($message);
 
         $email = $parser->parse();
-        $this->assertEquals('user@example.com', $email);
+        $this->assertSame('user@example.com', $email);
     }
 
-    /**
-     * @testdox Test that an exception is thrown if no feedback report is found
-     *
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Processor\FeedbackLoop\Parser::parse()
-     */
-    public function testExceptionIsThrownWithFblNotFound()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test that an exception is thrown if no feedback report is found')]
+    public function testExceptionIsThrownWithFblNotFound(): void
     {
         $this->expectException(FeedbackLoopNotFound::class);
 

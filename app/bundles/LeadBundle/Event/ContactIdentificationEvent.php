@@ -1,48 +1,25 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Event;
 
 use Mautic\LeadBundle\Entity\Lead;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
 class ContactIdentificationEvent extends Event
 {
-    /**
-     * @var array
-     */
-    private $clickthrough;
-
-    /**
-     * @var Lead
-     */
-    private $identifiedContact;
+    private ?Lead $identifiedContact = null;
 
     /**
      * @var string
      */
     private $identifiedByChannel;
 
-    /**
-     * ContactIdentificationEvent constructor.
-     */
-    public function __construct(array $clickthrough)
-    {
-        $this->clickthrough = $clickthrough;
+    public function __construct(
+        private readonly array $clickthrough,
+    ) {
     }
 
-    /**
-     * @return array
-     */
-    public function getClickthrough()
+    public function getClickthrough(): array
     {
         return $this->clickthrough;
     }
@@ -50,7 +27,7 @@ class ContactIdentificationEvent extends Event
     /**
      * @param string $channel
      */
-    public function setIdentifiedContact(Lead $contact, $channel)
+    public function setIdentifiedContact(Lead $contact, $channel): void
     {
         $this->identifiedContact   = $contact;
         $this->identifiedByChannel = $channel;
@@ -66,10 +43,7 @@ class ContactIdentificationEvent extends Event
         return $this->identifiedByChannel;
     }
 
-    /**
-     * @return Lead
-     */
-    public function getIdentifiedContact()
+    public function getIdentifiedContact(): ?Lead
     {
         return $this->identifiedContact;
     }

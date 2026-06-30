@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2019 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Tests\Unit\Auth\Support\Oauth2\Token;
 
 use kamermans\OAuth2\Token\RawToken;
@@ -21,14 +12,19 @@ use Mautic\IntegrationsBundle\Auth\Support\Oauth2\Token\TokenPersistence;
 use Mautic\IntegrationsBundle\Exception\IntegrationNotSetException;
 use Mautic\IntegrationsBundle\Helper\IntegrationsHelper;
 use Mautic\PluginBundle\Entity\Integration;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class TokenPersistenceTest extends TestCase
 {
-    private $integrationsHelper;
-    private $tokenPersistence;
+    /**
+     * @var MockObject&IntegrationsHelper
+     */
+    private MockObject $integrationsHelper;
 
-    public function setUp(): void
+    private TokenPersistence $tokenPersistence;
+
+    protected function setUp(): void
     {
         $this->integrationsHelper = $this->createMock(IntegrationsHelper::class);
         $this->tokenPersistence   = new TokenPersistence($this->integrationsHelper);
@@ -39,7 +35,7 @@ class TokenPersistenceTest extends TestCase
     {
         $this->expectException(IntegrationNotSetException::class);
 
-        $token = $this->createMock(TokenInterface::class);
+        $token = $this->createStub(TokenInterface::class);
         $this->tokenPersistence->restoreToken($token);
     }
 
@@ -78,7 +74,7 @@ class TokenPersistenceTest extends TestCase
     {
         $this->expectException(IntegrationNotSetException::class);
 
-        $token = $this->createMock(TokenInterface::class);
+        $token = $this->createStub(TokenInterface::class);
         $this->tokenPersistence->saveToken($token);
     }
 
@@ -99,19 +95,18 @@ class TokenPersistenceTest extends TestCase
             'instance_url' => 'abc.123.com',
         ];
 
-        $token = new IntegrationToken($newApiKeys['access_token'], $newApiKeys['refresh_token'], $newApiKeys['expires_at'], $extraData);
-
+        $token       = new IntegrationToken($newApiKeys['access_token'], $newApiKeys['refresh_token'], $newApiKeys['expires_at'], $extraData);
         $integration = $this->createMock(Integration::class);
-        $integration->expects($this->at(0))
+        $newApiKeys  = array_merge($oldApiKeys, $extraData, $newApiKeys);
+
+        $integration->expects($this->exactly(2))
             ->method('getApiKeys')
-            ->willReturn($oldApiKeys);
-        $newApiKeys = array_merge($oldApiKeys, $extraData, $newApiKeys);
+            ->willReturnOnConsecutiveCalls($oldApiKeys, $newApiKeys);
+
         $integration->expects($this->once())
             ->method('setApiKeys')
             ->with($newApiKeys);
-        $integration->expects($this->at(2))
-            ->method('getApiKeys')
-            ->willReturn($newApiKeys);
+
         $this->tokenPersistence->setIntegration($integration);
 
         $this->integrationsHelper->expects($this->once())
@@ -126,7 +121,7 @@ class TokenPersistenceTest extends TestCase
     {
         $this->expectException(IntegrationNotSetException::class);
 
-        $token = $this->createMock(TokenInterface::class);
+        $token = $this->createStub(TokenInterface::class);
         $this->tokenPersistence->saveToken($token);
     }
 
@@ -148,13 +143,8 @@ class TokenPersistenceTest extends TestCase
             $expected
         );
 
-        $integration = $this->createMock(Integration::class);
-        $integration->expects($this->at(0))
-            ->method('getApiKeys')
-            ->willReturn($apiKeys);
-        $integration->expects($this->at(2))
-            ->method('getApiKeys')
-            ->willReturn($apiKeys);
+        $integration = new Integration();
+        $integration->setApiKeys($apiKeys);
 
         $this->tokenPersistence->setIntegration($integration);
 
@@ -165,8 +155,15 @@ class TokenPersistenceTest extends TestCase
         $this->assertTrue($this->tokenPersistence->hasToken());
 
         $this->tokenPersistence->deleteToken();
-
         $this->assertFalse($this->tokenPersistence->hasToken());
+
+        $apiKeys = $integration->getApiKeys();
+        $this->assertFalse(isset($apiKeys['access_token']));
+        $this->assertFalse(isset($apiKeys['expires_in']));
+
+        $newToken = $this->tokenPersistence->restoreToken($token);
+        $this->assertTrue($newToken->isExpired());
+        $this->assertEmpty($newToken->getAccessToken());
     }
 
     public function testHasToken(): void
@@ -182,12 +179,8 @@ class TokenPersistenceTest extends TestCase
         ];
 
         $integration = $this->createMock(Integration::class);
-        $integration->expects($this->at(2))
-            ->method('getApiKeys')
-            ->willReturn($apiKeys);
-        $integration->expects($this->at(3))
-            ->method('getApiKeys')
-            ->willReturn(['access_token' => $accessToken]);
+        $integration->method('getApiKeys')
+            ->willReturnOnConsecutiveCalls(null, $apiKeys, ['access_token' => $accessToken], null, null);
 
         $this->tokenPersistence->setIntegration($integration);
         $this->assertFalse($this->tokenPersistence->hasToken());
@@ -198,5 +191,95 @@ class TokenPersistenceTest extends TestCase
         $token = new RawToken();
         $this->tokenPersistence->saveToken($token);
         $this->assertFalse($this->tokenPersistence->hasToken());
+    }
+
+    public function testRestoreTokenSetsExpirationIfKnown(): void
+    {
+        $accessToken  = 'access_token';
+        $refreshToken = 'refresh_token';
+        $expiresAt    = time() + 100;
+        $apiKeys      = [
+            'access_token'  => $accessToken,
+            'refresh_token' => $refreshToken,
+            'expires_at'    => $expiresAt,
+        ];
+
+        $factory      = new RawTokenFactory();
+        $tokenFromApi = $factory([
+            'access_token'  => $accessToken,
+            'refresh_token' => $refreshToken,
+            'expires_at'    => $expiresAt,
+        ]);
+
+        $integration = $this->createMock(Integration::class);
+        $integration->expects($this->once())
+            ->method('getApiKeys')
+            ->willReturn($apiKeys);
+
+        $this->tokenPersistence->setIntegration($integration);
+
+        $newToken = $this->tokenPersistence->restoreToken($tokenFromApi);
+
+        $this->assertSame($apiKeys['expires_at'], $newToken->getExpiresAt());
+        $this->assertFalse($newToken->isExpired());
+    }
+
+    public function testRestoreTokenRestoresExpirationToNotExpiredWhenNotExplicitlyDefined(): void
+    {
+        $accessToken  = 'access_token';
+        $refreshToken = 'refresh_token';
+        $apiKeys      = [
+            'access_token'  => $accessToken,
+            'refresh_token' => $refreshToken,
+        ];
+
+        $factory      = new RawTokenFactory();
+        $tokenFromApi = $factory([
+            'access_token'  => $accessToken,
+            'refresh_token' => $refreshToken,
+        ]);
+
+        $integration = $this->createMock(Integration::class);
+        $integration->expects($this->once())
+            ->method('getApiKeys')
+            ->willReturn($apiKeys);
+
+        $this->tokenPersistence->setIntegration($integration);
+
+        $newToken = $this->tokenPersistence->restoreToken($tokenFromApi);
+
+        $this->assertSame(0, $newToken->getExpiresAt());
+        $this->assertFalse($newToken->isExpired());
+    }
+
+    public function testRestoreTokenExpiresTokenIfApplicable(): void
+    {
+        $accessToken  = 'access_token';
+        $refreshToken = 'refresh_token';
+        $expiresAt    = time() - 100;
+        $apiKeys      = [
+            'access_token'  => $accessToken,
+            'refresh_token' => $refreshToken,
+            'expires_at'    => $expiresAt,
+        ];
+
+        $factory      = new RawTokenFactory();
+        $tokenFromApi = $factory([
+            'access_token'  => $accessToken,
+            'refresh_token' => $refreshToken,
+            'expires_at'    => $expiresAt,
+        ]);
+
+        $integration = $this->createMock(Integration::class);
+        $integration->expects($this->once())
+            ->method('getApiKeys')
+            ->willReturn($apiKeys);
+
+        $this->tokenPersistence->setIntegration($integration);
+
+        $newToken = $this->tokenPersistence->restoreToken($tokenFromApi);
+
+        $this->assertSame($apiKeys['expires_at'], $newToken->getExpiresAt());
+        $this->assertTrue($newToken->isExpired());
     }
 }

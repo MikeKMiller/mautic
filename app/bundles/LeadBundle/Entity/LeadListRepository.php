@@ -1,38 +1,26 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Query\QueryBuilder;
-use Doctrine\DBAL\Types\DateType;
-use Doctrine\DBAL\Types\FloatType;
-use Doctrine\DBAL\Types\IntegerType;
-use Doctrine\DBAL\Types\TimeType;
-use Mautic\CoreBundle\Doctrine\QueryFormatter\AbstractFormatter;
-use Mautic\CoreBundle\Doctrine\Type\UTCDateTimeType;
+use Doctrine\ORM\Query\ResultSetMapping;
 use Mautic\CoreBundle\Entity\CommonRepository;
 use Mautic\CoreBundle\Helper\DateTimeHelper;
-use Mautic\CoreBundle\Helper\InputHelper;
-use Mautic\CoreBundle\Helper\Serializer;
-use Mautic\LeadBundle\Event\LeadListFilteringEvent;
-use Mautic\LeadBundle\Event\LeadListFiltersOperatorsEvent;
-use Mautic\LeadBundle\LeadEvents;
+use Mautic\ProjectBundle\Entity\ProjectRepositoryTrait;
 use Mautic\UserBundle\Entity\User;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
+/**
+ * @extends CommonRepository<LeadList>
+ */
 class LeadListRepository extends CommonRepository
 {
-    use OperatorListTrait;
+    use OperatorListTrait; // @deprecated to be removed in Mautic 3. Not used inside this class.
+
     use ExpressionHelperTrait;
     use RegexTrait;
+    use ProjectRepositoryTrait;
 
     /**
      * @var bool
@@ -61,46 +49,57 @@ class LeadListRepository extends CommonRepository
      */
     protected $companyTableSchema;
 
-    /**
-     * {@inheritdoc}
-     *
-     * @param int $id
-     *
-     * @return mixed|null
-     */
-    public function getEntity($id = 0)
+    private function getSingleEntity(int $id, bool $ignoreDeleted = true): ?LeadList
     {
         try {
-            $entity = $this
-                ->createQueryBuilder('l')
-                ->where('l.id = :listId')
-                ->setParameter('listId', $id)
+            $q = $this
+                ->createQueryBuilder('l');
+            $q->where('l.id = :listId');
+            if ($ignoreDeleted) {
+                $q->andWhere($q->expr()->isNull($this->getTableAlias().'.deleted'));
+            }
+
+            return $q->setParameter('listId', $id)
                 ->getQuery()
                 ->getSingleResult();
-        } catch (\Exception $e) {
-            $entity = null;
+        } catch (\Exception) {
+            return null;
         }
+    }
 
-        return $entity;
+    /**
+     * @param int $id
+     */
+    public function getEntity($id = 0): ?LeadList
+    {
+        return $this->getSingleEntity($id);
+    }
+
+    public function getSoftDeletedEntity(int $id): ?LeadList
+    {
+        return $this->getSingleEntity($id, false);
     }
 
     /**
      * Get a list of lists.
      *
-     * @param bool   $user
      * @param string $alias
      * @param string $id
+     * @param bool   $justPublished if false, returns all published and unpublished segments
      *
      * @return array
      */
-    public function getLists(?User $user = null, $alias = '', $id = '')
+    public function getLists(?User $user = null, $alias = '', $id = '', bool $justPublished = true)
     {
         $q = $this->getEntityManager()->createQueryBuilder()
             ->from(LeadList::class, 'l', 'l.id');
 
-        $q->select('partial l.{id, name, alias}')
-            ->andWhere($q->expr()->eq('l.isPublished', ':true'))
-            ->setParameter('true', true, 'boolean');
+        $q->select('partial l.{id, name, alias}');
+
+        if ($justPublished) {
+            $q->andWhere($q->expr()->eq('l.isPublished', ':true'))
+                ->setParameter('true', true, 'boolean');
+        }
 
         if ($user) {
             $q->andWhere($q->expr()->eq('l.isGlobal', ':true'));
@@ -119,6 +118,8 @@ class LeadListRepository extends CommonRepository
             );
         }
 
+        $q->andWhere($q->expr()->isNull($this->getTableAlias().'.deleted'));
+
         $q->orderBy('l.name');
 
         return $q->getQuery()->getArrayResult();
@@ -127,10 +128,10 @@ class LeadListRepository extends CommonRepository
     /**
      * Get lists for a specific lead.
      *
-     * @param      $lead
-     * @param bool $forList
-     * @param bool $singleArrayHydration
-     * @param bool $isPublic
+     * @param int|Lead[] $lead                 Lead ID or array of Leads
+     * @param bool       $forList
+     * @param bool       $singleArrayHydration
+     * @param bool       $isPublic
      *
      * @return mixed
      */
@@ -175,66 +176,62 @@ class LeadListRepository extends CommonRepository
             }
 
             return $return;
-        } else {
-            $q = $this->getEntityManager()->createQueryBuilder()
-                ->from(LeadList::class, 'l', 'l.id');
-
-            if ($forList) {
-                $q->select('partial l.{id, alias, name}, partial il.{lead, list, dateAdded, manuallyAdded, manuallyRemoved}');
-            } else {
-                $q->select('l');
-            }
-
-            $q->leftJoin('l.leads', 'il');
-
-            $q->where(
-                $q->expr()->andX(
-                    $q->expr()->eq('IDENTITY(il.lead)', (int) $lead),
-                    $q->expr()->in('il.manuallyRemoved', ':false')
-                )
-            )
-                ->setParameter('false', false, 'boolean');
-
-            if ($isPublic) {
-                $q->andWhere($q->expr()->eq('l.isGlobal', ':isPublic'))
-                    ->setParameter('isPublic', true, 'boolean');
-            }
-
-            if ($isPreferenceCenter) {
-                $q->andWhere($q->expr()->eq('l.isPreferenceCenter', ':isPreferenceCenter'))
-                    ->setParameter('isPreferenceCenter', true, 'boolean');
-            }
-
-            return ($singleArrayHydration) ? $q->getQuery()->getArrayResult() : $q->getQuery()->getResult();
         }
+        $q = $this->getEntityManager()->createQueryBuilder()
+            ->from(LeadList::class, 'l', 'l.id');
+
+        if ($forList) {
+            $q->select('partial l.{id, alias, name}, partial il.{lead, list, dateAdded, manuallyAdded, manuallyRemoved}');
+        } else {
+            $q->select('l');
+        }
+
+        $q->leftJoin('l.leads', 'il');
+
+        $q->where(
+            $q->expr()->andX(
+                $q->expr()->eq('IDENTITY(il.lead)', (int) $lead),
+                $q->expr()->in('il.manuallyRemoved', ':false')
+            )
+        )
+            ->setParameter('false', false, 'boolean');
+
+        if ($isPublic) {
+            $q->andWhere($q->expr()->eq('l.isGlobal', ':isPublic'))
+                ->setParameter('isPublic', true, 'boolean');
+        }
+
+        if ($isPreferenceCenter) {
+            $q->andWhere($q->expr()->eq('l.isPreferenceCenter', ':isPreferenceCenter'))
+                ->setParameter('isPreferenceCenter', true, 'boolean');
+        }
+
+        return ($singleArrayHydration) ? $q->getQuery()->getArrayResult() : $q->getQuery()->getResult();
     }
 
     /**
      * Check Lead segments by ids.
-     *
-     * @param $ids
-     *
-     * @return bool
      */
-    public function checkLeadSegmentsByIds(Lead $lead, $ids)
+    public function checkLeadSegmentsByIds(Lead $lead, $ids): bool
     {
         if (empty($ids)) {
             return false;
         }
 
-        $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
-        $q->select('l.id')
-            ->from(MAUTIC_TABLE_PREFIX.'leads', 'l');
-        $q->join('l', MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'x', 'l.id = x.lead_id')
+        $qb = $this->getEntityManager()->getConnection()->createQueryBuilder();
+        $qb->select('ll.leadlist_id')
+            ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'll')
             ->where(
-                $q->expr()->andX(
-                    $q->expr()->in('x.leadlist_id', $ids),
-                    $q->expr()->eq('l.id', ':leadId')
+                $qb->expr()->and(
+                    $qb->expr()->in('ll.leadlist_id', ':ids'),
+                    $qb->expr()->eq('ll.lead_id', ':leadId'),
+                    $qb->expr()->eq('ll.manually_removed', 0)
                 )
             )
-            ->setParameter('leadId', $lead->getId());
+            ->setParameter('leadId', $lead->getId())
+            ->setParameter('ids', $ids, ArrayParameterType::INTEGER);
 
-        return  (bool) $q->execute()->fetchColumn();
+        return (bool) $qb->executeQuery()->fetchOne();
     }
 
     /**
@@ -249,7 +246,7 @@ class LeadListRepository extends CommonRepository
 
         $q->select('partial l.{id, name, alias}')
             ->where($q->expr()->eq('l.isPublished', 'true'))
-            ->setParameter(':true', true, 'boolean')
+            ->setParameter('true', true, 'boolean')
             ->andWhere($q->expr()->eq('l.isGlobal', ':true'))
             ->orderBy('l.name');
 
@@ -268,7 +265,7 @@ class LeadListRepository extends CommonRepository
 
         $q->select('partial l.{id, name, publicName, alias}')
             ->where($q->expr()->eq('l.isPublished', 'true'))
-            ->setParameter(':true', true, 'boolean')
+            ->setParameter('true', true, 'boolean')
             ->andWhere($q->expr()->eq('l.isPreferenceCenter', ':true'))
             ->orderBy('l.name');
 
@@ -278,35 +275,44 @@ class LeadListRepository extends CommonRepository
     /**
      * Get a count of leads that belong to the list.
      *
-     * @param $listIds
+     * @param int|int[] $listIds
      *
-     * @return array
+     * @return array|int
+     *
+     * @throws \Exception
      */
     public function getLeadCount($listIds)
     {
-        $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
-
-        $q->select('count(l.lead_id) as thecount, l.leadlist_id')
-            ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'l');
-
-        $returnArray = (is_array($listIds));
-
-        if (!$returnArray) {
+        if (!is_array($listIds)) {
             $listIds = [$listIds];
         }
 
+        $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
+        $q->select('count(l.lead_id) as thecount, l.leadlist_id')
+            ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'l');
+
+        $countListIds = count($listIds);
+
+        if (1 === $countListIds) {
+            $q          = $this->forceUseIndex($q, MAUTIC_TABLE_PREFIX.'manually_removed');
+            $expression = $q->expr()->eq('l.leadlist_id', $listIds[0]);
+        } else {
+            $expression = $q->expr()->in('l.leadlist_id', ':listIds');
+            $q->setParameter('listIds', $listIds, ArrayParameterType::INTEGER);
+        }
+
         $q->where(
-            $q->expr()->in('l.leadlist_id', $listIds),
+            $expression,
             $q->expr()->eq('l.manually_removed', ':false')
         )
             ->setParameter('false', false, 'boolean')
             ->groupBy('l.leadlist_id');
 
-        $result = $q->execute()->fetchAll();
+        $result = $q->executeQuery()->fetchAllAssociative();
 
         $return = [];
         foreach ($result as $r) {
-            $return[$r['leadlist_id']] = $r['thecount'];
+            $return[$r['leadlist_id']] = (int) $r['thecount'];
         }
 
         // Ensure lists without leads have a value
@@ -316,22 +322,27 @@ class LeadListRepository extends CommonRepository
             }
         }
 
-        return ($returnArray) ? $return : $return[$listIds[0]];
+        return (1 === $countListIds) ? $return[$listIds[0]] : $return;
     }
 
-    /**
-     * @param $filters
-     *
-     * @return array
-     */
-    public function arrangeFilters($filters)
+    private function forceUseIndex(QueryBuilder $qb, string $indexName): QueryBuilder
+    {
+        $fromPart             = $qb->getQueryPart('from');
+        $fromPart[0]['alias'] = sprintf('%s USE INDEX (%s)', $fromPart[0]['alias'], $indexName);
+        $qb->resetQueryPart('from');
+        $qb->from($fromPart[0]['table'], $fromPart[0]['alias']);
+
+        return $qb;
+    }
+
+    public function arrangeFilters($filters): array
     {
         $objectFilters = [];
         if (empty($filters)) {
             $objectFilters['lead'][] = $filters;
         }
         foreach ($filters as $filter) {
-            $object = (isset($filter['object'])) ? $filter['object'] : 'lead';
+            $object = $filter['object'] ?? 'lead';
             switch ($object) {
                 case 'company':
                     $objectFilters['company'][] = $filter;
@@ -345,62 +356,48 @@ class LeadListRepository extends CommonRepository
         return $objectFilters;
     }
 
-    public function setDispatcher(EventDispatcherInterface $dispatcher)
+    public function setDispatcher(EventDispatcherInterface $dispatcher): void
     {
         $this->dispatcher = $dispatcher;
     }
 
     /**
-     * @param      $table
-     * @param      $alias
-     * @param      $column
-     * @param      $value
-     * @param null $leadId
-     *
      * @return QueryBuilder
      */
     protected function createFilterExpressionSubQuery($table, $alias, $column, $value, array &$parameters, $leadId = null, array $subQueryFilters = [])
     {
         $subQb   = $this->getEntityManager()->getConnection()->createQueryBuilder();
-        $subExpr = $subQb->expr()->andX();
+        $subExpr = [];
+
+        foreach ($subQueryFilters as $subColumn => $subParameter) {
+            $subExpr[] = $subQb->expr()->eq($subColumn, ":$subParameter");
+        }
 
         if ('leads' !== $table) {
-            $subExpr->add(
-                $subQb->expr()->eq($alias.'.lead_id', 'l.id')
-            );
+            $subExpr[] = $subQb->expr()->eq($alias.'.lead_id', 'l.id');
         }
 
         // Specific lead
         if (!empty($leadId)) {
             $columnName = ('leads' === $table) ? 'id' : 'lead_id';
-            $subExpr->add(
-                $subQb->expr()->eq($alias.'.'.$columnName, $leadId)
-            );
-        }
-
-        foreach ($subQueryFilters as $subColumn => $subParameter) {
-            $subExpr->add(
-                $subQb->expr()->eq($subColumn, ":$subParameter")
-            );
+            $subExpr[]  = $subQb->expr()->eq($alias.'.'.$columnName, $leadId);
         }
 
         if (null !== $value && !empty($column)) {
             $subFilterParamter = $this->generateRandomParameterName();
             $subFunc           = 'eq';
             if (is_array($value)) {
-                $subFunc = 'in';
-                $subExpr->add(
-                    $subQb->expr()->in(sprintf('%s.%s', $alias, $column), ":$subFilterParamter")
-                );
-                $parameters[$subFilterParamter] = ['value' => $value, 'type' => \Doctrine\DBAL\Connection::PARAM_STR_ARRAY];
+                $subFunc                        = 'in';
+                $subExpr[]                      = $subQb->expr()->in(sprintf('%s.%s', $alias, $column), ":$subFilterParamter");
+                $parameters[$subFilterParamter] = ['value' => $value, 'type' => ArrayParameterType::STRING];
             } else {
                 $parameters[$subFilterParamter] = $value;
             }
 
-            $subExpr->add(
-                $subQb->expr()->$subFunc(sprintf('%s.%s', $alias, $column), ":$subFilterParamter")
-            );
+            $subExpr = $subQb->expr()->$subFunc(sprintf('%s.%s', $alias, $column), ":$subFilterParamter");
         }
+
+        $subQb->expr()->and(...$subExpr);
 
         $subQb->select('null')
             ->from(MAUTIC_TABLE_PREFIX.$table, $alias)
@@ -410,12 +407,9 @@ class LeadListRepository extends CommonRepository
     }
 
     /**
-     * @param \Doctrine\ORM\QueryBuilder|\Doctrine\DBAL\Query\QueryBuilder $q
-     * @param                                                              $filter
-     *
-     * @return array
+     * @param \Doctrine\ORM\QueryBuilder|QueryBuilder $q
      */
-    protected function addCatchAllWhereClause($q, $filter)
+    protected function addCatchAllWhereClause($q, $filter): array
     {
         return $this->addStandardCatchAllWhereClause(
             $q,
@@ -428,21 +422,18 @@ class LeadListRepository extends CommonRepository
     }
 
     /**
-     * @param \Doctrine\ORM\QueryBuilder|\Doctrine\DBAL\Query\QueryBuilder $q
-     * @param                                                              $filter
-     *
-     * @return array
+     * @param \Doctrine\ORM\QueryBuilder|QueryBuilder $q
      */
-    protected function addSearchCommandWhereClause($q, $filter)
+    protected function addSearchCommandWhereClause($q, $filter): array
     {
-        list($expr, $parameters) = parent::addSearchCommandWhereClause($q, $filter);
+        [$expr, $parameters] = parent::addStandardSearchCommandWhereClause($q, $filter);
         if ($expr) {
             return [$expr, $parameters];
         }
 
         $command         = $filter->command;
         $unique          = $this->generateRandomParameterName();
-        $returnParameter = false; //returning a parameter that is not used will lead to a Doctrine error
+        $returnParameter = false; // returning a parameter that is not used will lead to a Doctrine error
 
         switch ($command) {
             case $this->translator->trans('mautic.lead.list.searchcommand.isglobal'):
@@ -450,26 +441,27 @@ class LeadListRepository extends CommonRepository
                 $expr            = $q->expr()->eq('l.isGlobal', ":$unique");
                 $forceParameters = [$unique => true];
                 break;
-            case $this->translator->trans('mautic.core.searchcommand.ispublished'):
-            case $this->translator->trans('mautic.core.searchcommand.ispublished', [], null, 'en_US'):
-                $expr            = $q->expr()->eq('l.isPublished', ":$unique");
-                $forceParameters = [$unique => true];
-                break;
-            case $this->translator->trans('mautic.core.searchcommand.isunpublished'):
-            case $this->translator->trans('mautic.core.searchcommand.isunpublished', [], null, 'en_US'):
-                $expr            = $q->expr()->eq('l.isPublished', ":$unique");
-                $forceParameters = [$unique => false];
-                break;
             case $this->translator->trans('mautic.core.searchcommand.name'):
             case $this->translator->trans('mautic.core.searchcommand.name', [], null, 'en_US'):
                 $expr            = $q->expr()->like('l.name', ':'.$unique);
                 $returnParameter = true;
                 break;
-            case $this->translator->trans('mautic.core.searchcommand.ismine'):
-            case $this->translator->trans('mautic.core.searchcommand.ismine', [], null, 'en_US'):
-                $expr            = $q->expr()->eq('l.createdBy', ":$unique");
-                $forceParameters = [$unique => $this->currentUser->getId()];
+            case $this->translator->trans('mautic.lead.list.searchcommand.filters_field'):
+            case $this->translator->trans('mautic.lead.list.searchcommand.filters_field', [], null, 'en_US'):
+                $pattern         = sprintf('%%s:5:"field";s:%d:"%s"%%', strlen($filter->string), $filter->string);
+                $expr            = $q->expr()->like('l.filters', ':'.$unique);
+                $forceParameters = [$unique => $pattern];
                 break;
+            case $this->translator->trans('mautic.project.searchcommand.name'):
+            case $this->translator->trans('mautic.project.searchcommand.name', [], null, 'en_US'):
+                return $this->handleProjectFilter(
+                    $this->_em->getConnection()->createQueryBuilder(),
+                    'leadlist_id',
+                    'lead_list_projects_xref',
+                    'l',
+                    $filter->string,
+                    $filter->not
+                );
         }
 
         if (!empty($forceParameters)) {
@@ -486,9 +478,9 @@ class LeadListRepository extends CommonRepository
     }
 
     /**
-     * @return array
+     * @return string[]
      */
-    public function getSearchCommands()
+    public function getSearchCommands(): array
     {
         $commands = [
             'mautic.lead.list.searchcommand.isglobal',
@@ -496,15 +488,15 @@ class LeadListRepository extends CommonRepository
             'mautic.core.searchcommand.isunpublished',
             'mautic.core.searchcommand.name',
             'mautic.core.searchcommand.ismine',
+            'mautic.core.searchcommand.category',
+            'mautic.lead.list.searchcommand.filters_field',
+            'mautic.project.searchcommand.name',
         ];
 
         return array_merge($commands, parent::getSearchCommands());
     }
 
-    /**
-     * @return array
-     */
-    public function getRelativeDateStrings()
+    public function getRelativeDateStrings(): array
     {
         $keys = self::getRelativeDateTranslationKeys();
 
@@ -516,10 +508,7 @@ class LeadListRepository extends CommonRepository
         return $strings;
     }
 
-    /**
-     * @return array
-     */
-    public static function getRelativeDateTranslationKeys()
+    public static function getRelativeDateTranslationKeys(): array
     {
         return [
             'mautic.lead.list.month_last',
@@ -539,20 +528,401 @@ class LeadListRepository extends CommonRepository
     }
 
     /**
-     * @return string
+     * @return array<array<string>>
      */
-    protected function getDefaultOrder()
+    protected function getDefaultOrder(): array
     {
         return [
             ['l.name', 'ASC'],
         ];
     }
 
-    /**
-     * @return string
-     */
-    public function getTableAlias()
+    public function getTableAlias(): string
     {
         return 'l';
+    }
+
+    public function leadListExists(int $id): bool
+    {
+        $tableName = MAUTIC_TABLE_PREFIX.'lead_lists';
+        $result    = (int) $this->getEntityManager()->getConnection()
+            ->executeQuery("SELECT EXISTS(SELECT 1 FROM {$tableName} WHERE id = {$id})")
+            ->fetchOne();
+
+        return 1 === $result;
+    }
+
+    /**
+     * Returns array of campaigns related to this segment.
+     *
+     * @return array<int, string>
+     */
+    public function getSegmentCampaigns(int $segmentId): array
+    {
+        $q = $this->getEntityManager()->getConnection()->createQueryBuilder()
+            ->select('clx.campaign_id, c.name')
+            ->distinct()
+            ->from(MAUTIC_TABLE_PREFIX.'campaign_leadlist_xref', 'clx')
+            ->join('clx', MAUTIC_TABLE_PREFIX.'campaigns', 'c', 'c.id = clx.campaign_id');
+        $q->where(
+            $q->expr()->eq('clx.leadlist_id', $segmentId)
+        );
+
+        $lists   = [];
+        $results = $q->executeQuery()->fetchAllAssociative();
+
+        foreach ($results as $row) {
+            $lists[$row['campaign_id']] = $row['name'];
+        }
+
+        return $lists;
+    }
+
+    public function isContactInAnySegment(int $contactId): bool
+    {
+        $tableName = MAUTIC_TABLE_PREFIX.'lead_lists_leads';
+
+        $sql = <<<SQL
+            SELECT leadlist_id 
+            FROM $tableName
+            WHERE lead_id = ?
+                AND manually_removed = 0
+            LIMIT 1
+SQL;
+
+        $segmentIds = $this->getEntityManager()->getConnection()
+            ->executeQuery(
+                $sql,
+                [$contactId],
+                [\PDO::PARAM_INT]
+            )
+            ->fetchFirstColumn();
+
+        return !empty($segmentIds);
+    }
+
+    public function isNotContactInAnySegment(int $contactId): bool
+    {
+        return !$this->isContactInAnySegment($contactId);
+    }
+
+    /**
+     * @param int[] $expectedSegmentIds
+     */
+    public function isContactInSegments(int $contactId, array $expectedSegmentIds): bool
+    {
+        $segmentIds = $this->fetchContactToSegmentIdsRelationships($contactId, $expectedSegmentIds);
+
+        return !empty($segmentIds);
+    }
+
+    /**
+     * @param int[] $expectedSegmentIds
+     */
+    public function isNotContactInSegments(int $contactId, array $expectedSegmentIds): bool
+    {
+        $segmentIds = $this->fetchContactToSegmentIdsRelationships($contactId, $expectedSegmentIds);
+
+        if (empty($segmentIds)) {
+            return true; // Contact is not associated wit any segment
+        }
+
+        foreach ($expectedSegmentIds as $expectedSegmentId) {
+            if (in_array($expectedSegmentId, $segmentIds)) { // No exact type comparison used!
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param int[] $expectedSegmentIds
+     */
+    public function isContactInAllSegments(int $contactId, array $expectedSegmentIds): bool
+    {
+        $segmentIds = $this->fetchContactToSegmentIdsRelationships($contactId, $expectedSegmentIds);
+
+        return count($segmentIds) === count($expectedSegmentIds);
+    }
+
+    /**
+     * @param int[] $expectedSegmentIds
+     */
+    public function isNotContactInAllSegments(int $contactId, array $expectedSegmentIds): bool
+    {
+        $segmentIds = $this->fetchContactToSegmentIdsRelationships($contactId, $expectedSegmentIds);
+
+        return [] === $segmentIds;
+    }
+
+    /**
+     * @param int[] $expectedSegmentIds
+     *
+     * @return int[]
+     */
+    private function fetchContactToSegmentIdsRelationships(int $contactId, array $expectedSegmentIds): array
+    {
+        $tableName = MAUTIC_TABLE_PREFIX.'lead_lists_leads';
+
+        $sql = <<<SQL
+            SELECT leadlist_id 
+            FROM $tableName
+            WHERE lead_id = ?
+                AND leadlist_id IN (?)
+                AND manually_removed = 0
+SQL;
+
+        return $this->getEntityManager()->getConnection()
+            ->executeQuery(
+                $sql,
+                [$contactId, $expectedSegmentIds],
+                [
+                    \PDO::PARAM_INT,
+                    ArrayParameterType::INTEGER,
+                ]
+            )
+            ->fetchFirstColumn();
+    }
+
+    public function setSegmentAsDeleted(int $leadListId): void
+    {
+        $dateTime = (new \DateTimeImmutable())->format(DateTimeHelper::FORMAT_DB);
+
+        $this->getEntityManager()->getConnection()->update(
+            MAUTIC_TABLE_PREFIX.LeadList::TABLE_NAME,
+            ['deleted'   => $dateTime, 'is_published' => 0],
+            ['id'        => $leadListId]
+        );
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getAllSegments(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('title', 'title');
+        $rsm->addScalarResult('item_id', 'item_id');
+        $rsm->addScalarResult('is_published', 'is_published');
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            ll.name as title, 
+            ll.id as item_id,
+            ll.is_published as is_published
+            FROM '.MAUTIC_TABLE_PREFIX.'lead_lists ll', $rsm);
+
+        return $query->getResult();
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getCampaignEntryPoints(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('item_id', 'item_id');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            leadlist_id as item_id
+        FROM '.MAUTIC_TABLE_PREFIX.'campaign_leadlist_xref
+            GROUP BY leadlist_id', $rsm);
+
+        return $query->getResult();
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getEmailIncludeExcludeList(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('item_id', 'item_id');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            leadlist_id as item_id
+        FROM '.MAUTIC_TABLE_PREFIX.'email_list_xref 
+            GROUP BY leadlist_id', $rsm);
+
+        $included = $query->getResult();
+
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('item_id', 'item_id');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            leadlist_id as item_id
+        FROM '.MAUTIC_TABLE_PREFIX.'email_list_excluded 
+            GROUP BY leadlist_id', $rsm);
+
+        $excluded = $query->getResult();
+
+        return array_merge($included, $excluded);
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getCampaignChangeSegmentAction(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('properties', 'properties');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            properties 
+        FROM '.MAUTIC_TABLE_PREFIX.'campaign_events ce 
+        WHERE ce.type = \'lead.changelist\'', $rsm);
+
+        $segmentIds = [];
+        foreach ($query->getResult() as $property) {
+            $property       = \Mautic\CoreBundle\Helper\Serializer::decode($property['properties']);
+            $segmentIds     = array_merge($property['addToLists'], $property['removeFromLists'], $segmentIds);
+        }
+
+        return array_map(fn ($segment): array => ['item_id' => (string) $segment], $segmentIds);
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getFilterSegmentsAction(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('filters', 'filters');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            filters 
+        FROM '.MAUTIC_TABLE_PREFIX.'lead_lists', $rsm);
+
+        $childSegmentIds = [];
+
+        foreach ($query->getResult() as $rowFilters) {
+            $segmentMembershipFilters = array_filter(
+                \Mautic\CoreBundle\Helper\Serializer::decode($rowFilters['filters']),
+                fn (array $filter): bool => 'leadlist' === $filter['type']
+            );
+
+            foreach ($segmentMembershipFilters as $filter) {
+                if (is_array($filter['properties']['filter'])) {
+                    foreach ($filter['properties']['filter'] as $childSegmentId) {
+                        $childSegmentIds[] = ['item_id' => (string) $childSegmentId];
+                    }
+                }
+            }
+        }
+
+        return $childSegmentIds;
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getLeadListLeads(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('item_id', 'item_id');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            leadlist_id as item_id
+        FROM '.MAUTIC_TABLE_PREFIX.'lead_lists_leads
+            GROUP BY leadlist_id', $rsm);
+
+        return $query->getResult();
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getNotificationIncludedList(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('item_id', 'item_id');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            leadlist_id as item_id
+        FROM '.MAUTIC_TABLE_PREFIX.'push_notification_list_xref
+            GROUP BY leadlist_id', $rsm);
+
+        return $query->getResult();
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getSMSIncludedList(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('item_id', 'item_id');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            leadlist_id as item_id
+        FROM '.MAUTIC_TABLE_PREFIX.'sms_message_list_xref
+            GROUP BY leadlist_id', $rsm);
+
+        return $query->getResult();
+    }
+
+    /**
+     * @return mixed[]
+     */
+    public function getFormAction(): array
+    {
+        $rsm = new ResultSetMapping();
+        $rsm->addScalarResult('properties', 'properties');
+
+        $query = $this->getEntityManager()->createNativeQuery('SELECT 
+            properties 
+        FROM '.MAUTIC_TABLE_PREFIX.'form_actions fa 
+        WHERE fa.type = \'lead.changelist\'', $rsm);
+
+        $segmentIds = [];
+        foreach ($query->getResult() as $property) {
+            $property       = \Mautic\CoreBundle\Helper\Serializer::decode($property['properties']);
+            $segmentIds     = array_merge($property['addToLists'], $property['removeFromLists'], $segmentIds);
+        }
+
+        return array_map(fn ($segment): array => ['item_id' => (string) $segment], $segmentIds);
+    }
+
+    /**
+     * @return int[]
+     */
+    public function getLeadSegmentIds(int $leadId): array
+    {
+        $qb = $this->getEntityManager()->createQueryBuilder();
+        $qb->select('ll.id')
+            ->from(LeadList::class, 'll')
+            ->innerJoin('ll.leads', 'l')
+            ->where(
+                $qb->expr()->eq('l.lead', ':leadId')
+            )
+            ->setParameter('leadId', $leadId);
+        $result = $qb->getQuery()->getArrayResult();
+
+        return array_column($result, 'id');
+    }
+
+    /**
+     * Get segment IDs for a contact.
+     *
+     * @param string $contactId Contact ID (supports BIGINT UNSIGNED)
+     *
+     * @return int[]
+     */
+    public function getContactSegmentIds(string $contactId): array
+    {
+        $result = $this->getEntityManager()
+            ->getConnection()
+            ->createQueryBuilder()
+            ->select('ll.leadlist_id')
+            ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'll')
+            ->innerJoin('ll', MAUTIC_TABLE_PREFIX.'lead_lists', 'l', 'll.leadlist_id = l.id')
+            ->where('ll.lead_id = :contactId')
+            ->andWhere('ll.manually_removed = 0')
+            ->andWhere('l.is_published = 1')
+            ->setParameter('contactId', $contactId)
+            ->orderBy('ll.leadlist_id', 'ASC')
+            ->executeQuery()
+            ->fetchAllNumeric();
+
+        return array_map(fn (array $row): int => (int) $row[0], $result);
     }
 }

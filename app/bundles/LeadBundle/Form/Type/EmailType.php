@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Form\Type;
 
 use Mautic\CoreBundle\Form\EventListener\CleanFormSubscriber;
@@ -20,33 +11,37 @@ use Symfony\Component\Form\Extension\Core\Type\HiddenType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\Validator\Constraints\Callback;
 use Symfony\Component\Validator\Constraints\Email;
 use Symfony\Component\Validator\Constraints\NotBlank;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
+/**
+ * @extends AbstractType<mixed>
+ */
 class EmailType extends AbstractType
 {
-    /**
-     * @var UserHelper
-     */
-    private $userHelper;
+    public const REPLY_TO_ADDRESS = 'replyToAddress';
 
-    public function __construct(UserHelper $userHelper)
-    {
-        $this->userHelper = $userHelper;
+    public function __construct(
+        private readonly UserHelper $userHelper,
+    ) {
     }
 
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
-        $builder->addEventSubscriber(new CleanFormSubscriber(['body' => 'html']));
+        $builder->addEventSubscriber(new CleanFormSubscriber(['body' => 'raw']));
 
         $builder->add(
             'subject',
             TextType::class,
             [
-                'label'      => 'mautic.email.subject',
-                'label_attr' => ['class' => 'control-label'],
-                'attr'       => ['class' => 'form-control'],
-                'required'   => false,
+                'label'       => 'mautic.email.subject',
+                'label_attr'  => ['class' => 'control-label'],
+                'attr'        => ['class' => 'form-control'],
+                'constraints' => [
+                    new NotBlank(message: 'mautic.core.subject.required'),
+                ],
             ]
         );
 
@@ -56,10 +51,13 @@ class EmailType extends AbstractType
         $builder->add(
             'fromname',
             TextType::class,
-             [
+            [
                 'label'      => 'mautic.lead.email.from_name',
                 'label_attr' => ['class' => 'control-label'],
-                'attr'       => ['class' => 'form-control'],
+                'attr'       => [
+                    'class'    => 'form-control',
+                    'preaddon' => 'ri-user-6-fill',
+                ],
                 'required'   => false,
                 'data'       => $default,
             ]
@@ -72,17 +70,31 @@ class EmailType extends AbstractType
             [
                 'label'       => 'mautic.lead.email.from_email',
                 'label_attr'  => ['class' => 'control-label'],
-                'attr'        => ['class' => 'form-control'],
+                'attr'        => [
+                    'class'    => 'form-control',
+                    'preaddon' => 'ri-mail-line',
+                ],
                 'required'    => false,
                 'data'        => $default,
                 'constraints' => [
-                    new NotBlank([
-                        'message' => 'mautic.core.email.required',
-                    ]),
-                    new Email([
-                        'message' => 'mautic.core.email.required',
-                    ]),
+                    new NotBlank(message: 'mautic.core.email.required'),
+                    new Email(message: 'mautic.core.email.required'),
                 ],
+            ]
+        );
+
+        $builder->add(
+            self::REPLY_TO_ADDRESS,
+            TextType::class,
+            [
+                'label'      => 'mautic.email.reply_to_email',
+                'label_attr' => ['class' => 'control-label'],
+                'attr'       => [
+                    'class'    => 'form-control',
+                    'preaddon' => 'ri-mail-line',
+                    'tooltip'  => 'mautic.email.reply_to_email.tooltip',
+                ],
+                'required' => false,
             ]
         );
 
@@ -96,6 +108,14 @@ class EmailType extends AbstractType
                     'class'                => 'form-control editor editor-basic-fullpage editor-builder-tokens editor-email',
                     'data-token-callback'  => 'email:getBuilderTokens',
                     'data-token-activator' => '{',
+                    'allow-full-html'      => true,
+                ],
+                'constraints' => [
+                    new Callback(callback: function ($value, ExecutionContextInterface $context): void {
+                        if ('' === trim(strip_tags($value))) {
+                            $context->buildViolation('mautic.lead.email.body.required')->addViolation();
+                        }
+                    }),
                 ],
             ]
         );
@@ -121,8 +141,8 @@ class EmailType extends AbstractType
             'apply_text'  => false,
             'save_text'   => 'mautic.email.send',
             'save_class'  => 'btn btn-primary',
-            'save_icon'   => 'fa fa-send',
-            'cancel_icon' => 'fa fa-times',
+            'save_icon'   => 'ri-send-plane-line',
+            'cancel_icon' => 'ri-close-line',
         ]);
 
         if (!empty($options['action'])) {
@@ -130,10 +150,7 @@ class EmailType extends AbstractType
         }
     }
 
-    /**
-     * @return string
-     */
-    public function getBlockPrefix()
+    public function getBlockPrefix(): string
     {
         return 'lead_quickemail';
     }

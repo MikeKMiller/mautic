@@ -9,22 +9,18 @@ use PHPUnit\Framework\TestCase;
 
 class ObjectMappingTest extends TestCase
 {
-    /**
-     * @var \DateTime
-     */
-    private $dateCreated;
+    private \DateTime $dateCreated;
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         $this->dateCreated = new \DateTime();
 
         parent::setUp();
     }
 
-    public function test__construct(): void
+    public function testConstruct(): void
     {
         $objectMapping = new ObjectMapping($this->dateCreated);
-        $this->assertInstanceOf(ObjectMapping::class, $objectMapping);
         $this->assertEquals($this->dateCreated, $objectMapping->getDateCreated());
     }
 

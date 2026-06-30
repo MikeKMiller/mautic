@@ -1,109 +1,126 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\Controller;
 
-use Mautic\CoreBundle\Controller\FormController as CommonFormController;
+use Mautic\CoreBundle\Controller\AbstractFormController;
+use Mautic\CoreBundle\Exception\FileNotFoundException;
 use Mautic\CoreBundle\Exception\InvalidDecodedStringException;
+use Mautic\CoreBundle\Helper\ClickthroughHelper;
+use Mautic\CoreBundle\Helper\CookieHelper;
+use Mautic\CoreBundle\Helper\IpLookupHelper;
+use Mautic\CoreBundle\Helper\ThemeHelper;
 use Mautic\CoreBundle\Helper\TrackingPixelHelper;
 use Mautic\CoreBundle\Helper\UrlHelper;
-use Mautic\LeadBundle\Helper\PrimaryCompanyHelper;
-use Mautic\LeadBundle\Helper\TokenHelper;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Twig\Helper\AnalyticsHelper;
+use Mautic\CoreBundle\Twig\Helper\AssetsHelper;
+use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Helper\ContactRequestHelper;
 use Mautic\LeadBundle\Model\LeadModel;
 use Mautic\LeadBundle\Tracker\ContactTracker;
 use Mautic\LeadBundle\Tracker\Service\DeviceTrackingService\DeviceTrackingServiceInterface;
 use Mautic\PageBundle\Entity\Page;
 use Mautic\PageBundle\Event\PageDisplayEvent;
+use Mautic\PageBundle\Event\TrackingEvent;
+use Mautic\PageBundle\Event\UrlTokenReplaceEvent;
+use Mautic\PageBundle\Helper\PageConfig;
 use Mautic\PageBundle\Helper\TrackingHelper;
 use Mautic\PageBundle\Model\PageModel;
+use Mautic\PageBundle\Model\RedirectModel;
+use Mautic\PageBundle\Model\Tracking404Model;
 use Mautic\PageBundle\Model\VideoModel;
 use Mautic\PageBundle\PageEvents;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Component\Routing\RouterInterface;
 
-class PublicController extends CommonFormController
+class PublicController extends AbstractFormController
 {
     /**
-     * @param $slug
+     * @param string $slug
      *
      * @return Response
      *
      * @throws \Exception
-     * @throws \Mautic\CoreBundle\Exception\FileNotFoundException
+     * @throws FileNotFoundException
      */
-    public function indexAction($slug, Request $request)
+    public function indexAction(
+        Request $request,
+        ContactRequestHelper $contactRequestHelper,
+        CookieHelper $cookieHelper,
+        AnalyticsHelper $analyticsHelper,
+        AssetsHelper $assetsHelper,
+        ThemeHelper $themeHelper,
+        Tracking404Model $tracking404Model,
+        RouterInterface $router,
+        DeviceTrackingServiceInterface $deviceTrackingService,
+        PageModel $model,
+        $slug)
     {
-        /** @var \Mautic\PageBundle\Model\PageModel $model */
-        $model    = $this->getModel('page');
-        $security = $this->get('mautic.security');
-        /** @var Page $entity */
+        /** @var Page|bool $entity */
         $entity = $model->getEntityBySlugs($slug);
 
         // Do not hit preference center pages
         if (!empty($entity) && !$entity->getIsPreferenceCenter()) {
-            $userAccess = $security->hasEntityAccess('page:pages:viewown', 'page:pages:viewother', $entity->getCreatedBy());
+            $userAccess = $this->security->hasEntityAccess('page:pages:viewown', 'page:pages:viewother', $entity->getCreatedBy());
             $published  = $entity->isPublished();
 
             // Make sure the page is published or deny access if not
             if (!$published && !$userAccess) {
                 // If the page has a redirect type, handle it
                 if (null != $entity->getRedirectType()) {
-                    $model->hitPage($entity, $this->request, $entity->getRedirectType());
+                    $model->hitPage($entity, $request, $entity->getRedirectType());
 
-                    return $this->redirect($entity->getRedirectUrl(), $entity->getRedirectType());
-                } else {
-                    $model->hitPage($entity, $this->request, 401);
+                    if ($entity->getRedirectUrl()) {
+                        return $this->redirect($entity->getRedirectUrl(), (int) $entity->getRedirectType());
+                    }
 
-                    return $this->accessDenied();
+                    return $this->notFound();
                 }
+                $model->hitPage($entity, $request, 401);
+
+                $this->throwAccessDenied();
             }
 
             $lead  = null;
             $query = null;
             if (!$userAccess) {
-                /** @var LeadModel $leadModel */
-                $leadModel = $this->getModel('lead');
                 // Extract the lead from the request so it can be used to determine language if applicable
-                $query = $model->getHitQuery($this->request, $entity);
-                $lead  = $leadModel->getContactFromRequest($query);
+                $query = $model->getHitQuery($request, $entity);
+                $lead  = $contactRequestHelper->getContactFromQuery($query);
             }
 
             // Correct the URL if it doesn't match up
             if (!$request->attributes->get('ignore_mismatch', 0)) {
                 // Make sure URLs match up
                 $url        = $model->generateUrl($entity, false);
-                $requestUri = $this->request->getRequestUri();
+                $requestUri = $request->getRequestUri();
 
                 // Remove query when comparing
-                $query = $this->request->getQueryString();
+                $query = $request->getQueryString();
                 if (!empty($query)) {
                     $requestUri = str_replace("?{$query}", '', $url);
                 }
 
                 // Redirect if they don't match
                 if ($requestUri != $url) {
-                    $model->hitPage($entity, $this->request, 301, $lead, $query);
+                    $model->hitPage($entity, $request, 301, $lead, $query);
 
                     return $this->redirect($url, 301);
                 }
             }
 
             // Check for variants
-            list($parentVariant, $childrenVariants) = $entity->getVariants();
+            [$parentVariant, $childrenVariants] = $entity->getVariants();
 
             // Is this a variant of another? If so, the parent URL should be used unless a user is logged in and previewing
             if ($parentVariant != $entity && !$userAccess) {
-                $model->hitPage($entity, $this->request, 301, $lead, $query);
+                $model->hitPage($entity, $request, 301, $lead, $query);
                 $url = $model->generateUrl($parentVariant, false);
 
                 return $this->redirect($url, 301);
@@ -140,15 +157,15 @@ class PublicController extends CommonFormController
                     }
 
                     if (count($variants)) {
-                        //check to see if this user has already been displayed a specific variant
-                        $variantCookie = $this->request->cookies->get('mautic_page_'.$entity->getId());
+                        // check to see if this user has already been displayed a specific variant
+                        $variantCookie = $request->cookies->get('mautic_page_'.$entity->getId());
 
                         if (!empty($variantCookie)) {
                             if (isset($variants[$variantCookie])) {
-                                //if not the parent, show the specific variant already displayed to the visitor
-                                if ($variantCookie !== $entity->getId()) {
+                                // if not the parent, show the specific variant already displayed to the visitor
+                                if ((string) $variantCookie !== (string) $entity->getId()) {
                                     $entity = $childrenVariants[$variantCookie];
-                                } //otherwise proceed with displaying parent
+                                } // otherwise proceed with displaying parent
                             }
                         } else {
                             // Add parent weight
@@ -167,7 +184,7 @@ class PublicController extends CommonFormController
                             }
                             $totalHits += $variants[$id]['hits'];
 
-                            //determine variant to show
+                            // determine variant to show
                             foreach ($variants as &$variant) {
                                 $variant['weight_deficit'] = ($totalHits) ? $variant['weight'] - ($variant['hits'] / $totalHits) : $variant['weight'];
                             }
@@ -175,7 +192,7 @@ class PublicController extends CommonFormController
                             // Reorder according to send_weight so that campaigns which currently send one at a time alternate
                             uasort(
                                 $variants,
-                                function ($a, $b) {
+                                function ($a, $b): int {
                                     if ($a['weight_deficit'] === $b['weight_deficit']) {
                                         if ($a['hits'] === $b['hits']) {
                                             return 0;
@@ -190,13 +207,11 @@ class PublicController extends CommonFormController
                                 }
                             );
 
-                            //find the one with the most difference from weight
+                            // find the one with the most difference from weight
+                            $useId = array_key_first($variants);
 
-                            reset($variants);
-                            $useId = key($variants);
-
-                            //set the cookie - 14 days
-                            $this->get('mautic.helper.cookie')->setCookie(
+                            // set the cookie - 14 days
+                            $cookieHelper->setCookie(
                                 'mautic_page_'.$entity->getId(),
                                 $useId,
                                 3600 * 24 * 14
@@ -211,16 +226,17 @@ class PublicController extends CommonFormController
 
                 // Now show the translation for the page or a/b test - only fetch a translation if a slug was not used
                 if ($entity->isTranslation() && empty($entity->languageSlug)) {
-                    list($translationParent, $translatedEntity) = $model->getTranslatedEntity(
+                    [$translationParent, $translatedEntity] = $model->getTranslatedEntity(
                         $entity,
                         $lead,
-                        $this->request
+                        $request
                     );
+                    \assert($translatedEntity instanceof Page);
 
                     if ($translationParent && $translatedEntity !== $entity) {
-                        if (!$this->request->get('ntrd', 0)) {
+                        if (!$request->get('ntrd', 0)) {
                             $url = $model->generateUrl($translatedEntity, false);
-                            $model->hitPage($entity, $this->request, 302, $lead, $query);
+                            $model->hitPage($entity, $request, 302, $lead, $query);
 
                             return $this->redirect($url, 302);
                         }
@@ -229,7 +245,7 @@ class PublicController extends CommonFormController
             }
 
             // Generate contents
-            $analytics = $this->get('mautic.helper.template.analytics')->getCode();
+            $analytics = $analyticsHelper->getCode();
 
             $BCcontent = $entity->getContent();
             $content   = $entity->getCustomHtml();
@@ -239,31 +255,25 @@ class PublicController extends CommonFormController
                  * @deprecated  BC support to be removed in 3.0
                  */
                 $template = $entity->getTemplate();
-                //all the checks pass so display the content
-                $slots   = $this->factory->getTheme($template)->getSlots('page');
+                // all the checks pass so display the content
                 $content = $entity->getContent();
-
-                $this->processSlots($slots, $entity);
 
                 // Add the GA code to the template assets
                 if (!empty($analytics)) {
-                    $this->factory->getHelper('template.assets')->addCustomDeclaration($analytics);
+                    $assetsHelper->addCustomDeclaration($analytics);
                 }
 
-                $logicalName = $this->factory->getHelper('theme')->checkForTwigTemplate(':'.$template.':page.html.php');
+                $logicalName = $themeHelper->checkForTwigTemplate('@themes/'.$template.'/html/page.html.twig');
 
-                $response = $this->render(
+                $content = $themeHelper->renderThemeTemplate(
                     $logicalName,
                     [
-                        'slots'    => $slots,
                         'content'  => $content,
                         'page'     => $entity,
                         'template' => $template,
                         'public'   => true,
                     ]
                 );
-
-                $content = $response->getContent();
             } else {
                 if (!empty($analytics)) {
                     $content = str_replace('</head>', $analytics."\n</head>", $content);
@@ -273,135 +283,158 @@ class PublicController extends CommonFormController
                 }
             }
 
-            $this->get('templating.helper.assets')->addScript(
-                $this->get('router')->generate('mautic_js', [], UrlGeneratorInterface::ABSOLUTE_URL),
+            $assetsHelper->addScript(
+                $router->generate('mautic_js', [], UrlGeneratorInterface::ABSOLUTE_URL),
                 'onPageDisplay_headClose',
                 true,
                 'mautic_js'
             );
 
-            $event = new PageDisplayEvent($content, $entity);
-            $this->get('event_dispatcher')->dispatch(PageEvents::PAGE_ON_DISPLAY, $event);
+            $event = new PageDisplayEvent((string) $content, $entity);
+            $this->dispatcher->dispatch($event, PageEvents::PAGE_ON_DISPLAY);
             $content = $event->getContent();
 
-            $model->hitPage($entity, $this->request, 200, $lead, $query);
+            $isHitTrackable = $model->hitPage($entity, $request, Response::HTTP_OK, $lead, $query);
 
-            return new Response($content);
+            $response = new Response($content);
+            if (!$isHitTrackable || $request->cookies->has('Blocked-Tracking')) {
+                $deviceTrackingService->clearTrackingCookies();
+            }
+
+            return $response;
         }
 
-        $model->hitPage($entity, $this->request, 404);
+        if (false !== $entity && $tracking404Model->isTrackable()) {
+            $tracking404Model->hitPage($entity, $request);
+        }
 
         return $this->notFound();
     }
 
     /**
-     * @param $id
+     * @return mixed[]|JsonResponse|RedirectResponse|Response
      *
-     * @return Response|\Symfony\Component\HttpKernel\Exception\NotFoundHttpException
-     *
-     * @throws \Exception
-     * @throws \Mautic\CoreBundle\Exception\FileNotFoundException
+     * @throws FileNotFoundException
      */
-    public function previewAction($id)
+    public function previewAction(Request $request, PageConfig $pageConfig, CorePermissions $security, AnalyticsHelper $analyticsHelper, AssetsHelper $assetsHelper, ThemeHelper $themeHelper, PageModel $model, LeadModel $leadModel, int $id, ?string $objectType = null)
     {
-        $model  = $this->getModel('page');
-        $entity = $model->getEntity($id);
+        $page = $model->getEntity($id);
 
-        if (null === $entity) {
+        if (!$page || !$page->getId()) {
             return $this->notFound();
         }
 
-        $analytics = $this->factory->getHelper('template.analytics')->getCode();
+        $contactId = (int) $request->query->get('contactId');
+        if ($contactId) {
+            $contact = $leadModel->getEntity($contactId);
+        }
+        $draftEnabled = $pageConfig->isDraftEnabled();
+        $analytics    = $analyticsHelper->getCode();
 
-        $BCcontent = $entity->getContent();
-        $content   = $entity->getCustomHtml();
+        $BCcontent     = $page->getContent();
+        $content       = $page->getCustomHtml();
+        $publicPreview = $page->isPublicPreview();
+
+        if ('draft' === $objectType && $draftEnabled && $page->hasDraft()) {
+            $content       = $page->getDraftContent();
+            $publicPreview = $page->getDraft()->isPublicPreview();
+        }
+
+        if (($security->isAnonymous() && (!$page->isPublished() || !$publicPreview)) || (!$security->isAnonymous(
+        ) && !$security->hasEntityAccess(
+            'page:pages:viewown',
+            'page:pages:viewother',
+            $page->getCreatedBy()
+        ))) {
+            $this->throwAccessDenied();
+        }
+
+        if ($contactId && (!$security->isAdmin() || !$security->hasEntityAccess(
+            'lead:leads:viewown',
+            'lead:leads:viewother'
+        ))) {
+            // disallow displaying contact information
+            $this->throwAccessDenied();
+        }
+
         if (empty($content) && !empty($BCcontent)) {
-            $template = $entity->getTemplate();
-            //all the checks pass so display the content
-            $slots   = $this->factory->getTheme($template)->getSlots('page');
-            $content = $entity->getContent();
-
-            $this->processSlots($slots, $entity);
+            $template = $page->getTemplate();
+            // all the checks pass so display the content
+            $content = $page->getContent();
 
             // Add the GA code to the template assets
             if (!empty($analytics)) {
-                $this->factory->getHelper('template.assets')->addCustomDeclaration($analytics);
+                $assetsHelper->addCustomDeclaration($analytics);
             }
 
-            $logicalName = $this->factory->getHelper('theme')->checkForTwigTemplate(':'.$template.':page.html.php');
+            $logicalName = $themeHelper->checkForTwigTemplate('@themes/'.$template.'/html/page.html.twig');
 
-            $response = $this->render(
+            $content = $themeHelper->renderThemeTemplate(
                 $logicalName,
                 [
-                    'slots'    => $slots,
                     'content'  => $content,
-                    'page'     => $entity,
+                    'page'     => $page,
                     'template' => $template,
                     'public'   => true, // @deprecated Remove in 2.0
                 ]
             );
-
-            $content = $response->getContent();
         } else {
-            if (!empty($analytics)) {
-                $content = str_replace('</head>', $analytics."\n</head>", $content);
-            }
+            $content = str_replace('</head>', $analytics."\n</head>", $content);
         }
 
-        $dispatcher = $this->get('event_dispatcher');
-        if ($dispatcher->hasListeners(PageEvents::PAGE_ON_DISPLAY)) {
-            $event = new PageDisplayEvent($content, $entity);
-            $dispatcher->dispatch(PageEvents::PAGE_ON_DISPLAY, $event);
+        if ($this->dispatcher->hasListeners(PageEvents::PAGE_ON_DISPLAY)) {
+            $event = new PageDisplayEvent($content, $page, $this->getPreferenceCenterConfig());
+            if (isset($contact) && $contact instanceof Lead) {
+                $event->setLead($contact);
+            }
+            $this->dispatcher->dispatch($event, PageEvents::PAGE_ON_DISPLAY);
             $content = $event->getContent();
         }
 
         return new Response($content);
     }
 
-    /**
-     * @return Response
-     *
-     * @throws \Exception
-     */
-    public function trackingImageAction()
+    public function trackingImageAction(Request $request, PageModel $model): Response
     {
-        /** @var \Mautic\PageBundle\Model\PageModel $model */
-        $model = $this->getModel('page');
-        $model->hitPage(null, $this->request);
+        $model->hitPage(null, $request);
 
-        return TrackingPixelHelper::getResponse($this->request);
+        return TrackingPixelHelper::getResponse($request);
     }
 
     /**
      * @return JsonResponse
-     *
-     * @throws \Exception
      */
-    public function trackingAction()
-    {
-        if (!$this->get('mautic.security')->isAnonymous()) {
-            return new JsonResponse(
-                [
-                    'success' => 0,
-                ]
-            );
+    public function trackingAction(
+        Request $request,
+        DeviceTrackingServiceInterface $deviceTrackingService,
+        TrackingHelper $trackingHelper,
+        ContactTracker $contactTracker,
+        PageModel $model,
+    ) {
+        $notSuccessResponse = new JsonResponse(
+            [
+                'success' => 0,
+            ]
+        );
+        if (!$this->security->isAnonymous()) {
+            return $notSuccessResponse;
         }
 
-        /** @var \Mautic\PageBundle\Model\PageModel $model */
-        $model = $this->getModel('page');
-        $model->hitPage(null, $this->request);
+        try {
+            $model->hitPage(null, $request);
+        } catch (InvalidDecodedStringException) {
+            // do not track invalid ct
+            return $notSuccessResponse;
+        }
 
-        /** @var ContactTracker $contactTracker */
-        $contactTracker = $this->get(ContactTracker::class);
-
-        $lead = $contactTracker->getContact();
-        /** @var DeviceTrackingServiceInterface $trackedDevice */
-        $trackedDevice = $this->get('mautic.lead.service.device_tracking_service')->getTrackedDevice();
+        $lead          = $contactTracker->getContact();
+        $trackedDevice = $deviceTrackingService->getTrackedDevice();
         $trackingId    = (null === $trackedDevice ? null : $trackedDevice->getTrackingId());
 
-        /** @var TrackingHelper $trackingHelper */
-        $trackingHelper = $this->get('mautic.page.helper.tracking');
-        $sessionValue   = $trackingHelper->getSession(true);
+        $sessionValue   = $trackingHelper->getCacheItem(true);
+
+        $event = new TrackingEvent($lead, $request, $sessionValue);
+        $this->dispatcher->dispatch($event, PageEvents::ON_CONTACT_TRACKED);
 
         return new JsonResponse(
             [
@@ -409,27 +442,26 @@ class PublicController extends CommonFormController
                 'id'        => ($lead) ? $lead->getId() : null,
                 'sid'       => $trackingId,
                 'device_id' => $trackingId,
-                'events'    => $sessionValue,
+                'events'    => $event->getResponse()->all(),
             ]
         );
     }
 
     /**
-     * @param $redirectId
-     *
-     * @return \Symfony\Component\HttpFoundation\RedirectResponse
-     *
      * @throws \Exception
      */
-    public function redirectAction($redirectId)
-    {
-        $logger = $this->container->get('monolog.logger.mautic');
-
+    public function redirectAction(
+        Request $request,
+        ContactRequestHelper $contactRequestHelper,
+        IpLookupHelper $ipLookupHelper,
+        LoggerInterface $logger,
+        RedirectModel $redirectModel,
+        PageModel $pageModel,
+        $redirectId,
+    ): RedirectResponse {
         $logger->debug('Attempting to load redirect with tracking_id of: '.$redirectId);
 
-        /** @var \Mautic\PageBundle\Model\RedirectModel $redirectModel */
-        $redirectModel = $this->getModel('page.redirect');
-        $redirect      = $redirectModel->getRedirectById($redirectId);
+        $redirect = $redirectModel->getRedirectById($redirectId);
 
         $logger->debug('Executing Redirect: '.$redirect);
 
@@ -442,14 +474,17 @@ class PublicController extends CommonFormController
         }
 
         // Ensure the URL does not have encoded ampersands
-        $url = str_replace('&amp;', '&', $redirect->getUrl());
+        $url = UrlHelper::decodeAmpersands($redirect->getUrl());
 
         // Get query string
-        $query = $this->request->query->all();
+        $query = $request->query->all();
 
-        // Unset the clickthrough from the URL query
-        $ct = $query['ct'];
-        unset($query['ct']);
+        $ct = null;
+        // Remove click-trough parameter, so it won't be duplicated later.
+        if (isset($query['ct'])) {
+            $ct = $query['ct'];
+            unset($query['ct']);
+        }
 
         // Tak on anything left to the URL
         if (count($query)) {
@@ -458,35 +493,47 @@ class PublicController extends CommonFormController
 
         // If the IP address is not trackable, it means it came form a configured "do not track" IP or a "do not track" user agent
         // This prevents simulated clicks from 3rd party services such as URL shorteners from simulating clicks
-        $ipAddress = $this->container->get('mautic.helper.ip_lookup')->getIpAddress();
-        if ($ipAddress->isTrackable()) {
-            // Search replace lead fields in the URL
-            /** @var \Mautic\LeadBundle\Model\LeadModel $leadModel */
-            $leadModel = $this->getModel('lead');
+        $ipAddress = $ipLookupHelper->getIpAddress();
 
-            /** @var PageModel $pageModel */
-            $pageModel = $this->getModel('page');
+        $isHitTrackable = false;
+        if (null !== $ct && '' !== $ct) {
+            if ($ipAddress->isTrackable()) {
+                // Search replace lead fields in the URL
+                try {
+                    $lead           = $contactRequestHelper->getContactFromQuery(['ct' => $ct]);
+                    $isHitTrackable = $pageModel->hitPage($redirect, $request, 200, $lead);
+                } catch (InvalidDecodedStringException $e) {
+                    // Invalid ct value so we must unset it
+                    // and process the request without it
 
-            try {
-                $lead = $leadModel->getContactFromRequest(['ct' => $ct]);
-                $pageModel->hitPage($redirect, $this->request, 200, $lead);
-            } catch (InvalidDecodedStringException $e) {
-                // Invalid ct value so we must unset it
-                // and process the request without it
+                    $logger->error(sprintf('Invalid clickthrough value: %s', $ct), ['exception' => $e]);
 
-                $logger->error(sprintf('Invalid clickthrough value: %s', $ct), ['exception' => $e]);
+                    $request->request->remove('ct');
+                    $request->query->remove('ct');
+                    $lead           = $contactRequestHelper->getContactFromQuery();
+                    $isHitTrackable = $pageModel->hitPage($redirect, $request, 200, $lead);
+                }
 
-                $this->request->request->set('ct', '');
-                $this->request->query->set('ct', '');
-                $lead = $leadModel->getContactFromRequest();
-                $pageModel->hitPage($redirect, $this->request, 200, $lead);
+                if ($lead) {
+                    try {
+                        $emailId = (int) (ClickthroughHelper::decodeArrayFromUrl($ct)['email'] ?? null);
+                    } catch (InvalidDecodedStringException) {
+                        $emailId = null;
+                    }
+
+                    $urlEvent = new UrlTokenReplaceEvent($url, $lead, $emailId ?: null);
+                    $this->dispatcher->dispatch($urlEvent);
+                    $url = $urlEvent->getContent();
+                }
             }
 
-            /** @var PrimaryCompanyHelper $primaryCompanyHelper */
-            $primaryCompanyHelper = $this->get('mautic.lead.helper.primary_company');
-            $leadArray            = ($lead) ? $primaryCompanyHelper->getProfileFieldsWithPrimaryCompany($lead) : [];
-
-            $url = TokenHelper::findLeadTokens($url, $leadArray, true);
+            if (str_contains($url, $this->generateUrl('mautic_asset_download'))) {
+                if (str_contains($url, '?')) {
+                    $url .= '&ct='.$ct;
+                } else {
+                    $url .= '?ct='.$ct;
+                }
+            }
         }
 
         $url = UrlHelper::sanitizeAbsoluteUrl($url);
@@ -495,107 +542,22 @@ class PublicController extends CommonFormController
             throw $this->createNotFoundException($this->translator->trans('mautic.core.url.error.404', ['%url%' => $url]));
         }
 
-        return $this->redirect($url);
-    }
+        $response =  $this->redirect($url);
+        $response->headers->setCookie(new Cookie('Blocked-Tracking', (string) !$isHitTrackable, strtotime('now + 15 seconds')));
 
-    /**
-     * PreProcess page slots for public view.
-     *
-     * @deprecated - to be removed in 3.0
-     *
-     * @param array $slots
-     * @param Page  $entity
-     */
-    private function processSlots($slots, $entity)
-    {
-        /** @var \Mautic\CoreBundle\Templating\Helper\AssetsHelper $assetsHelper */
-        $assetsHelper = $this->factory->getHelper('template.assets');
-        /** @var \Mautic\CoreBundle\Templating\Helper\SlotsHelper $slotsHelper */
-        $slotsHelper = $this->factory->getHelper('template.slots');
-
-        $content = $entity->getContent();
-
-        foreach ($slots as $slot => $slotConfig) {
-            // backward compatibility - if slotConfig array does not exist
-            if (is_numeric($slot)) {
-                $slot       = $slotConfig;
-                $slotConfig = [];
-            }
-
-            if (isset($slotConfig['type']) && 'slideshow' == $slotConfig['type']) {
-                if (isset($content[$slot])) {
-                    $options = json_decode($content[$slot], true);
-                } else {
-                    $options = [
-                        'width'            => '100%',
-                        'height'           => '250px',
-                        'background_color' => 'transparent',
-                        'arrow_navigation' => false,
-                        'dot_navigation'   => true,
-                        'interval'         => 5000,
-                        'pause'            => 'hover',
-                        'wrap'             => true,
-                        'keyboard'         => true,
-                    ];
-                }
-
-                // Create sample slides for first time or if all slides were deleted
-                if (empty($options['slides'])) {
-                    $options['slides'] = [
-                        [
-                            'order'            => 0,
-                            'background-image' => $assetsHelper->getUrl('media/images/mautic_logo_lb200.png'),
-                            'captionheader'    => 'Caption 1',
-                        ],
-                        [
-                            'order'            => 1,
-                            'background-image' => $assetsHelper->getUrl('media/images/mautic_logo_db200.png'),
-                            'captionheader'    => 'Caption 2',
-                        ],
-                    ];
-                }
-
-                // Order slides
-                usort(
-                    $options['slides'],
-                    function ($a, $b) {
-                        return strcmp($a['order'], $b['order']);
-                    }
-                );
-
-                $options['slot']   = $slot;
-                $options['public'] = true;
-
-                $renderingEngine = $this->container->get('templating')->getEngine('MauticPageBundle:Page:Slots/slideshow.html.php');
-                $slotsHelper->set($slot, $renderingEngine->render('MauticPageBundle:Page:Slots/slideshow.html.php', $options));
-            } elseif (isset($slotConfig['type']) && 'textarea' == $slotConfig['type']) {
-                $value = isset($content[$slot]) ? nl2br($content[$slot]) : '';
-                $slotsHelper->set($slot, $value);
-            } else {
-                // Fallback for other types like html, text, textarea and all unknown
-                $value = isset($content[$slot]) ? $content[$slot] : '';
-                $slotsHelper->set($slot, $value);
-            }
-        }
-
-        $parentVariant = $entity->getVariantParent();
-        $title         = (!empty($parentVariant)) ? $parentVariant->getTitle() : $entity->getTitle();
-        $slotsHelper->set('pageTitle', $title);
+        return $response;
     }
 
     /**
      * Track video views.
      */
-    public function hitVideoAction()
+    public function hitVideoAction(Request $request, VideoModel $model): JsonResponse|Response
     {
         // Only track XMLHttpRequests, because the hit should only come from there
-        if ($this->request->isXmlHttpRequest()) {
-            /** @var VideoModel $model */
-            $model = $this->getModel('page.video');
-
+        if ($request->isXmlHttpRequest()) {
             try {
-                $model->hitVideo($this->request);
-            } catch (\Exception $e) {
+                $model->hitVideo($request);
+            } catch (\Exception) {
                 return new JsonResponse(['success' => false]);
             }
 
@@ -607,19 +569,13 @@ class PublicController extends CommonFormController
 
     /**
      * Get the ID of the currently tracked Contact.
-     *
-     * @return JsonResponse
      */
-    public function getContactIdAction()
+    public function getContactIdAction(DeviceTrackingServiceInterface $trackedDeviceService, ContactTracker $contactTracker): JsonResponse
     {
         $data = [];
-        if ($this->get('mautic.security')->isAnonymous()) {
-            /** @var ContactTracker $contactTracker */
-            $contactTracker = $this->get(ContactTracker::class);
-
-            $lead = $contactTracker->getContact();
-            /** @var DeviceTrackingServiceInterface $trackedDevice */
-            $trackedDevice = $this->get('mautic.lead.service.device_tracking_service')->getTrackedDevice();
+        if ($this->security->isAnonymous()) {
+            $lead          = $contactTracker->getContact();
+            $trackedDevice = $trackedDeviceService->getTrackedDevice();
             $trackingId    = (null === $trackedDevice ? null : $trackedDevice->getTrackingId());
             $data          = [
                 'id'        => ($lead) ? $lead->getId() : null,
@@ -629,5 +585,19 @@ class PublicController extends CommonFormController
         }
 
         return new JsonResponse($data);
+    }
+
+    /**
+     * @return array<string,bool>
+     */
+    private function getPreferenceCenterConfig(): array
+    {
+        return [
+            'showContactFrequency'         => $this->coreParametersHelper->get('show_contact_frequency'),
+            'showContactPauseDates'        => $this->coreParametersHelper->get('show_contact_pause_dates'),
+            'showContactPreferredChannels' => $this->coreParametersHelper->get('show_contact_preferred_channels'),
+            'showContactCategories'        => $this->coreParametersHelper->get('show_contact_categories'),
+            'showContactSegments'          => $this->coreParametersHelper->get('show_contact_segments'),
+        ];
     }
 }

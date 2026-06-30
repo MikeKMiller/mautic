@@ -9,14 +9,12 @@ use Mautic\ReportBundle\Scheduler\Model\SchedulerPlanner;
 
 class ReportSchedulerSubscriberTest extends \PHPUnit\Framework\TestCase
 {
-    public function testOnReportSave()
+    public function testOnReportSave(): void
     {
         $report = new Report();
         $event  = new ReportEvent($report);
 
-        $schedulerPlanner = $this->getMockBuilder(SchedulerPlanner::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $schedulerPlanner = $this->createMock(SchedulerPlanner::class);
 
         $schedulerPlanner->expects($this->once())
             ->method('computeScheduler')

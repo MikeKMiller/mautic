@@ -1,51 +1,12 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Executioner\Result;
 
 class Counter
 {
-    /**
-     * @var int
-     */
-    private $eventCount = 0;
+    private int $rescheduled = 0;
 
     /**
-     * @var int
-     */
-    private $evaluated = 0;
-
-    /**
-     * @var int
-     */
-    private $executed = 0;
-
-    /**
-     * @var int
-     */
-    private $totalEvaluated = 0;
-
-    /**
-     * @var int
-     */
-    private $totalExecuted = 0;
-
-    /**
-     * @var int
-     */
-    private $totalScheduled = 0;
-
-    /**
-     * Counter constructor.
-     *
      * @param int $eventCount
      * @param int $evaluated
      * @param int $executed
@@ -53,14 +14,14 @@ class Counter
      * @param int $totalExecuted
      * @param int $totalScheduled
      */
-    public function __construct($eventCount = 0, $evaluated = 0, $executed = 0, $totalEvaluated = 0, $totalExecuted = 0, $totalScheduled = 0)
-    {
-        $this->eventCount     = $eventCount;
-        $this->evaluated      = $evaluated;
-        $this->executed       = $executed;
-        $this->totalEvaluated = $totalEvaluated;
-        $this->totalExecuted  = $totalExecuted;
-        $this->totalScheduled = $totalScheduled;
+    public function __construct(
+        private $eventCount = 0,
+        private $evaluated = 0,
+        private $executed = 0,
+        private $totalEvaluated = 0,
+        private $totalExecuted = 0,
+        private $totalScheduled = 0,
+    ) {
     }
 
     /**
@@ -74,9 +35,19 @@ class Counter
     /**
      * @param int $step
      */
-    public function advanceEventCount($step = 1)
+    public function advanceEventCount($step = 1): void
     {
         $this->eventCount += $step;
+    }
+
+    public function advanceRescheduled(int $step = 1): void
+    {
+        $this->rescheduled += $step;
+    }
+
+    public function getRescheduled(): int
+    {
+        return $this->rescheduled;
     }
 
     /**
@@ -90,7 +61,7 @@ class Counter
     /**
      * @param int $step
      */
-    public function advanceEvaluated($step = 1)
+    public function advanceEvaluated($step = 1): void
     {
         $this->evaluated += $step;
         $this->totalEvaluated += $step;
@@ -107,7 +78,7 @@ class Counter
     /**
      * @param int $step
      */
-    public function advanceExecuted($step = 1)
+    public function advanceExecuted($step = 1): void
     {
         $this->executed += $step;
         $this->totalExecuted += $step;
@@ -126,7 +97,7 @@ class Counter
     /**
      * @param int $step
      */
-    public function advanceTotalEvaluated($step = 1)
+    public function advanceTotalEvaluated($step = 1): void
     {
         $this->totalEvaluated += $step;
     }
@@ -144,7 +115,7 @@ class Counter
     /**
      * @param int $step
      */
-    public function advanceTotalExecuted($step = 1)
+    public function advanceTotalExecuted($step = 1): void
     {
         $this->totalExecuted += $step;
     }
@@ -160,7 +131,7 @@ class Counter
     /**
      * @param int $step
      */
-    public function advanceTotalScheduled($step = 1)
+    public function advanceTotalScheduled($step = 1): void
     {
         $this->totalScheduled += $step;
     }

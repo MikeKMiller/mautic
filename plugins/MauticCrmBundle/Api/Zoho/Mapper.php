@@ -1,87 +1,52 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticCrmBundle\Api\Zoho;
 
 use MauticPlugin\MauticCrmBundle\Api\Zoho\Exception\MatchingKeyNotFoundException;
 
 class Mapper
 {
-    /**
-     * @var array
-     */
-    private $contact = [];
+    private array $contact = [];
 
-    /**
-     * @var array
-     */
-    private $fields = [];
-
-    /**
-     * @var array
-     */
-    private $mappedFields = [];
+    private array $mappedFields = [];
 
     private $object;
 
     /**
      * @var array[]
      */
-    private $objectMappedValues = [];
+    private array $objectMappedValues = [];
 
     /**
      * Used to keep track of the key used to map contact ID with the response Zoho returns.
-     *
-     * @var int
      */
-    private $objectCounter = 0;
+    private int $objectCounter = 0;
 
     /**
      * Used to map contact ID with the response Zoho returns.
-     *
-     * @var array
      */
-    private $contactMapper = [];
+    private array $contactMapper = [];
 
-    public function __construct(array $fields)
-    {
-        $this->fields = $fields;
+    public function __construct(
+        private array $fields,
+    ) {
     }
 
-    /**
-     * @param $object
-     *
-     * @return $this
-     */
-    public function setObject($object)
+    public function setObject($object): static
     {
         $this->object = $object;
 
         return $this;
     }
 
-    /**
-     * @return $this
-     */
-    public function setContact(array $contact)
+    public function setContact(array $contact): static
     {
         $this->contact = $contact;
 
         return $this;
     }
 
-    /**
-     * @return $this
-     */
-    public function setMappedFields(array $fields)
+    public function setMappedFields(array $fields): static
     {
         $this->mappedFields = $fields;
 
@@ -94,7 +59,7 @@ class Mapper
      *
      * @return int If any single field is mapped, return 1 to count as one contact to be updated
      */
-    public function map($mauticContactId, $zohoId = null)
+    public function map($mauticContactId, $zohoId = null): int
     {
         $mapped             = 0;
         $objectMappedValues = [];
@@ -122,10 +87,7 @@ class Mapper
         return $mapped;
     }
 
-    /**
-     * @return array
-     */
-    public function getArray()
+    public function getArray(): array
     {
         return $this->objectMappedValues;
     }
@@ -147,16 +109,10 @@ class Mapper
     }
 
     /**
-     * @param $fieldName
-     *
      * @return mixed
      */
-    private function getField($fieldName)
+    private function getField(int|string $fieldName)
     {
-        return isset($this->fields[$this->object][$fieldName])
-            ?
-            $this->fields[$this->object][$fieldName]
-            :
-            null;
+        return $this->fields[$this->object][$fieldName] ?? null;
     }
 }

@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Tests\Membership;
 
 use Doctrine\Common\Collections\ArrayCollection;
@@ -25,29 +16,26 @@ use Psr\Log\NullLogger;
 class MembershipManagerTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var Adder|\PHPUnit\Framework\MockObject\MockObject
+     * @var \PHPUnit\Framework\MockObject\MockObject&Adder
      */
-    private $adder;
+    private \PHPUnit\Framework\MockObject\MockObject $adder;
 
     /**
-     * @var Remover|\PHPUnit\Framework\MockObject\MockObject
+     * @var \PHPUnit\Framework\MockObject\MockObject&Remover
      */
-    private $remover;
+    private \PHPUnit\Framework\MockObject\MockObject $remover;
 
     /**
-     * @var EventDispatcher|\PHPUnit\Framework\MockObject\MockObject
+     * @var \PHPUnit\Framework\MockObject\MockObject&EventDispatcher
      */
-    private $eventDispatcher;
+    private \PHPUnit\Framework\MockObject\MockObject $eventDispatcher;
 
     /**
-     * @var LeadRepository|\PHPUnit\Framework\MockObject\MockObject
+     * @var \PHPUnit\Framework\MockObject\MockObject&LeadRepository
      */
-    private $leadRepository;
+    private \PHPUnit\Framework\MockObject\MockObject $leadRepository;
 
-    /**
-     * @var NullLogger|\PHPUnit\Framework\MockObject\MockObject
-     */
-    private $logger;
+    private NullLogger $logger;
 
     protected function setUp(): void
     {
@@ -58,7 +46,7 @@ class MembershipManagerTest extends \PHPUnit\Framework\TestCase
         $this->logger          = new NullLogger();
     }
 
-    public function testMembershipCreatedIfNotFound()
+    public function testMembershipCreatedIfNotFound(): void
     {
         $contact  = new Lead();
         $campaign = new Campaign();
@@ -76,7 +64,7 @@ class MembershipManagerTest extends \PHPUnit\Framework\TestCase
         $this->getManager()->addContact($contact, $campaign);
     }
 
-    public function testMembershipUpdatedIfFound()
+    public function testMembershipUpdatedIfFound(): void
     {
         $contact        = new Lead();
         $campaign       = new Campaign();
@@ -97,7 +85,7 @@ class MembershipManagerTest extends \PHPUnit\Framework\TestCase
         $this->getManager()->addContact($contact, $campaign);
     }
 
-    public function testMembershipIsUpdatedWhenRemoved()
+    public function testMembershipIsUpdatedWhenRemoved(): void
     {
         $contact        = new Lead();
         $campaign       = new Campaign();
@@ -118,14 +106,28 @@ class MembershipManagerTest extends \PHPUnit\Framework\TestCase
         $this->getManager()->removeContact($contact, $campaign);
     }
 
-    public function testContactsAreAddedOrUpdated()
+    public function testContactsAreAddedOrUpdated(): void
     {
-        $contact = $this->createMock(Lead::class);
-        $contact->method('getId')
-            ->willReturn(1);
-        $contact2 = $this->createMock(Lead::class);
-        $contact2->method('getId')
-            ->willReturn(2);
+        $contact = new class extends Lead {
+            public function __construct(private readonly int $id = 1)
+            {
+            }
+
+            public function getId(): int
+            {
+                return $this->id;
+            }
+        };
+        $contact2 = new class extends Lead {
+            public function __construct(private readonly int $id = 2)
+            {
+            }
+
+            public function getId(): int
+            {
+                return $this->id;
+            }
+        };
 
         $campaign       = new Campaign();
         $campaignMember = new CampaignMember();
@@ -149,17 +151,34 @@ class MembershipManagerTest extends \PHPUnit\Framework\TestCase
             ->method('dispatchBatchMembershipChange')
             ->with([$contact->getId() => $contact, $contact2->getId() => $contact2], $campaign, Adder::NAME);
 
-        $this->getManager()->addContacts(new ArrayCollection([1 => $contact, 2 => $contact2]), $campaign);
+        /** @var ArrayCollection<int, Lead> $contacts */
+        $contacts = new ArrayCollection([1 => $contact, 2 => $contact2]);
+
+        $this->getManager()->addContacts($contacts, $campaign);
     }
 
-    public function testContactsAreRemoved()
+    public function testContactsAreRemoved(): void
     {
-        $contact = $this->createMock(Lead::class);
-        $contact->method('getId')
-            ->willReturn(1);
-        $contact2 = $this->createMock(Lead::class);
-        $contact2->method('getId')
-            ->willReturn(2);
+        $contact = new class extends Lead {
+            public function __construct(private readonly int $id = 1)
+            {
+            }
+
+            public function getId(): int
+            {
+                return $this->id;
+            }
+        };
+        $contact2 = new class extends Lead {
+            public function __construct(private readonly int $id = 2)
+            {
+            }
+
+            public function getId(): int
+            {
+                return $this->id;
+            }
+        };
 
         $campaign       = new Campaign();
         $campaignMember = new CampaignMember();
@@ -179,10 +198,13 @@ class MembershipManagerTest extends \PHPUnit\Framework\TestCase
             ->method('dispatchBatchMembershipChange')
             ->with([$contact2->getId() => $contact2], $campaign, Remover::NAME);
 
-        $this->getManager()->removeContacts(new ArrayCollection([1 => $contact, 2 => $contact2]), $campaign);
+        /** @var ArrayCollection<int, Lead> $contacts */
+        $contacts = new ArrayCollection([1 => $contact, 2 => $contact2]);
+
+        $this->getManager()->removeContacts($contacts, $campaign);
     }
 
-    private function getManager()
+    private function getManager(): MembershipManager
     {
         return new MembershipManager($this->adder, $this->remover, $this->eventDispatcher, $this->leadRepository, $this->logger);
     }

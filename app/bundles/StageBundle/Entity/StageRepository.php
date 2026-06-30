@@ -1,26 +1,17 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\StageBundle\Entity;
 
 use Mautic\CoreBundle\Entity\CommonRepository;
+use Mautic\ProjectBundle\Entity\ProjectRepositoryTrait;
 
 /**
- * Class StageRepository.
+ * @extends CommonRepository<Stage>
  */
 class StageRepository extends CommonRepository
 {
-    /**
-     * {@inheritdoc}
-     */
+    use ProjectRepositoryTrait;
+
     public function getEntities(array $args = [])
     {
         $q = $this
@@ -32,12 +23,21 @@ class StageRepository extends CommonRepository
         return parent::getEntities($args);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getTableAlias()
+    public function getTableAlias(): string
     {
         return 's';
+    }
+
+    /**
+     * @return array<int, array{id: int, name: string, weight: int}>
+     */
+    public function getStageWeights(): array
+    {
+        return $this->createQueryBuilder('s')
+            ->select('s.id, s.name, s.weight')
+            ->orderBy('s.weight', 'ASC')
+            ->getQuery()
+            ->getArrayResult();
     }
 
     /**
@@ -53,7 +53,7 @@ class StageRepository extends CommonRepository
             ->select('partial s.{id, name}')
             ->setParameter('type', $type);
 
-        //make sure the published up and down dates are good
+        // make sure the published up and down dates are good
         $expr = $this->getPublishedByDateExpression($q);
 
         $q->where($expr);
@@ -64,24 +64,22 @@ class StageRepository extends CommonRepository
     /**
      * @param string $type
      * @param int    $leadId
-     *
-     * @return array
      */
-    public function getCompletedLeadActions($type, $leadId)
+    public function getCompletedLeadActions($type, $leadId): array
     {
         $q = $this->_em->getConnection()->createQueryBuilder()
             ->select('s.*')
             ->from(MAUTIC_TABLE_PREFIX.'stage_lead_action_log', 'x')
             ->innerJoin('x', MAUTIC_TABLE_PREFIX.'stages', 's', 'x.stage_id = s.id');
 
-        //make sure the published up and down dates are good
+        // make sure the published up and down dates are good
         $q->where(
-            $q->expr()->andX(
+            $q->expr()->and(
                 $q->expr()->eq('x.lead_id', (int) $leadId)
             )
         );
 
-        $results = $q->execute()->fetchAll();
+        $results = $q->executeQuery()->fetchAllAssociative();
 
         $return = [];
 
@@ -92,10 +90,7 @@ class StageRepository extends CommonRepository
         return $return;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function addCatchAllWhereClause($q, $filter)
+    protected function addCatchAllWhereClause($q, $filter): array
     {
         return $this->addStandardCatchAllWhereClause($q, $filter, [
             's.name',
@@ -103,27 +98,33 @@ class StageRepository extends CommonRepository
         ]);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function addSearchCommandWhereClause($q, $filter)
+    protected function addSearchCommandWhereClause($q, $filter): array
     {
-        return $this->addStandardSearchCommandWhereClause($q, $filter);
+        return match ($filter->command) {
+            $this->translator->trans('mautic.project.searchcommand.name'), $this->translator->trans('mautic.project.searchcommand.name', [], null, 'en_US') => $this->handleProjectFilter(
+                $this->_em->getConnection()->createQueryBuilder(),
+                'stage_id',
+                'stage_projects_xref',
+                $this->getTableAlias(),
+                $filter->string,
+                $filter->not
+            ),
+            default => $this->addStandardSearchCommandWhereClause($q, $filter),
+        };
     }
 
     /**
-     * {@inheritdoc}
+     * @return string[]
      */
-    public function getSearchCommands()
+    public function getSearchCommands(): array
     {
-        return $this->getStandardSearchCommands();
+        return array_merge(['mautic.project.searchcommand.name'], $this->getStandardSearchCommands());
     }
 
     /**
      * Get a list of lists.
      *
      * @param bool   $user
-     * @param string $alias
      * @param string $id
      *
      * @return array
@@ -142,7 +143,7 @@ class StageRepository extends CommonRepository
         }
 
         $q = $this->_em->createQueryBuilder()
-            ->from('MauticStageBundle:Stage', 's', 's.id');
+            ->from(Stage::class, 's', 's.id');
 
         $q->select('partial s.{id, name}')
             ->andWhere($q->expr()->eq('s.isPublished', ':true'))
@@ -171,8 +172,6 @@ class StageRepository extends CommonRepository
     /**
      * Get a list of stages.
      *
-     * @param string $name
-     *
      * @return array
      */
     public function getStageByName($stageName)
@@ -182,7 +181,7 @@ class StageRepository extends CommonRepository
         }
 
         $q = $this->_em->createQueryBuilder()
-            ->from('MauticStageBundle:Stage', 's', 's.id');
+            ->from(Stage::class, 's', 's.id');
 
         $q->select('partial s.{id, name}')
             ->andWhere($q->expr()->eq('s.isPublished', ':true'))
@@ -204,7 +203,7 @@ class StageRepository extends CommonRepository
     /**
      * @param string|int $value
      *
-     * @return array
+     * @return Stage|null
      */
     public function findByIdOrName($value)
     {

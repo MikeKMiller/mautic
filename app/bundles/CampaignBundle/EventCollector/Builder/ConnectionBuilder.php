@@ -1,36 +1,19 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\EventCollector\Builder;
 
 use Mautic\CampaignBundle\Entity\Event;
 
 class ConnectionBuilder
 {
-    /**
-     * @var array
-     */
-    private static $eventTypes = [];
+    private static array $eventTypes = [];
 
-    /**
-     * @var array
-     */
-    private static $connectionRestrictions = ['anchor' => []];
+    private static array $connectionRestrictions = ['anchor' => []];
 
     /**
      * Used by JS/JsPlumb to restrict how events can be associated to each other in the UI.
-     *
-     * @return array
      */
-    public static function buildRestrictionsArray(array $events)
+    public static function buildRestrictionsArray(array $events): array
     {
         // Reset restrictions
         self::$connectionRestrictions = ['anchor' => []];
@@ -47,10 +30,9 @@ class ConnectionBuilder
     }
 
     /**
-     * @param string $eventType
      * @param string $key
      */
-    private static function addTypeConnection($eventType, $key, array $event)
+    private static function addTypeConnection(int|string $eventType, $key, array $event): void
     {
         if (!isset(self::$connectionRestrictions[$key])) {
             self::$connectionRestrictions[$key] = [
@@ -76,7 +58,7 @@ class ConnectionBuilder
      * @param string $key
      * @param string $restrictionType
      */
-    private static function addRestriction($key, $restrictionType, array $restrictions)
+    private static function addRestriction($key, $restrictionType, array $restrictions): void
     {
         switch ($restrictionType) {
             case 'source':
@@ -87,7 +69,7 @@ class ConnectionBuilder
                 break;
             case 'anchor':
                 foreach ($restrictions as $anchor) {
-                    list($group, $anchor)                                           = explode('.', $anchor);
+                    [$group, $anchor]                                               = explode('.', $anchor);
                     self::$connectionRestrictions[$restrictionType][$group][$key][] = $anchor;
                 }
 
@@ -101,7 +83,7 @@ class ConnectionBuilder
      * @param string $eventType
      * @param string $key
      */
-    private static function addDeprecatedAnchorRestrictions($eventType, $key, array $event)
+    private static function addDeprecatedAnchorRestrictions(string|int $eventType, $key, array $event): void
     {
         switch ($eventType) {
             case Event::TYPE_DECISION:
@@ -118,7 +100,7 @@ class ConnectionBuilder
 
         if (isset($event['anchorRestrictions'])) {
             foreach ($event['anchorRestrictions'] as $restriction) {
-                list($group, $anchor)                                   = explode('.', $restriction);
+                [$group, $anchor]                                       = explode('.', $restriction);
                 self::$connectionRestrictions['anchor'][$key][$group][] = $anchor;
             }
         }

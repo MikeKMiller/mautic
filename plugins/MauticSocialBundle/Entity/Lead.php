@@ -1,24 +1,12 @@
 <?php
 
-/*
- * @copyright   2016 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticSocialBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * @ORM\Entity
- * @ORM\Table(name="monitoring_leads")
- * @ORM\Entity(repositoryClass="MauticPlugin\MauticSocialBundle\Entity\LeadRepository")
- */
+#[ORM\Table(name: 'monitoring_leads')]
+#[ORM\Entity(repositoryClass: LeadRepository::class)]
 class Lead
 {
     /**
@@ -32,16 +20,16 @@ class Lead
     private $lead;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('monitoring_leads')
-            ->setCustomRepositoryClass('MauticPlugin\MauticSocialBundle\Entity\LeadRepository');
+            ->setCustomRepositoryClass(LeadRepository::class);
 
         $builder->createManyToOne('monitor', 'Monitoring')
             ->isPrimaryKey()
@@ -61,12 +49,7 @@ class Lead
         return $this->dateAdded;
     }
 
-    /**
-     * @param $dateAdded
-     *
-     * @return $this
-     */
-    public function setDateAdded($dateAdded)
+    public function setDateAdded($dateAdded): static
     {
         $this->dateAdded = $dateAdded;
 
@@ -81,12 +64,7 @@ class Lead
         return $this->lead;
     }
 
-    /**
-     * @param $lead
-     *
-     * @return $this
-     */
-    public function setLead($lead)
+    public function setLead($lead): static
     {
         $this->lead = $lead;
 
@@ -101,12 +79,7 @@ class Lead
         return $this->monitor;
     }
 
-    /**
-     * @param $monitor
-     *
-     * @return $this
-     */
-    public function setMonitor($monitor)
+    public function setMonitor($monitor): static
     {
         $this->monitor = $monitor;
 

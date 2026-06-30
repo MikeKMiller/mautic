@@ -1,32 +1,23 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PluginBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\CacheInvalidateInterface;
 use Mautic\CoreBundle\Entity\CommonEntity;
 
-/**
- * Class Integration.
- */
-class Integration extends CommonEntity
+class Integration extends CommonEntity implements CacheInvalidateInterface
 {
+    public const CACHE_NAMESPACE = 'IntegrationSettings';
+
     /**
      * @var int
      */
     private $id;
 
     /**
-     * @var Plugin
+     * @var Plugin|null
      */
     private $plugin;
 
@@ -55,15 +46,15 @@ class Integration extends CommonEntity
      */
     private $featureSettings = [];
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('plugin_integration_settings')
-            ->setCustomRepositoryClass('Mautic\PluginBundle\Entity\IntegrationRepository');
+            ->setCustomRepositoryClass(IntegrationRepository::class);
 
         $builder->createField('id', 'integer')
-            ->isPrimaryKey()
+            ->makePrimaryKey()
             ->generatedValue()
             ->build();
 
@@ -94,7 +85,7 @@ class Integration extends CommonEntity
     }
 
     /**
-     * @return mixed
+     * @return int|null
      */
     public function getId()
     {
@@ -102,7 +93,7 @@ class Integration extends CommonEntity
     }
 
     /**
-     * @return Plugin
+     * @return Plugin|null
      */
     public function getPlugin()
     {
@@ -111,10 +102,8 @@ class Integration extends CommonEntity
 
     /**
      * @param mixed $plugin
-     *
-     * @return Integration
      */
-    public function setPlugin($plugin)
+    public function setPlugin($plugin): static
     {
         $this->plugin = $plugin;
 
@@ -122,7 +111,7 @@ class Integration extends CommonEntity
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getName()
     {
@@ -131,10 +120,8 @@ class Integration extends CommonEntity
 
     /**
      * @param mixed $name
-     *
-     * @return Integration
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->isChanged('name', $name);
 
@@ -144,7 +131,7 @@ class Integration extends CommonEntity
     }
 
     /**
-     * @return mixed
+     * @return bool
      */
     public function getIsPublished()
     {
@@ -153,10 +140,8 @@ class Integration extends CommonEntity
 
     /**
      * @param mixed $isPublished
-     *
-     * @return Integration
      */
-    public function setIsPublished($isPublished)
+    public function setIsPublished($isPublished): static
     {
         $this->isChanged('isPublished', $isPublished);
 
@@ -165,8 +150,13 @@ class Integration extends CommonEntity
         return $this;
     }
 
+    public function isPublished(): bool
+    {
+        return $this->isPublished;
+    }
+
     /**
-     * @return mixed
+     * @return array<array-key, mixed>
      */
     public function getSupportedFeatures()
     {
@@ -175,10 +165,8 @@ class Integration extends CommonEntity
 
     /**
      * @param mixed $supportedFeatures
-     *
-     * @return Integration
      */
-    public function setSupportedFeatures($supportedFeatures)
+    public function setSupportedFeatures($supportedFeatures): static
     {
         $this->isChanged('supportedFeatures', $supportedFeatures);
 
@@ -188,7 +176,7 @@ class Integration extends CommonEntity
     }
 
     /**
-     * @return mixed
+     * @return array<array-key, mixed>
      */
     public function getApiKeys()
     {
@@ -197,10 +185,8 @@ class Integration extends CommonEntity
 
     /**
      * @param mixed $apiKeys
-     *
-     * @return Integration
      */
-    public function setApiKeys($apiKeys)
+    public function setApiKeys($apiKeys): static
     {
         $this->apiKeys = $apiKeys;
 
@@ -208,7 +194,7 @@ class Integration extends CommonEntity
     }
 
     /**
-     * @return mixed
+     * @return array<array-key, mixed>
      */
     public function getFeatureSettings()
     {
@@ -217,15 +203,18 @@ class Integration extends CommonEntity
 
     /**
      * @param mixed $featureSettings
-     *
-     * @return Integration
      */
-    public function setFeatureSettings($featureSettings)
+    public function setFeatureSettings($featureSettings): static
     {
         $this->isChanged('featureSettings', $featureSettings);
 
         $this->featureSettings = $featureSettings;
 
         return $this;
+    }
+
+    public function getCacheNamespacesToDelete(): array
+    {
+        return [self::CACHE_NAMESPACE];
     }
 }

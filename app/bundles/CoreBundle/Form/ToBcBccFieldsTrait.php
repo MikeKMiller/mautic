@@ -1,24 +1,17 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Form;
 
+use Mautic\EmailBundle\Validator\MultipleEmailsValid;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\FormBuilderInterface;
-use Symfony\Component\Validator\Constraints\Email;
 
 trait ToBcBccFieldsTrait
 {
-    protected function addToBcBccFields(FormBuilderInterface $builder)
+    protected function addToBcBccFields(FormBuilderInterface $builder): void
     {
+        $multipleEmailConstraint = new MultipleEmailsValid();
+
         $builder->add(
             'to',
             TextType::class,
@@ -31,11 +24,7 @@ trait ToBcBccFieldsTrait
                     'tooltip'     => 'mautic.core.send.email.to.multiple.addresses',
                 ],
                 'required'    => false,
-                'constraints' => new Email(
-                    [
-                        'message' => 'mautic.core.email.required',
-                    ]
-                ),
+                'constraints' => $multipleEmailConstraint,
             ]
         );
 
@@ -51,11 +40,7 @@ trait ToBcBccFieldsTrait
                     'tooltip'     => 'mautic.core.send.email.to.multiple.addresses',
                 ],
                 'required'    => false,
-                'constraints' => new Email(
-                    [
-                        'message' => 'mautic.core.email.required',
-                    ]
-                ),
+                'constraints' => $multipleEmailConstraint,
             ]
         );
 
@@ -71,11 +56,7 @@ trait ToBcBccFieldsTrait
                     'tooltip'     => 'mautic.core.send.email.to.multiple.addresses',
                 ],
                 'required'    => false,
-                'constraints' => new Email(
-                    [
-                        'message' => 'mautic.core.email.required',
-                    ]
-                ),
+                'constraints' => $multipleEmailConstraint,
             ]
         );
     }

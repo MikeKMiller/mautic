@@ -1,31 +1,16 @@
 <?php
 
-/*
- * @copyright   2016 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticSocialBundle\Command;
 
 use MauticPlugin\MauticSocialBundle\Entity\Monitoring;
+use Symfony\Component\Console\Attribute\AsCommand;
 
+#[AsCommand(
+    name: 'social:monitor:twitter:mentions',
+    description: 'Searches for mentioned tweets'
+)]
 class MonitorTwitterMentionsCommand extends MonitorTwitterBaseCommand
 {
-    /**
-     * Configure the command, set name and options.
-     */
-    protected function configure()
-    {
-        $this->setName('social:monitor:twitter:mentions')
-            ->setDescription('Searches for mentioned tweets');
-
-        parent::configure();
-    }
-
     /**
      * Search for tweets by mention.
      *
@@ -58,7 +43,7 @@ class MonitorTwitterMentionsCommand extends MonitorTwitterBaseCommand
         return $this->twitter->makeRequest($mentionsUrl, $requestQuery);
     }
 
-    public function getNetworkName()
+    public function getNetworkName(): string
     {
         return 'twitter';
     }

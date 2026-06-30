@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
@@ -16,14 +7,13 @@ use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\CoreBundle\Entity\CommonEntity;
 
-/**
- * Class FrequencyRule.
- */
 class FrequencyRule extends CommonEntity
 {
-    const TIME_DAY   = 'DAY';
-    const TIME_WEEK  = 'WEEK';
-    const TIME_MONTH = 'MONTH';
+    public const TIME_DAY   = 'DAY';
+
+    public const TIME_WEEK  = 'WEEK';
+
+    public const TIME_MONTH = 'MONTH';
 
     /**
      * @var int
@@ -36,17 +26,17 @@ class FrequencyRule extends CommonEntity
     private $lead;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
     /**
-     * @var int
+     * @var int|null
      */
     private $frequencyNumber;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $frequencyTime;
 
@@ -55,28 +45,26 @@ class FrequencyRule extends CommonEntity
      */
     private $channel;
 
-    /**
-     * @var bool
-     */
-    private $preferredChannel = 0;
+    private bool $preferredChannel = false;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $pauseFromDate;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $pauseToDate;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('lead_frequencyrules')
-            ->setCustomRepositoryClass('Mautic\LeadBundle\Entity\FrequencyRuleRepository')
-            ->addIndex(['channel'], 'channel_frequency');
+            ->setCustomRepositoryClass(FrequencyRuleRepository::class)
+            ->addIndex(['channel'], 'channel_frequency')
+            ->addIndex(['lead_id', 'date_added'], 'idx_frequency_date_added');
 
         $builder->addId();
 
@@ -112,10 +100,8 @@ class FrequencyRule extends CommonEntity
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('frequencyRules')
                  ->addListProperties(
@@ -155,10 +141,8 @@ class FrequencyRule extends CommonEntity
 
     /**
      * @param Lead $lead
-     *
-     * @return FrequencyRule
      */
-    public function setLead($lead)
+    public function setLead($lead): static
     {
         $this->lead = $lead;
 
@@ -166,7 +150,7 @@ class FrequencyRule extends CommonEntity
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getDateAdded()
     {
@@ -174,11 +158,9 @@ class FrequencyRule extends CommonEntity
     }
 
     /**
-     * @param \DateTime $dateAdded
-     *
-     * @return FrequencyRule
+     * @param \DateTimeInterface $dateAdded
      */
-    public function setDateAdded($dateAdded)
+    public function setDateAdded($dateAdded): static
     {
         $this->isChanged('dateAdded', $dateAdded);
 
@@ -188,7 +170,7 @@ class FrequencyRule extends CommonEntity
     }
 
     /**
-     * @return int
+     * @return int|null
      */
     public function getFrequencyNumber()
     {
@@ -196,11 +178,9 @@ class FrequencyRule extends CommonEntity
     }
 
     /**
-     * @param int $frequencyNumber
-     *
-     * @return FrequencyRule
+     * @param int|null $frequencyNumber
      */
-    public function setFrequencyNumber($frequencyNumber)
+    public function setFrequencyNumber($frequencyNumber): static
     {
         $this->isChanged('frequencyNumber', $frequencyNumber);
 
@@ -210,7 +190,7 @@ class FrequencyRule extends CommonEntity
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getFrequencyTime()
     {
@@ -218,11 +198,9 @@ class FrequencyRule extends CommonEntity
     }
 
     /**
-     * @param string $frequencyTime
-     *
-     * @return FrequencyRule
+     * @param string|null $frequencyTime
      */
-    public function setFrequencyTime($frequencyTime)
+    public function setFrequencyTime($frequencyTime): static
     {
         $this->isChanged('frequencyTime', $frequencyTime);
 
@@ -241,10 +219,8 @@ class FrequencyRule extends CommonEntity
 
     /**
      * @param string $channel
-     *
-     * @return FrequencyRule
      */
-    public function setChannel($channel)
+    public function setChannel($channel): static
     {
         $this->isChanged('channel', $channel);
 
@@ -253,28 +229,17 @@ class FrequencyRule extends CommonEntity
         return $this;
     }
 
-    /**
-     * @return bool
-     */
-    public function isPreferredChannel()
+    public function isPreferredChannel(): bool
     {
         return $this->preferredChannel;
     }
 
-    /**
-     * @return bool
-     */
-    public function getPreferredChannel()
+    public function getPreferredChannel(): bool
     {
         return $this->preferredChannel;
     }
 
-    /**
-     * @param bool $preferredChannel
-     *
-     * @return FrequencyRule
-     */
-    public function setPreferredChannel($preferredChannel)
+    public function setPreferredChannel(bool $preferredChannel): static
     {
         $this->isChanged('preferredChannel', $preferredChannel);
 
@@ -284,19 +249,14 @@ class FrequencyRule extends CommonEntity
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getPauseFromDate()
     {
         return $this->pauseFromDate;
     }
 
-    /**
-     * @param \DateTime $pauseFromDate
-     *
-     * @return FrequencyRule
-     */
-    public function setPauseFromDate(\DateTime $pauseFromDate = null)
+    public function setPauseFromDate(?\DateTime $pauseFromDate = null): static
     {
         $this->isChanged('pauseFromDate', $pauseFromDate);
 
@@ -306,19 +266,14 @@ class FrequencyRule extends CommonEntity
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getPauseToDate()
     {
         return $this->pauseToDate;
     }
 
-    /**
-     * @param \DateTime $pauseToDate
-     *
-     * @return FrequencyRule
-     */
-    public function setPauseToDate(\DateTime $pauseToDate = null)
+    public function setPauseToDate(?\DateTime $pauseToDate = null): static
     {
         $this->isChanged('pauseToDate', $pauseToDate);
 

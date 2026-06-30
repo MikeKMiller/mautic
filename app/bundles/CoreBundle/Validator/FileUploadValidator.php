@@ -1,30 +1,17 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Validator;
 
 use Mautic\CoreBundle\Exception\FileInvalidException;
 use Mautic\CoreBundle\Helper\FileHelper;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Component\Mime\MimeTypes;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class FileUploadValidator
 {
-    /**
-     * @param TranslatorInterface $translator
-     */
-    protected $translator;
-
-    public function __construct(TranslatorInterface $translator)
-    {
-        $this->translator = $translator;
+    public function __construct(
+        protected TranslatorInterface $translator,
+    ) {
     }
 
     /**
@@ -36,7 +23,7 @@ class FileUploadValidator
      *
      * @throws FileInvalidException
      */
-    public function validate($fileSize, $fileExtension, $maxUploadSize, array $allowedExtensions, $extensionErrorMsg, $sizeErrorMsg)
+    public function validate($fileSize, $fileExtension, $maxUploadSize, array $allowedExtensions, $extensionErrorMsg, $sizeErrorMsg): void
     {
         $errors = [];
 
@@ -64,15 +51,16 @@ class FileUploadValidator
      *
      * @throws FileInvalidException
      */
-    public function checkExtension($extension, array $allowedExtensions, $extensionErrorMsg)
+    public function checkExtension($extension, array $allowedExtensions, $extensionErrorMsg = 'mautic.asset.asset.error.file.extension'): void
     {
-        if (!in_array(strtolower($extension), array_map('strtolower', $allowedExtensions), true)) {
-            $error = $this->translator->trans($extensionErrorMsg, [
+        $extension         = strtolower($extension);
+        $allowedExtensions = array_map(strtolower(...), $allowedExtensions);
+
+        if (!in_array($extension, $allowedExtensions, true)) {
+            $this->throwException($extensionErrorMsg, [
                 '%fileExtension%' => $extension,
                 '%extensions%'    => implode(', ', $allowedExtensions),
-            ], 'validators');
-
-            throw new FileInvalidException($error);
+            ]);
         }
     }
 
@@ -83,7 +71,7 @@ class FileUploadValidator
      *
      * @throws FileInvalidException
      */
-    public function checkFileSize($fileSize, $maxUploadSizeMB, $sizeErrorMsg)
+    public function checkFileSize($fileSize, $maxUploadSizeMB, $sizeErrorMsg = 'mautic.asset.asset.error.file.size'): void
     {
         if (!$maxUploadSizeMB) {
             return;
@@ -92,12 +80,105 @@ class FileUploadValidator
         $maxUploadSize = FileHelper::convertMegabytesToBytes($maxUploadSizeMB);
 
         if ($fileSize > $maxUploadSize) {
-            $message = $this->translator->trans($sizeErrorMsg, [
+            $this->throwException($sizeErrorMsg, [
                 '%fileSize%' => FileHelper::convertBytesToMegabytes($fileSize),
                 '%maxSize%'  => FileHelper::convertBytesToMegabytes($maxUploadSize),
-            ], 'validators');
-
-            throw new FileInvalidException($message);
+            ]);
         }
+    }
+
+    /**
+     * @param string[] $allowedExtensions
+     *
+     * @throws FileInvalidException
+     */
+    public function checkMimeType(string $mimeType, array $allowedExtensions, string $messageId = 'mautic.asset.asset.error.invalid.mimetype'): void
+    {
+        $allowedExtensions = array_map(strtolower(...), $allowedExtensions);
+        $extensions        = $this->getExtensionsByMimeType($mimeType);
+
+        foreach ($extensions as $extension) {
+            try {
+                $this->checkExtension($extension, $allowedExtensions);
+
+                return;
+            } catch (FileInvalidException) {
+                $e = $this->buildException($messageId, [
+                    '%fileMimetype%'      => $mimeType,
+                    '%extensions%'        => implode(', ', $extensions),
+                    '%allowedExtensions%' => implode(', ', $allowedExtensions),
+                ]);
+            }
+        }
+
+        if (isset($e)) {
+            throw $e;
+        }
+    }
+
+    /**
+     * @param string[] $mimeTypes
+     *
+     * @throws FileInvalidException
+     */
+    public function checkMimeTypesMatchExtension(array $mimeTypes, string $extension, string $messageId = 'mautic.asset.asset.error.mimetype.not.match.extension'): void
+    {
+        $extension  = strtolower($extension);
+
+        foreach ($mimeTypes as $mimeType) {
+            $mimeType = strtolower((string) $mimeType);
+
+            if (!$this->isMimeTypeAllowed($mimeType, $extension)) {
+                $this->throwException($messageId, [
+                    '%fileMimetype%'  => $mimeType,
+                    '%fileExtension%' => $extension,
+                ]);
+            }
+        }
+    }
+
+    private function isMimeTypeAllowed(string $mimeType, string $extension): bool
+    {
+        $extensions = $this->getExtensionsByMimeType($mimeType);
+
+        return !$extensions || in_array($extension, $extensions, true);
+    }
+
+    /**
+     * @return string[]
+     */
+    private function getExtensionsByMimeType(string $mimeType): array
+    {
+        $extensions = ['php', 'php3', 'php4', 'php5', 'phps'];
+        $mimeTypes  = new MimeTypes([
+            'text/php'                       => $extensions,
+            'text/x-php'                     => $extensions,
+            'application/php'                => $extensions,
+            'application/x-httpd-php-source' => $extensions,
+        ]);
+
+        return $mimeTypes->getExtensions($mimeType);
+    }
+
+    /**
+     * @param array<string, mixed> $parameters
+     */
+    private function buildException(string $messageId, array $parameters): FileInvalidException
+    {
+        $exception = new FileInvalidException($this->translator->trans($messageId, $parameters, 'validators'));
+        $exception->setMessageId($messageId);
+        $exception->setParameters($parameters);
+
+        return $exception;
+    }
+
+    /**
+     * @param array<string, mixed> $parameters
+     *
+     * @throws FileInvalidException
+     */
+    private function throwException(string $messageId, array $parameters): void
+    {
+        throw $this->buildException($messageId, $parameters);
     }
 }

@@ -1,18 +1,11 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Controller;
 
 use Mautic\CoreBundle\Controller\CommonController;
+use Mautic\CoreBundle\Helper\ExportHelper;
 use Mautic\CoreBundle\Helper\InputHelper;
+use Mautic\CoreBundle\Twig\Helper\DateHelper;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -24,7 +17,7 @@ class AuditlogController extends CommonController
     public function indexAction(Request $request, $leadId, $page = 1)
     {
         if (empty($leadId)) {
-            return $this->accessDenied();
+            $this->throwAccessDenied();
         }
 
         $lead = $this->checkLeadAccess($leadId, 'view');
@@ -34,12 +27,12 @@ class AuditlogController extends CommonController
 
         $this->setListFilters();
 
-        $session = $this->get('session');
+        $session = $request->getSession();
         if ('POST' == $request->getMethod() && $request->request->has('search')) {
             $filters = [
                 'search'        => InputHelper::clean($request->request->get('search')),
-                'includeEvents' => InputHelper::clean($request->request->get('includeEvents', [])),
-                'excludeEvents' => InputHelper::clean($request->request->get('excludeEvents', [])),
+                'includeEvents' => InputHelper::clean($request->request->all()['includeEvents'] ?? []),
+                'excludeEvents' => InputHelper::clean($request->request->all()['excludeEvents'] ?? []),
             ];
             $session->set('mautic.lead.'.$leadId.'.auditlog.filters', $filters);
         } else {
@@ -56,27 +49,25 @@ class AuditlogController extends CommonController
         return $this->delegateView(
             [
                 'viewParameters' => [
-                    'lead'   => $lead,
-                    'page'   => $page,
-                    'events' => $events,
+                    'lead'                   => $lead,
+                    'page'                   => $page,
+                    'events'                 => $events,
+                    'enableExportPermission' => $this->security->isAdmin() || $this->security->isGranted('report:export:enable', 'MATCH_ONE'),
                 ],
                 'passthroughVars' => [
                     'route'         => false,
                     'mauticContent' => 'leadAuditlog',
                     'auditLogCount' => $events['total'],
                 ],
-                'contentTemplate' => 'MauticLeadBundle:Auditlog:list.html.php',
+                'contentTemplate' => '@MauticLead/Auditlog/_list.html.twig',
             ]
         );
     }
 
-    /**
-     * @return array|\Symfony\Component\HttpFoundation\JsonResponse|\Symfony\Component\HttpFoundation\RedirectResponse|\Symfony\Component\HttpFoundation\StreamedResponse
-     */
-    public function batchExportAction(Request $request, $leadId)
+    public function batchExportAction(Request $request, DateHelper $dateHelper, ExportHelper $exportHelper, $leadId): Response|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         if (empty($leadId)) {
-            return $this->accessDenied();
+            $this->throwAccessDenied();
         }
 
         $lead = $this->checkLeadAccess($leadId, 'view');
@@ -84,14 +75,18 @@ class AuditlogController extends CommonController
             return $lead;
         }
 
+        if (!$this->security->isGranted('report:export:enable', 'MATCH_ONE')) {
+            $this->throwAccessDenied();
+        }
+
         $this->setListFilters();
 
-        $session = $this->get('session');
+        $session = $request->getSession();
         if ('POST' == $request->getMethod() && $request->request->has('search')) {
             $filters = [
                 'search'        => InputHelper::clean($request->request->get('search')),
-                'includeEvents' => InputHelper::clean($request->request->get('includeEvents', [])),
-                'excludeEvents' => InputHelper::clean($request->request->get('excludeEvents', [])),
+                'includeEvents' => InputHelper::clean($request->request->all()['includeEvents'] ?? []),
+                'excludeEvents' => InputHelper::clean($request->request->all()['excludeEvents'] ?? []),
             ];
             $session->set('mautic.lead.'.$leadId.'.auditlog.filters', $filters);
         } else {
@@ -103,18 +98,18 @@ class AuditlogController extends CommonController
             $session->get('mautic.lead.'.$leadId.'.auditlog.orderbydir'),
         ];
 
-        $dataType = $this->request->get('filetype', 'csv');
+        $dataType = $request->get('filetype', 'csv');
 
-        $resultsCallback = function ($event) {
-            $eventLabel = (isset($event['eventLabel'])) ? $event['eventLabel'] : $event['eventType'];
-            if (is_array($eventLabel)) {
-                $eventLabel = $eventLabel['label'];
+        $resultsCallback = function ($event) use ($dateHelper): array {
+            $userName = $event['userName'] ?? $event['eventType'];
+            if (is_array($userName)) {
+                $userName = $userName['label'];
             }
 
             return [
-                'eventName'      => $eventLabel,
-                'eventType'      => isset($event['eventType']) ? $event['eventType'] : '',
-                'eventTimestamp' => $this->get('mautic.helper.template.date')->toText($event['timestamp'], 'local', 'Y-m-d H:i:s', true),
+                'userName'       => $userName,
+                'eventType'      => $event['eventType'] ?? '',
+                'eventTimestamp' => $dateHelper->toText($event['timestamp'], 'local', 'Y-m-d H:i:s', true),
             ];
         };
 
@@ -144,11 +139,11 @@ class AuditlogController extends CommonController
 
             $items = $this->getAuditlogs($lead, $filters, $order, $loop + 1, 200);
 
-            $this->getDoctrine()->getManager()->clear();
+            $this->doctrine->getManager()->clear();
 
             ++$loop;
         }
 
-        return $this->exportResultsAs($toExport, $dataType, 'contact_auditlog');
+        return $this->exportResultsAs($toExport, $dataType, 'contact_auditlog', $exportHelper);
     }
 }

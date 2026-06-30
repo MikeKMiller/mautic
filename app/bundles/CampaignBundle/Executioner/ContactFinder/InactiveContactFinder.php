@@ -1,77 +1,53 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Executioner\ContactFinder;
 
 use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Mautic\CampaignBundle\Entity\Event;
 use Mautic\CampaignBundle\Entity\LeadRepository as CampaignLeadRepository;
 use Mautic\CampaignBundle\Executioner\ContactFinder\Limiter\ContactLimiter;
 use Mautic\CampaignBundle\Executioner\Exception\NoContactsFoundException;
+use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Entity\LeadRepository;
 use Psr\Log\LoggerInterface;
 
 class InactiveContactFinder
 {
     /**
-     * @var LeadRepository
+     * @var array<string, \DateTimeInterface>|null
      */
-    private $leadRepository;
-
-    /**
-     * @var CampaignLeadRepository
-     */
-    private $campaignLeadRepository;
-
-    /**
-     * @var LoggerInterface
-     */
-    private $logger;
-
-    /**
-     * @var ArrayCollection
-     */
-    private $campaignMemberDatesAdded;
+    private ?array $campaignMemberDatesAdded = null;
 
     public function __construct(
-        LeadRepository $leadRepository,
-        CampaignLeadRepository $campaignLeadRepository,
-        LoggerInterface $logger
+        private readonly LeadRepository $leadRepository,
+        private readonly CampaignLeadRepository $campaignLeadRepository,
+        private readonly LoggerInterface $logger,
     ) {
-        $this->leadRepository         = $leadRepository;
-        $this->campaignLeadRepository = $campaignLeadRepository;
-        $this->logger                 = $logger;
     }
 
     /**
-     * @param int $campaignId
-     *
-     * @return ArrayCollection
-     *
      * @throws NoContactsFoundException
      */
-    public function getContacts($campaignId, Event $decisionEvent, ContactLimiter $limiter)
-    {
+    public function getContacts(
+        int $campaignId,
+        Event $decisionEvent,
+        ContactLimiter $limiter,
+        bool $ignoreParentEvent = false,
+    ): ArrayCollection {
         if ($limiter->hasCampaignLimit() && 0 === $limiter->getCampaignLimitRemaining()) {
             // Limit was reached but do not trigger the NoContactsFoundException
             return new ArrayCollection();
         }
 
         // Get list of all campaign leads
-        $decisionParentEvent            = $decisionEvent->getParent();
+        $decisionParentEvent            = $ignoreParentEvent ? null : $decisionEvent->getParent();
         $this->campaignMemberDatesAdded = $this->campaignLeadRepository->getInactiveContacts(
             $campaignId,
             $decisionEvent->getId(),
             ($decisionParentEvent) ? $decisionParentEvent->getId() : null,
-            $limiter
+            $limiter,
+            $ignoreParentEvent
         );
 
         if (empty($this->campaignMemberDatesAdded)) {
@@ -96,28 +72,28 @@ class InactiveContactFinder
     }
 
     /**
-     * @return ArrayCollection
+     * @return array<string, \DateTimeInterface>|null
      */
-    public function getDatesAdded()
+    public function getDatesAdded(): ?array
     {
         return $this->campaignMemberDatesAdded;
     }
 
     /**
      * @param int $campaignId
-     *
-     * @return int
      */
-    public function getContactCount($campaignId, array $decisionEvents, ContactLimiter $limiter)
+    public function getContactCount($campaignId, array $decisionEvents, ContactLimiter $limiter): int
     {
         return $this->campaignLeadRepository->getInactiveContactCount($campaignId, $decisionEvents, $limiter);
     }
 
     /**
      * Clear Lead entities from memory.
+     *
+     * @param Collection<int, Lead> $contacts
      */
-    public function clear()
+    public function clear(Collection $contacts): void
     {
-        $this->leadRepository->clear();
+        $this->leadRepository->detachEntities($contacts->toArray());
     }
 }

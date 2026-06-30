@@ -1,55 +1,81 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\UserBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\CacheInvalidateInterface;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
+use Symfony\Component\Serializer\Attribute\Groups;
 
-/**
- * Class Permission.
- */
-class Permission
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('user:roles:viewown')"),
+        new Post(security: "is_granted('user:roles:create')"),
+        new Get(security: "is_granted('user:roles:viewown', object)"),
+        new Put(security: "is_granted('user:roles:editown', object)"),
+        new Patch(security: "is_granted('user:roles:editother', object)"),
+        new Delete(security: "is_granted('user:roles:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['permission:read'],
+        'swagger_definition_name' => 'Read',
+    ],
+    denormalizationContext: [
+        'groups'                  => ['permission:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Permission implements CacheInvalidateInterface, UuidInterface
 {
+    use UuidTrait;
+
+    public const CACHE_NAMESPACE = 'Permission';
+
     /**
      * @var int
      */
+    #[Groups(['permission:read', 'role:read'])]
     protected $id;
 
     /**
      * @var string
      */
+    #[Groups(['permission:read', 'permission:write', 'role:read'])]
     protected $bundle;
 
     /**
      * @var string
      */
+    #[Groups(['permission:read', 'permission:write', 'role:read'])]
     protected $name;
 
     /**
      * @var Role
      */
+    #[Groups(['permission:read', 'permission:write', 'role:read'])]
     protected $role;
 
     /**
      * @var int
      */
+    #[Groups(['permission:read', 'permission:write', 'role:read'])]
     protected $bitwise;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('permissions')
-            ->setCustomRepositoryClass('Mautic\UserBundle\Entity\PermissionRepository')
+            ->setCustomRepositoryClass(PermissionRepository::class)
             ->addUniqueConstraint(['bundle', 'name', 'role_id'], 'unique_perm');
 
         $builder->addId();
@@ -65,15 +91,18 @@ class Permission
         $builder->createManyToOne('role', 'Role')
             ->inversedBy('permissions')
             ->addJoinColumn('role_id', 'id', false, false, 'CASCADE')
+            ->isOwnershipParent()
             ->build();
 
         $builder->addField('bitwise', 'integer');
+
+        static::addUuidField($builder);
     }
 
     /**
      * Get id.
      *
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
@@ -84,10 +113,8 @@ class Permission
      * Set bundle.
      *
      * @param string $bundle
-     *
-     * @return Permission
      */
-    public function setBundle($bundle)
+    public function setBundle($bundle): static
     {
         $this->bundle = $bundle;
 
@@ -97,7 +124,7 @@ class Permission
     /**
      * Get bundle.
      *
-     * @return string
+     * @return string|null
      */
     public function getBundle()
     {
@@ -108,10 +135,8 @@ class Permission
      * Set bitwise.
      *
      * @param int $bitwise
-     *
-     * @return Permission
      */
-    public function setBitwise($bitwise)
+    public function setBitwise($bitwise): static
     {
         $this->bitwise = $bitwise;
 
@@ -121,7 +146,7 @@ class Permission
     /**
      * Get bitwise.
      *
-     * @return int
+     * @return int|null
      */
     public function getBitwise()
     {
@@ -130,12 +155,8 @@ class Permission
 
     /**
      * Set role.
-     *
-     * @param Role $role
-     *
-     * @return Permission
      */
-    public function setRole(Role $role = null)
+    public function setRole(?Role $role = null): static
     {
         $this->role = $role;
 
@@ -145,7 +166,7 @@ class Permission
     /**
      * Get role.
      *
-     * @return Role
+     * @return Role|null
      */
     public function getRole()
     {
@@ -156,10 +177,8 @@ class Permission
      * Set name.
      *
      * @param string $name
-     *
-     * @return Permission
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->name = $name;
 
@@ -169,10 +188,20 @@ class Permission
     /**
      * Get name.
      *
-     * @return string
+     * @return string|null
      */
     public function getName()
     {
         return $this->name;
+    }
+
+    public function getCacheNamespacesToDelete(): array
+    {
+        return [self::CACHE_NAMESPACE];
+    }
+
+    public function getPermissionUser(): mixed
+    {
+        return $this->getRole()->getCreatedBy();
     }
 }

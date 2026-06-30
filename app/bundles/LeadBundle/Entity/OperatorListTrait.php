@@ -1,89 +1,136 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
 use Mautic\LeadBundle\Segment\OperatorOptions;
 
 trait OperatorListTrait
 {
+    /**
+     * @var array<string, array<string, array<int, string>>>
+     */
     protected $typeOperators = [
         'text' => [
             'include' => [
-                '=',
-                '!=',
-                'empty',
-                '!empty',
-                'like',
-                '!like',
-                'regexp',
-                '!regexp',
-                'startsWith',
-                'endsWith',
-                'contains',
+                OperatorOptions::EQUAL_TO,
+                OperatorOptions::NOT_EQUAL_TO,
+                OperatorOptions::EMPTY,
+                OperatorOptions::NOT_EMPTY,
+                OperatorOptions::LIKE,
+                OperatorOptions::NOT_LIKE,
+                OperatorOptions::REGEXP,
+                OperatorOptions::NOT_REGEXP,
+                OperatorOptions::STARTS_WITH,
+                OperatorOptions::ENDS_WITH,
+                OperatorOptions::CONTAINS,
             ],
         ],
         'select' => [
             'include' => [
-                '=',
-                '!=',
-                'empty',
-                '!empty',
-                'regexp',
-                '!regexp',
-                'in',
-                '!in',
+                OperatorOptions::EQUAL_TO,
+                OperatorOptions::NOT_EQUAL_TO,
+                OperatorOptions::EMPTY,
+                OperatorOptions::NOT_EMPTY,
+                OperatorOptions::REGEXP,
+                OperatorOptions::NOT_REGEXP,
+                OperatorOptions::INCLUDING_ANY,
+                OperatorOptions::EXCLUDING_ANY,
             ],
         ],
         'bool' => [
             'include' => [
-                '=',
-                '!=',
+                OperatorOptions::EQUAL_TO,
+                OperatorOptions::NOT_EQUAL_TO,
             ],
         ],
         'default' => [
-            'exclude' => [
-                'in',
-                '!in',
-                'date',
+            'include' => [
+                OperatorOptions::EQUAL_TO,
+                OperatorOptions::NOT_EQUAL_TO,
+                OperatorOptions::GREATER_THAN,
+                OperatorOptions::GREATER_THAN_OR_EQUAL,
+                OperatorOptions::LESS_THAN,
+                OperatorOptions::LESS_THAN_OR_EQUAL,
+                OperatorOptions::EMPTY,
+                OperatorOptions::NOT_EMPTY,
+                OperatorOptions::LIKE,
+                OperatorOptions::NOT_LIKE,
+                OperatorOptions::BETWEEN,
+                OperatorOptions::NOT_BETWEEN,
+                OperatorOptions::REGEXP,
+                OperatorOptions::NOT_REGEXP,
+                OperatorOptions::STARTS_WITH,
+                OperatorOptions::ENDS_WITH,
+                OperatorOptions::CONTAINS,
             ],
         ],
         'multiselect' => [
             'include' => [
-                'in',
-                '!in',
-                'empty',
-                '!empty',
+                OperatorOptions::INCLUDING_ANY,
+                OperatorOptions::EXCLUDING_ANY,
+                OperatorOptions::INCLUDING_ALL,
+                OperatorOptions::EXCLUDING_ALL,
+                OperatorOptions::EMPTY,
+                OperatorOptions::NOT_EMPTY,
             ],
         ],
         'date' => [
-            'exclude' => [
-                'in',
-                '!in',
+            'include' => [
+                OperatorOptions::EQUAL_TO,
+                OperatorOptions::NOT_EQUAL_TO,
+                OperatorOptions::GREATER_THAN,
+                OperatorOptions::GREATER_THAN_OR_EQUAL,
+                OperatorOptions::LESS_THAN,
+                OperatorOptions::LESS_THAN_OR_EQUAL,
+                OperatorOptions::EMPTY,
+                OperatorOptions::NOT_EMPTY,
+                OperatorOptions::LIKE,
+                OperatorOptions::NOT_LIKE,
+                OperatorOptions::BETWEEN,
+                OperatorOptions::NOT_BETWEEN,
+                OperatorOptions::REGEXP,
+                OperatorOptions::NOT_REGEXP,
+                OperatorOptions::DATE,
+                OperatorOptions::STARTS_WITH,
+                OperatorOptions::ENDS_WITH,
+                OperatorOptions::CONTAINS,
             ],
         ],
         'lookup_id' => [
             'include' => [
-                '=',
-                '!=',
-                'empty',
-                '!empty',
+                OperatorOptions::EQUAL_TO,
+                OperatorOptions::NOT_EQUAL_TO,
+                OperatorOptions::EMPTY,
+                OperatorOptions::NOT_EMPTY,
+            ],
+        ],
+        'number' => [
+            'include' => [
+                OperatorOptions::EQUAL_TO,
+                OperatorOptions::NOT_EQUAL_TO,
+                OperatorOptions::GREATER_THAN,
+                OperatorOptions::GREATER_THAN_OR_EQUAL,
+                OperatorOptions::LESS_THAN,
+                OperatorOptions::LESS_THAN_OR_EQUAL,
+                OperatorOptions::EMPTY,
+                OperatorOptions::NOT_EMPTY,
+                OperatorOptions::LIKE,
+                OperatorOptions::NOT_LIKE,
+                OperatorOptions::REGEXP,
+                OperatorOptions::NOT_REGEXP,
+                OperatorOptions::STARTS_WITH,
+                OperatorOptions::ENDS_WITH,
+                OperatorOptions::CONTAINS,
             ],
         ],
     ];
 
     /**
-     * @param null $operator
+     * @deprecated to be removed in Mautic 3. Use FilterOperatorProvider::getAllOperators() instead.
      *
-     * @return array
+     * @param string|null $operator
+     *
+     * @return array<string,array<string,string>>|array<string,string>
      */
     public function getFilterExpressionFunctions($operator = null)
     {
@@ -93,10 +140,10 @@ trait OperatorListTrait
     }
 
     /**
-     * @param string|array|null $type
-     * @param array             $overrideHiddenTypes
+     * @param string|mixed[]|null $type
+     * @param mixed[]             $overrideHiddenTypes
      *
-     * @return array
+     * @return mixed[]
      */
     public function getOperatorsForFieldType($type = null, $overrideHiddenTypes = [])
     {
@@ -104,11 +151,11 @@ trait OperatorListTrait
 
         if (is_array($type)) {
             return $this->getOperatorChoiceList($type, $overrideHiddenTypes);
-        } elseif (array_key_exists($type, $processedTypes)) {
+        } elseif (array_key_exists($type ?? '', $processedTypes)) {
             return $processedTypes[$type];
         }
 
-        $this->normalizeType($type);
+        $type = $this->normalizeType($type);
 
         if (null === $type) {
             foreach ($this->typeOperators as $type => $def) {
@@ -126,12 +173,12 @@ trait OperatorListTrait
     }
 
     /**
-     * @param       $definition
-     * @param array $overrideHiddenOperators
+     * @param mixed[] $definition
+     * @param mixed[] $overrideHiddenOperators
      *
-     * @return array
+     * @return mixed[]
      */
-    public function getOperatorChoiceList($definition, $overrideHiddenOperators = [])
+    public function getOperatorChoiceList($definition, $overrideHiddenOperators = []): array
     {
         static $operatorChoices = [];
         if (empty($operatorChoices)) {
@@ -153,7 +200,7 @@ trait OperatorListTrait
             $choices = array_diff_key($choices, array_flip($definition['exclude']));
         }
 
-        if (isset($this->translator)) {
+        if (property_exists($this, 'translator')) { // @phpstan-ignore-line based on https://github.com/phpstan/phpstan/issues/9095 (Call to function property_exists() with ...  'translator' will always evaluate to false.)
             foreach ($choices as $value => $label) {
                 $choices[$value] = $this->translator->trans($label);
             }
@@ -162,27 +209,32 @@ trait OperatorListTrait
         return array_flip($choices);
     }
 
-    /**
-     * Normalize type operator.
-     *
-     * @param $type
-     */
-    protected function normalizeType(&$type)
+    protected function normalizeType(mixed $type): mixed
     {
         if (null === $type) {
-            return;
+            return $type;
         }
 
         if ('boolean' === $type) {
-            $type = 'bool';
-        } elseif (in_array($type, ['country', 'timezone', 'region', 'locale'])) {
-            $type = 'select';
-        } elseif (in_array($type, ['lookup',  'text', 'email', 'url', 'email', 'tel'])) {
-            $type = 'text';
-        } elseif ('datetime' === $type) {
-            $type = 'date';
-        } elseif (!array_key_exists($type, $this->typeOperators)) {
-            $type = 'default';
+            return 'bool';
         }
+
+        if (in_array($type, ['country', 'timezone', 'region', 'locale'])) {
+            return 'select';
+        }
+
+        if (in_array($type, ['lookup',  'text', 'email', 'url', 'email', 'tel'])) {
+            return 'text';
+        }
+
+        if ('datetime' === $type) {
+            return 'date';
+        }
+
+        if (!array_key_exists($type, $this->typeOperators)) {
+            return 'default';
+        }
+
+        return $type;
     }
 }

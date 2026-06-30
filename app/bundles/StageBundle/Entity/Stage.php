@@ -1,67 +1,97 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\StageBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
+use Mautic\CategoryBundle\Entity\Category;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\CoreBundle\Entity\FormEntity;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
+use Mautic\ProjectBundle\Entity\ProjectTrait;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 
-/**
- * Class Stage.
- */
-class Stage extends FormEntity
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('stage:stages:viewown')"),
+        new Post(security: "is_granted('stage:stages:create')"),
+        new Get(security: "is_granted('stage:stages:viewown', object)"),
+        new Put(security: "is_granted('stage:stages:editown', object)"),
+        new Patch(security: "is_granted('stage:stages:editother', object)"),
+        new Delete(security: "is_granted('stage:stages:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['stage:read'],
+        'swagger_definition_name' => 'Read',
+        'api_included'            => ['category'],
+    ],
+    denormalizationContext: [
+        'groups'                  => ['stage:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Stage extends FormEntity implements UuidInterface
 {
+    use UuidTrait;
+    use ProjectTrait;
+
     /**
      * @var int
      */
+    #[Groups(['stage:read'])]
     private $id;
 
     /**
      * @var string
      */
+    #[Groups(['stage:read', 'stage:write'])]
     private $name;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['stage:read', 'stage:write'])]
     private $description;
 
     /**
      * @var int
      */
+    #[Groups(['stage:read', 'stage:write'])]
     private $weight = 0;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
+    #[Groups(['stage:read', 'stage:write'])]
     private $publishUp;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
+    #[Groups(['stage:read', 'stage:write'])]
     private $publishDown;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int,LeadStageLog>
      */
     private $log;
 
     /**
-     * @var \Mautic\CategoryBundle\Entity\Category
+     * @var Category|null
      **/
+    #[Groups(['stage:read', 'stage:write'])]
     private $category;
 
     public function __clone()
@@ -71,19 +101,17 @@ class Stage extends FormEntity
         parent::__clone();
     }
 
-    /**
-     * Construct.
-     */
     public function __construct()
     {
         $this->log = new ArrayCollection();
+        $this->initializeProjects();
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
         $builder->setTable('stages')
-            ->setCustomRepositoryClass('Mautic\StageBundle\Entity\StageRepository');
+            ->setCustomRepositoryClass(StageRepository::class);
 
         $builder->addIdColumns();
 
@@ -100,21 +128,27 @@ class Stage extends FormEntity
             ->build();
 
         $builder->addCategory();
+
+        static::addUuidField($builder);
+        self::addProjectsField($builder, 'stage_projects_xref', 'stage_id');
     }
 
-    public static function loadValidatorMetadata(ClassMetadata $metadata)
+    public static function loadValidatorMetadata(ClassMetadata $metadata): void
     {
         $metadata->addPropertyConstraint('name', new Assert\NotBlank([
             'message' => 'mautic.core.name.required',
+        ]));
+
+        $metadata->addConstraint(new UniqueEntity([
+            'fields'  => ['weight'],
+            'message' => 'mautic.stage.weight.unique',
         ]));
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('stage')
             ->addListProperties(
@@ -133,24 +167,19 @@ class Stage extends FormEntity
                 ]
             )
             ->build();
+
+        self::addProjectsInLoadApiMetadata($metadata, 'stage');
     }
 
     /**
-     * Get id.
-     *
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
         return $this->id;
     }
 
-    /**
-     * Set weight.
-     *
-     * @return int
-     */
-    public function setWeight($type)
+    public function setWeight($type): self
     {
         $this->weight = (int) $type;
 
@@ -158,8 +187,6 @@ class Stage extends FormEntity
     }
 
     /**
-     * Get weight.
-     *
      * @return int
      */
     public function getWeight()
@@ -167,22 +194,15 @@ class Stage extends FormEntity
         return $this->weight;
     }
 
-    /**
-     * @return array
-     */
-    public function convertToArray()
+    public function convertToArray(): array
     {
         return get_object_vars($this);
     }
 
     /**
-     * Set description.
-     *
      * @param string $description
-     *
-     * @return string
      */
-    public function setDescription($description)
+    public function setDescription($description): self
     {
         $this->isChanged('description', $description);
         $this->description = $description;
@@ -191,9 +211,7 @@ class Stage extends FormEntity
     }
 
     /**
-     * Get description.
-     *
-     * @return string
+     * @return string|null
      */
     public function getDescription()
     {
@@ -201,13 +219,9 @@ class Stage extends FormEntity
     }
 
     /**
-     * Set name.
-     *
      * @param string $name
-     *
-     * @return string
      */
-    public function setName($name)
+    public function setName($name): self
     {
         $this->isChanged('name', $name);
         $this->name = $name;
@@ -216,38 +230,26 @@ class Stage extends FormEntity
     }
 
     /**
-     * Get name.
-     *
-     * @return string
+     * @return string|null
      */
     public function getName()
     {
         return $this->name;
     }
 
-    /**
-     * Add log.
-     *
-     * @return Log
-     */
-    public function addLog(LeadStageLog $log)
+    public function addLog(LeadStageLog $log): self
     {
         $this->log[] = $log;
 
         return $this;
     }
 
-    /**
-     * Remove log.
-     */
-    public function removeLog(LeadStageLog $log)
+    public function removeLog(LeadStageLog $log): void
     {
         $this->log->removeElement($log);
     }
 
     /**
-     * Get log.
-     *
      * @return \Doctrine\Common\Collections\Collection
      */
     public function getLog()
@@ -256,13 +258,9 @@ class Stage extends FormEntity
     }
 
     /**
-     * Set publishUp.
-     *
      * @param \DateTime $publishUp
-     *
-     * @return Stage
      */
-    public function setPublishUp($publishUp)
+    public function setPublishUp($publishUp): self
     {
         $this->isChanged('publishUp', $publishUp);
         $this->publishUp = $publishUp;
@@ -271,9 +269,7 @@ class Stage extends FormEntity
     }
 
     /**
-     * Get publishUp.
-     *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getPublishUp()
     {
@@ -281,13 +277,9 @@ class Stage extends FormEntity
     }
 
     /**
-     * Set publishDown.
-     *
      * @param \DateTime $publishDown
-     *
-     * @return Stage
      */
-    public function setPublishDown($publishDown)
+    public function setPublishDown($publishDown): Stage
     {
         $this->isChanged('publishDown', $publishDown);
         $this->publishDown = $publishDown;
@@ -296,9 +288,7 @@ class Stage extends FormEntity
     }
 
     /**
-     * Get publishDown.
-     *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getPublishDown()
     {
@@ -306,7 +296,7 @@ class Stage extends FormEntity
     }
 
     /**
-     * @return mixed
+     * @return Category|null
      */
     public function getCategory()
     {
@@ -316,7 +306,7 @@ class Stage extends FormEntity
     /**
      * @param mixed $category
      */
-    public function setCategory($category)
+    public function setCategory($category): void
     {
         $this->category = $category;
     }

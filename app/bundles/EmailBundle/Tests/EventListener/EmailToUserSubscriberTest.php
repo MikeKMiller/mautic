@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Tests\EventListener;
 
 use Mautic\EmailBundle\EventListener\EmailToUserSubscriber;
@@ -20,8 +11,8 @@ use Mautic\PointBundle\Event\TriggerExecutedEvent;
 
 class EmailToUserSubscriberTest extends \PHPUnit\Framework\TestCase
 {
-    /** @var array */
-    private $config = [
+    /** @var array<string, mixed> */
+    private array $config = [
         'useremail' => [
             'email' => 33,
         ],
@@ -31,13 +22,11 @@ class EmailToUserSubscriberTest extends \PHPUnit\Framework\TestCase
         'bcc'      => 'hidden@translation.in',
     ];
 
-    public function testOnCampaignTriggerActionSendEmailToUserWithSendingTheEmail()
+    public function testOnCampaignTriggerActionSendEmailToUserWithSendingTheEmail(): void
     {
         $lead = new Lead();
 
-        $mockSendEmailToUser = $this->getMockBuilder(SendEmailToUser::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $mockSendEmailToUser = $this->createMock(SendEmailToUser::class);
 
         $subscriber = new EmailToUserSubscriber($mockSendEmailToUser);
 
@@ -59,13 +48,11 @@ class EmailToUserSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->assertTrue($event->getResult());
     }
 
-    public function testOnCampaignTriggerActionSendEmailToUserWithError()
+    public function testOnCampaignTriggerActionSendEmailToUserWithError(): void
     {
         $lead = new Lead();
 
-        $mockSendEmailToUser = $this->getMockBuilder(SendEmailToUser::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $mockSendEmailToUser = $this->createMock(SendEmailToUser::class);
 
         $subscriber = new EmailToUserSubscriber($mockSendEmailToUser);
 

@@ -2,14 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2018 Mautic. All rights reserved
- * @author      Mautic
- *
- * @link        https://mautic.org
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CacheBundle\Tests\Cache;
 
 use Mautic\CacheBundle\Cache\Adapter\FilesystemTagAwareAdapter;
@@ -17,36 +9,31 @@ use Mautic\CacheBundle\Cache\CacheProvider;
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\Cache\Exception\InvalidArgumentException;
-use Symfony\Component\Cache\Simple\Psr6Cache;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 class CacheProviderTest extends TestCase
 {
-    /**
-     * @var CacheProvider
-     */
-    private $cacheProvider;
+    private CacheProvider $cacheProvider;
 
     /**
-     * @var MockObject|FilesystemTagAwareAdapter
+     * @var \PHPUnit\Framework\MockObject\Stub|FilesystemTagAwareAdapter
      */
-    private $adapter;
+    private \PHPUnit\Framework\MockObject\Stub $adapter;
 
     /**
-     * @var MockObject|CoreParametersHelper
+     * @var MockObject&CoreParametersHelper
      */
-    private $coreParametersHelper;
+    private MockObject $coreParametersHelper;
 
     /**
-     * @var MockObject|ContainerInterface
+     * @var MockObject&ContainerInterface
      */
-    private $container;
+    private MockObject $container;
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         parent::setUp();
-        $this->adapter              = $this->createMock(FilesystemTagAwareAdapter::class);
+        $this->adapter              = $this->createStub(FilesystemTagAwareAdapter::class);
         $this->coreParametersHelper = $this->createMock(CoreParametersHelper::class);
         $this->container            = $this->createMock(ContainerInterface::class);
         $this->cacheProvider        = new CacheProvider($this->coreParametersHelper, $this->container);
@@ -58,11 +45,6 @@ class CacheProviderTest extends TestCase
             ->method('get')
             ->with('cache_adapter')
             ->willReturn('foo.bar');
-
-        $this->container->expects($this->once())
-            ->method('has')
-            ->with('foo.bar')
-            ->willReturn(true);
 
         $this->container->expects($this->once())
             ->method('get')
@@ -80,76 +62,10 @@ class CacheProviderTest extends TestCase
             ->willReturn('foo.bar');
 
         $this->container->expects($this->once())
-            ->method('has')
-            ->with('foo.bar')
-            ->willReturn(true);
-
-        $this->container->expects($this->once())
             ->method('get')
             ->with('foo.bar')
             ->willReturn($this->adapter);
 
-        $simpleCache = $this->cacheProvider->getSimpleCache();
-        $this->assertInstanceOf(Psr6Cache::class, $simpleCache);
-    }
-
-    public function testExceptionThrownIfAdaptorNotFoundInContainer(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        $this->coreParametersHelper->expects($this->once())
-            ->method('get')
-            ->with('cache_adapter')
-            ->willReturn('bar.foo');
-
-        $this->container->expects($this->once())
-            ->method('has')
-            ->with('bar.foo')
-            ->willReturn(false);
-
-        $this->container->expects($this->never())
-            ->method('get');
-
-        $this->cacheProvider->getCacheAdapter();
-    }
-
-    public function testExceptionThrownIfAdaptorEmpty(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        $this->coreParametersHelper->expects($this->once())
-            ->method('get')
-            ->with('cache_adapter')
-            ->willReturn(null);
-
-        $this->container->expects($this->never())
-            ->method('has');
-
-        $this->container->expects($this->never())
-            ->method('get');
-
-        $this->cacheProvider->getCacheAdapter();
-    }
-
-    public function testExceptionThrownIfAdaptorNotInstanceOfTagAwareAdapterInterface(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        $this->coreParametersHelper->expects($this->once())
-            ->method('get')
-            ->with('cache_adapter')
-            ->willReturn('foo.bar');
-
-        $this->container->expects($this->once())
-            ->method('has')
-            ->with('foo.bar')
-            ->willReturn(true);
-
-        $this->container->expects($this->once())
-            ->method('get')
-            ->with('foo.bar')
-            ->willReturn(new \stdClass());
-
-        $this->cacheProvider->getCacheAdapter();
+        $this->cacheProvider->getSimpleCache();
     }
 }

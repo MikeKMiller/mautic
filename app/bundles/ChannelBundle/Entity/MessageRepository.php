@@ -1,35 +1,35 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ChannelBundle\Entity;
 
+use Mautic\CategoryBundle\Entity\Category;
 use Mautic\CoreBundle\Entity\CommonRepository;
+use Mautic\ProjectBundle\Entity\ProjectRepositoryTrait;
 
+/**
+ * @extends CommonRepository<Message>
+ */
 class MessageRepository extends CommonRepository
 {
+    use ProjectRepositoryTrait;
+
     /**
      * @return \Doctrine\ORM\Tools\Pagination\Paginator
      */
     public function getEntities(array $args = [])
     {
-        $args['qb'] = $this->createQueryBuilder($this->getTableAlias());
-        $args['qb']->join('MauticChannelBundle:Channel', 'channel', 'WITH', 'channel.message = '.$this->getTableAlias().'.id');
+        $qb = $this->createQueryBuilder($this->getTableAlias());
+        // Because of this inner join pagination is not working properly. Removing this doesn't seem to break any feature.
+        // $qb->join(Channel::class, 'channel', 'WITH', 'channel.message = '.$this->getTableAlias().'.id');
+        $qb->leftJoin(Category::class, 'cat', 'WITH', 'cat.id = '.$this->getTableAlias().'.category');
+        $qb->groupBy($this->getTableAlias().'.id');
+
+        $args['qb'] = $qb;
 
         return parent::getEntities($args);
     }
 
-    /**
-     * @return string
-     */
-    public function getTableAlias()
+    public function getTableAlias(): string
     {
         return 'm';
     }
@@ -49,7 +49,7 @@ class MessageRepository extends CommonRepository
 
         if (!empty($search)) {
             if (is_array($search)) {
-                $search = array_map('intval', $search);
+                $search = array_map(intval(...), $search);
                 $q->andWhere($q->expr()->in($alias.'.id', ':search'))
                     ->setParameter('search', $search);
             } else {
@@ -67,21 +67,16 @@ class MessageRepository extends CommonRepository
         return $q->getQuery()->getArrayResult();
     }
 
-    /**
-     * @param $messageId
-     *
-     * @return array
-     */
-    public function getMessageChannels($messageId)
+    public function getMessageChannels($messageId): array
     {
         $q = $this->_em->getConnection()->createQueryBuilder();
         $q->from(MAUTIC_TABLE_PREFIX.'message_channels', 'mc')
             ->select('id, channel, channel_id, properties')
             ->where($q->expr()->eq('message_id', ':messageId'))
             ->setParameter('messageId', $messageId)
-            ->andWhere($q->expr()->eq('is_enabled', true, 'boolean'));
+            ->andWhere($q->expr()->eq('is_enabled', true));
 
-        $results = $q->execute()->fetchAll();
+        $results = $q->executeQuery()->fetchAllAssociative();
 
         $channels = [];
         foreach ($results as $result) {
@@ -93,8 +88,6 @@ class MessageRepository extends CommonRepository
     }
 
     /**
-     * @param $channelId
-     *
      * @return array
      */
     public function getChannelMessageByChannelId($channelId)
@@ -104,8 +97,43 @@ class MessageRepository extends CommonRepository
             ->select('id, channel, channel_id, properties, message_id')
             ->where($q->expr()->eq('id', ':channelId'))
             ->setParameter('channelId', $channelId)
-            ->andWhere($q->expr()->eq('is_enabled', true, 'boolean'));
+            ->andWhere($q->expr()->eq('is_enabled', true));
 
-        return $q->execute()->fetch();
+        return $q->executeQuery()->fetchAssociative();
+    }
+
+    /**
+     * @param object $filter
+     *
+     * @return mixed[]
+     */
+    protected function addSearchCommandWhereClause($q, $filter): array
+    {
+        return match ($filter->command) {
+            $this->translator->trans('mautic.project.searchcommand.name'),
+            $this->translator->trans('mautic.project.searchcommand.name', [], null, 'en_US') => $this->handleProjectFilter(
+                $this->_em->getConnection()->createQueryBuilder(),
+                'message_id',
+                'message_projects_xref',
+                $this->getTableAlias(),
+                $filter->string,
+                $filter->not
+            ),
+            default => $this->addStandardSearchCommandWhereClause($q, $filter),
+        };
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getSearchCommands(): array
+    {
+        return array_merge([
+            'mautic.core.searchcommand.ispublished',
+            'mautic.core.searchcommand.isunpublished',
+            'mautic.core.searchcommand.ismine',
+            'mautic.core.searchcommand.isuncategorized',
+            'mautic.project.searchcommand.name',
+        ], parent::getSearchCommands());
     }
 }

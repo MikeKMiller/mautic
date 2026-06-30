@@ -1,13 +1,6 @@
 <?php
 
-/*
- * @copyright   2015 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\CoreBundle\Tests\Unit\Helper;
 
@@ -22,58 +15,52 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 class FilePathResolverTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var MockObject|Filesystem
+     * @var MockObject&Filesystem
      */
-    private $filesystemMock;
+    private MockObject $filesystemMock;
 
     /**
-     * @var MockObject|UploadedFile
+     * @var MockObject&UploadedFile
      */
-    private $fileMock;
+    private MockObject $fileMock;
 
-    /**
-     * @var InputHelper
-     */
-    private $inputHelper;
-
-    /**
-     * @var FilePathResolver
-     */
-    private $filePathResolver;
+    private FilePathResolver $filePathResolver;
 
     protected function setUp(): void
     {
+        parent::setUp();
         $this->filesystemMock   = $this->createMock(Filesystem::class);
         $this->fileMock         = $this->createMock(UploadedFile::class);
-        $this->inputHelper      = new InputHelper();
-        $this->filePathResolver = new FilePathResolver($this->filesystemMock, $this->inputHelper);
+        $inputHelper            = new InputHelper();
+        $this->filePathResolver = new FilePathResolver($this->filesystemMock, $inputHelper);
     }
 
-    /**
-     * @testdox Get correct name if few previous names are taken
-     *
-     * @covers \Mautic\CoreBundle\Helper\FilePathResolver::getUniqueFileName
-     */
-    public function testGetUniqueName()
+    #[\PHPUnit\Framework\Attributes\TestDox('Get correct name if few previous names are taken')]
+    public function testGetUniqueName(): void
     {
         $uploadDir     = 'my/upload/dir';
         $extension     = 'jpg';
         $dirtyFileName = 'fileName_x./-u'.$extension;
+        $matcher       = $this->exactly(3);
 
-        $this->filesystemMock->expects($this->at(0))
-            ->method('exists')
-            ->with('my/upload/dir/filename_x.jpg')
-            ->willReturn(true);
+        $this->filesystemMock->expects($matcher)
+            ->method('exists')->willReturnCallback(function (...$parameters) use ($matcher) {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('my/upload/dir/filename_x.jpg', $parameters[0]);
 
-        $this->filesystemMock->expects($this->at(1))
-            ->method('exists')
-            ->with('my/upload/dir/filename_x-1.jpg')
-            ->willReturn(true);
+                    return true;
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('my/upload/dir/filename_x-1.jpg', $parameters[0]);
 
-        $this->filesystemMock->expects($this->at(2))
-            ->method('exists')
-            ->with('my/upload/dir/filename_x-2.jpg')
-            ->willReturn(false);
+                    return true;
+                }
+                if (3 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('my/upload/dir/filename_x-2.jpg', $parameters[0]);
+
+                    return false;
+                }
+            });
 
         $this->fileMock->expects($this->once())
             ->method('getClientOriginalName')
@@ -90,12 +77,8 @@ class FilePathResolverTest extends \PHPUnit\Framework\TestCase
         $this->assertSame('filename_x-2.jpg', $name);
     }
 
-    /**
-     * @testdox Throws an Exception if name cannot be generated
-     *
-     * @covers \Mautic\CoreBundle\Helper\FilePathResolver::getUniqueFileName
-     */
-    public function testCouldNotGetUniqueName()
+    #[\PHPUnit\Framework\Attributes\TestDox('Throws an Exception if name cannot be generated')]
+    public function testCouldNotGetUniqueName(): void
     {
         $uploadDir     = 'my/upload/dir';
         $extension     = 'jpg';
@@ -121,12 +104,8 @@ class FilePathResolverTest extends \PHPUnit\Framework\TestCase
         $this->filePathResolver->getUniqueFileName($uploadDir, $this->fileMock);
     }
 
-    /**
-     * @testdox No action is taken when directory already exists
-     *
-     * @covers \Mautic\CoreBundle\Helper\FilePathResolver::createDirectory
-     */
-    public function testNoActionIfDirectoryExists()
+    #[\PHPUnit\Framework\Attributes\TestDox('No action is taken when directory already exists')]
+    public function testNoActionIfDirectoryExists(): void
     {
         $directory = 'my/directory';
 
@@ -138,12 +117,8 @@ class FilePathResolverTest extends \PHPUnit\Framework\TestCase
         $this->filePathResolver->createDirectory($directory);
     }
 
-    /**
-     * @testdox Create new directory
-     *
-     * @covers \Mautic\CoreBundle\Helper\FilePathResolver::createDirectory
-     */
-    public function testCreateNewDirectory()
+    #[\PHPUnit\Framework\Attributes\TestDox('Create new directory')]
+    public function testCreateNewDirectory(): void
     {
         $directory = 'my/directory';
 
@@ -159,12 +134,8 @@ class FilePathResolverTest extends \PHPUnit\Framework\TestCase
         $this->filePathResolver->createDirectory($directory);
     }
 
-    /**
-     * @testdox Directory could not be created
-     *
-     * @covers \Mautic\CoreBundle\Helper\FilePathResolver::createDirectory
-     */
-    public function testDirectoryCouldNotBeCreated()
+    #[\PHPUnit\Framework\Attributes\TestDox('Directory could not be created')]
+    public function testDirectoryCouldNotBeCreated(): void
     {
         $directory = 'my/directory';
 
@@ -184,12 +155,8 @@ class FilePathResolverTest extends \PHPUnit\Framework\TestCase
         $this->filePathResolver->createDirectory($directory);
     }
 
-    /**
-     * @testdox Successfuly detete file
-     *
-     * @covers \Mautic\CoreBundle\Helper\FilePathResolver::delete
-     */
-    public function testDeleteFile()
+    #[\PHPUnit\Framework\Attributes\TestDox('Successfuly detete file')]
+    public function testDeleteFile(): void
     {
         $file = 'my/file';
 
@@ -205,12 +172,8 @@ class FilePathResolverTest extends \PHPUnit\Framework\TestCase
         $this->filePathResolver->delete($file);
     }
 
-    /**
-     * @testdox File could not be deleted
-     *
-     * @covers \Mautic\CoreBundle\Helper\FilePathResolver::delete
-     */
-    public function testCouldNotDeleteFile()
+    #[\PHPUnit\Framework\Attributes\TestDox('File could not be deleted')]
+    public function testCouldNotDeleteFile(): void
     {
         $file = 'my/file';
 
@@ -227,12 +190,8 @@ class FilePathResolverTest extends \PHPUnit\Framework\TestCase
         $this->filePathResolver->delete($file);
     }
 
-    /**
-     * @testdox File could not be deleted
-     *
-     * @covers \Mautic\CoreBundle\Helper\FilePathResolver::delete
-     */
-    public function testDeleteFileWhichNotExists()
+    #[\PHPUnit\Framework\Attributes\TestDox('File could not be deleted')]
+    public function testDeleteFileWhichNotExists(): void
     {
         $file = 'my/file';
 
@@ -247,7 +206,7 @@ class FilePathResolverTest extends \PHPUnit\Framework\TestCase
         $this->filePathResolver->delete($file);
     }
 
-    public function testMove()
+    public function testMove(): void
     {
         $originalPath = 'my/file';
         $targetPath   = 'my/new/file';

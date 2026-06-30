@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\Form\Type;
 
 use Doctrine\ORM\EntityManager;
@@ -17,16 +8,21 @@ use Mautic\CoreBundle\Form\DataTransformer\IdToEntityModelTransformer;
 use Mautic\CoreBundle\Form\EventListener\CleanFormSubscriber;
 use Mautic\CoreBundle\Form\EventListener\FormExitSubscriber;
 use Mautic\CoreBundle\Form\Type\FormButtonsType;
+use Mautic\CoreBundle\Form\Type\PublishDownDateType;
+use Mautic\CoreBundle\Form\Type\PublishUpDateType;
 use Mautic\CoreBundle\Form\Type\ThemeListType;
 use Mautic\CoreBundle\Form\Type\YesNoButtonGroupType;
+use Mautic\CoreBundle\Helper\ThemeHelperInterface;
 use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\PageBundle\Entity\Page;
+use Mautic\PageBundle\Helper\PageConfigInterface;
 use Mautic\PageBundle\Model\PageModel;
+use Mautic\ProjectBundle\Form\Type\ProjectType;
 use Symfony\Component\Form\AbstractType;
-use Symfony\Component\Form\Extension\Core\Type\DateTimeType;
 use Symfony\Component\Form\Extension\Core\Type\HiddenType;
 use Symfony\Component\Form\Extension\Core\Type\LocaleType;
+use Symfony\Component\Form\Extension\Core\Type\SubmitType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\Extension\Core\Type\UrlType;
@@ -37,48 +33,29 @@ use Symfony\Component\Form\FormInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 
 /**
- * Class PageType.
+ * @extends AbstractType<Page>
  */
 class PageType extends AbstractType
 {
-    /**
-     * @var \Doctrine\ORM\EntityManager
-     */
-    private $em;
+    private readonly ?\Mautic\UserBundle\Entity\User $user;
 
-    /**
-     * @var \Mautic\PageBundle\Model\PageModel
-     */
-    private $model;
-
-    /**
-     * @var \Mautic\UserBundle\Model\UserModel
-     */
-    private $user;
-
-    /**
-     * @var bool
-     */
-    private $canViewOther = false;
+    private bool $canViewOther;
 
     public function __construct(
-        EntityManager $entityManager,
-        PageModel $pageModel,
+        private readonly EntityManager $em,
+        private readonly PageModel $model,
         CorePermissions $corePermissions,
-        UserHelper $userHelper
+        UserHelper $userHelper,
+        private readonly ThemeHelperInterface $themeHelper,
+        private readonly PageConfigInterface $pageConfig,
     ) {
-        $this->em           = $entityManager;
-        $this->model        = $pageModel;
         $this->canViewOther = $corePermissions->isGranted('page:pages:viewother');
         $this->user         = $userHelper->getUser();
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
-        $builder->addEventSubscriber(new CleanFormSubscriber(['content' => 'html', 'customHtml' => 'html', 'redirectUrl' => 'url']));
+        $builder->addEventSubscriber(new CleanFormSubscriber(['content' => 'html', 'customHtml' => 'html', 'redirectUrl' => 'url', 'headScript' => 'html', 'footerScript' => 'html']));
         $builder->addEventSubscriber(new FormExitSubscriber('page.page', $options));
 
         $builder->add(
@@ -91,6 +68,10 @@ class PageType extends AbstractType
             ]
         );
 
+        $html = $options['data']->getCustomHtml();
+        if ($this->pageConfig->isDraftEnabled() && !empty($options['data']->getId()) && $options['data']->hasDraft() && !empty($options['data']->getDraft()->getHtml())) {
+            $html = $options['data']->getDraft()->getHtml();
+        }
         $builder->add(
             'customHtml',
             TextareaType::class,
@@ -98,13 +79,22 @@ class PageType extends AbstractType
                 'label'    => 'mautic.page.form.customhtml',
                 'required' => false,
                 'attr'     => [
+                    'tooltip'              => 'mautic.page.form.customhtml.help',
                     'class'                => 'form-control editor-builder-tokens builder-html',
                     'data-token-callback'  => 'page:getBuilderTokens',
                     'data-token-activator' => '{',
+                    'rows'                 => '25',
                 ],
+                'data'     => $html,
             ]
         );
 
+        $template = $options['data']->getTemplate() ?? 'blank';
+        // If theme does not exist, set empty
+        $template = $this->themeHelper->getCurrentTheme($template, 'page');
+        if ($this->pageConfig->isDraftEnabled() && !empty($options['data']->getId()) && $options['data']->hasDraft() && !empty($options['data']->getDraft()->getTemplate())) {
+            $template = $options['data']->getDraft()->getTemplate();
+        }
         $builder->add(
             'template',
             ThemeListType::class,
@@ -115,18 +105,20 @@ class PageType extends AbstractType
                     'tooltip' => 'mautic.page.form.template.help',
                 ],
                 'placeholder' => 'mautic.core.none',
-                'data'        => $options['data']->getTemplate() ? $options['data']->getTemplate() : 'blank',
+                'data'        => $template,
             ]
         );
 
-        $builder->add('isPublished', YesNoButtonGroupType::class);
+        $builder->add('isPublished', YesNoButtonGroupType::class, [
+            'label' => 'mautic.core.form.available',
+        ]);
 
         $builder->add(
             'isPreferenceCenter',
             YesNoButtonGroupType::class,
             [
                 'label' => 'mautic.page.form.preference_center',
-                'data'  => $options['data']->isPreferenceCenter() ? $options['data']->isPreferenceCenter() : false,
+                'data'  => $options['data']->isPreferenceCenter() ?: false,
                 'attr'  => [
                     'tooltip' => 'mautic.page.form.preference_center.tooltip',
                 ],
@@ -138,45 +130,15 @@ class PageType extends AbstractType
             YesNoButtonGroupType::class,
             [
                 'label' => 'mautic.page.config.no_index',
-                'data'  => $options['data']->getNoIndex() ? $options['data']->getNoIndex() : false,
+                'data'  => $options['data']->getNoIndex() ?: false,
             ]
         );
 
-        $builder->add(
-            'publishUp',
-            DateTimeType::class,
-            [
-                'widget'     => 'single_text',
-                'label'      => 'mautic.core.form.publishup',
-                'label_attr' => ['class' => 'control-label'],
-                'attr'       => [
-                    'class'       => 'form-control',
-                    'data-toggle' => 'datetime',
-                ],
-                'format'   => 'yyyy-MM-dd HH:mm',
-                'required' => false,
-            ]
-        );
-
-        $builder->add(
-            'publishDown',
-            DateTimeType::class,
-            [
-                'widget'     => 'single_text',
-                'label'      => 'mautic.core.form.publishdown',
-                'label_attr' => ['class' => 'control-label'],
-                'attr'       => [
-                    'class'       => 'form-control',
-                    'data-toggle' => 'datetime',
-                ],
-                'format'   => 'yyyy-MM-dd HH:mm',
-                'required' => false,
-            ]
-        );
-
+        $builder->add('publishUp', PublishUpDateType::class);
+        $builder->add('publishDown', PublishDownDateType::class);
         $builder->add('sessionId', HiddenType::class);
 
-        //Custom field for redirect URL
+        // Custom field for redirect URL
         $this->model->getRepository()->setCurrentUser($this->user);
 
         $redirectUrlDataOptions = '';
@@ -185,7 +147,7 @@ class PageType extends AbstractType
             $redirectUrlDataOptions .= "|{$page['alias']}";
         }
 
-        $transformer = new IdToEntityModelTransformer($this->em, 'MauticPageBundle:Page');
+        $transformer = new IdToEntityModelTransformer($this->em, Page::class);
         $builder->add(
             $builder->create(
                 'variantParent',
@@ -213,7 +175,7 @@ class PageType extends AbstractType
             )->addModelTransformer($transformer)
         );
 
-        $formModifier = function (FormInterface $form, $isVariant) {
+        $formModifier = function (FormInterface $form, $isVariant): void {
             if ($isVariant) {
                 $form->add(
                     'variantSettings',
@@ -228,7 +190,7 @@ class PageType extends AbstractType
         // Building the form
         $builder->addEventListener(
             FormEvents::PRE_SET_DATA,
-            function (FormEvent $event) use ($formModifier) {
+            function (FormEvent $event) use ($formModifier): void {
                 $formModifier(
                     $event->getForm(),
                     $event->getData()->getVariantParent()
@@ -239,7 +201,7 @@ class PageType extends AbstractType
         // After submit
         $builder->addEventListener(
             FormEvents::PRE_SUBMIT,
-            function (FormEvent $event) use ($formModifier) {
+            function (FormEvent $event) use ($formModifier): void {
                 $data = $event->getData();
                 if (isset($data['variantParent'])) {
                     $formModifier(
@@ -262,16 +224,46 @@ class PageType extends AbstractType
         );
 
         $builder->add(
-          'redirectType',
-          RedirectListType::class,
-          [
-              'feature' => 'page',
-              'attr'    => [
-                  'class'   => 'form-control',
-                  'tooltip' => 'mautic.page.form.redirecttype.help',
-              ],
-              'placeholder' => 'mautic.page.form.redirecttype.none',
-          ]
+            'headScript',
+            TextareaType::class,
+            [
+                'label'      => 'mautic.page.form.headscript',
+                'label_attr' => ['class' => 'control-label'],
+                'attr'       => [
+                    'class'   => 'form-control',
+                    'rows'    => '8',
+                    'tooltip' => 'mautic.page.form.script.help',
+                ],
+                'required'   => false,
+            ]
+        );
+
+        $builder->add(
+            'footerScript',
+            TextareaType::class,
+            [
+                'label'      => 'mautic.page.form.footerscript',
+                'label_attr' => ['class' => 'control-label'],
+                'attr'       => [
+                    'class'   => 'form-control',
+                    'rows'    => '8',
+                    'tooltip' => 'mautic.page.form.script.help',
+                ],
+                'required'   => false,
+            ]
+        );
+
+        $builder->add(
+            'redirectType',
+            RedirectListType::class,
+            [
+                'feature' => 'page',
+                'attr'    => [
+                    'class'   => 'form-control',
+                    'tooltip' => 'mautic.page.form.redirecttype.help',
+                ],
+                'placeholder' => 'mautic.page.form.redirecttype.none',
+            ]
         );
 
         $builder->add(
@@ -287,11 +279,13 @@ class PageType extends AbstractType
                     'class'        => 'form-control',
                     'maxlength'    => 200,
                     'tooltip'      => 'mautic.page.form.redirecturl.help',
+                    'data-hide-on' => '{"page_redirectType":""}',
                     'data-toggle'  => 'field-lookup',
                     'data-action'  => 'page:fieldList',
                     'data-target'  => 'redirectUrl',
                     'data-options' => $redirectUrlDataOptions,
                 ],
+                'default_protocol' => null,
             ]
         );
 
@@ -309,7 +303,7 @@ class PageType extends AbstractType
             ]
         );
 
-        //add category
+        // add category
         $builder->add(
             'category',
             CategoryListType::class,
@@ -317,6 +311,8 @@ class PageType extends AbstractType
                 'bundle' => 'page',
             ]
         );
+
+        $builder->add('projects', ProjectType::class);
 
         $builder->add(
             'language',
@@ -332,19 +328,30 @@ class PageType extends AbstractType
             ]
         );
 
-        $builder->add('buttons', FormButtonsType::class, [
-            'pre_extra_buttons' => [
-                [
-                    'name'  => 'builder',
-                    'label' => 'mautic.core.builder',
-                    'attr'  => [
-                        'class'   => 'btn btn-default btn-dnd btn-nospin btn-builder text-primary',
-                        'icon'    => 'fa fa-cube',
-                        'onclick' => "Mautic.launchBuilder('page');",
-                    ],
+        $builder->add('version', HiddenType::class, [
+            'mapped' => false,
+        ]);
+
+        $extraButtons['pre_extra_buttons'] = [
+            [
+                'name'  => 'builder',
+                'label' => 'mautic.core.builder',
+                'attr'  => [
+                    'class'   => 'btn btn-tertiary btn-dnd btn-nospin btn-builder text-interactive',
+                    'icon'    => 'ri-layout-line',
+                    'onclick' => "Mautic.launchBuilder('page');",
                 ],
             ],
-        ]);
+        ];
+
+        $draftActionButtons = $this->getDraftActionButtons($options['data']);
+        if (!empty($draftActionButtons)) {
+            $extraButtons['post_extra_buttons'] = $draftActionButtons;
+        }
+        $builder->add('buttons',
+            FormButtonsType::class,
+            $extraButtons
+        );
 
         if (!empty($options['action'])) {
             $builder->setAction($options['action']);
@@ -352,20 +359,53 @@ class PageType extends AbstractType
     }
 
     /**
-     * {@inheritdoc}
+     * @return array<mixed>
      */
-    public function configureOptions(OptionsResolver $resolver)
+    private function getDraftActionButtons(Page $page): array
+    {
+        $draftActionButtons = [];
+        if (!$this->pageConfig->isDraftEnabled() || empty($page->getId())) {
+            return $draftActionButtons;
+        }
+
+        if ($page->hasDraft()) {
+            $draftActionButtons[] = [
+                'name'  => 'apply_draft',
+                'label' => 'mautic.core.applydraft',
+                'type'  => SubmitType::class,
+                'attr'  => [
+                    'class'   => 'btn btn-primary btn-apply-draft btn-copy',
+                    'icon'    => 'fa fa-files-o text-success',
+                ],
+            ];
+            $draftActionButtons[] = [
+                'name'  => 'discard_draft',
+                'label' => 'mautic.core.discarddraft',
+                'type'  => SubmitType::class,
+                'attr'  => [
+                    'class'   => 'btn btn-primary btn-apply-draft btn-copy',
+                    'icon'    => 'fa fa-trash text-danger',
+                ],
+            ];
+        } else {
+            $draftActionButtons[] = [
+                'name'  => 'save_draft',
+                'label' => 'mautic.core.saveasdraft',
+                'type'  => SubmitType::class,
+                'attr'  => [
+                    'class'   => 'btn btn-primary btn-default text-primary btn-save-draft',
+                    'icon'    => 'fa fa-file text-success',
+                ],
+            ];
+        }
+
+        return $draftActionButtons;
+    }
+
+    public function configureOptions(OptionsResolver $resolver): void
     {
         $resolver->setDefaults([
             'data_class' => Page::class,
         ]);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getBlockPrefix()
-    {
-        return 'page';
     }
 }

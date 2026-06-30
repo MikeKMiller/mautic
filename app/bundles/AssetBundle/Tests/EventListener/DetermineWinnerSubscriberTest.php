@@ -1,43 +1,41 @@
 <?php
 
-/*
- * @copyright   2019 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\AssetBundle\Tests\EventListener;
 
-use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityManagerInterface;
 use Mautic\AssetBundle\Entity\DownloadRepository;
 use Mautic\AssetBundle\EventListener\DetermineWinnerSubscriber;
 use Mautic\CoreBundle\Event\DetermineWinnerEvent;
 use Mautic\PageBundle\Entity\Page;
-use Symfony\Component\Translation\TranslatorInterface;
+use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
 {
-    private $em;
-    private $translator;
+    /**
+     * @var MockObject&EntityManagerInterface
+     */
+    private MockObject $em;
 
     /**
-     * @var DetermineWinnerSubscriber
+     * @var MockObject&TranslatorInterface
      */
-    private $subscriber;
+    private MockObject $translator;
+
+    private DetermineWinnerSubscriber $subscriber;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->em         = $this->createMock(EntityManager::class);
+        $this->em         = $this->createMock(EntityManagerInterface::class);
         $this->translator = $this->createMock(TranslatorInterface::class);
         $this->subscriber = new DetermineWinnerSubscriber($this->em, $this->translator);
     }
 
-    public function testOnDetermineDownloadRateWinner()
+    public function testOnDetermineDownloadRateWinner(): void
     {
         $parentMock    = $this->createMock(Page::class);
         $childMock     = $this->createMock(Page::class);
@@ -56,22 +54,17 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
                 'id'    => 1,
                 'name'  => 'Test 5',
                 'total' => 100,
-                ],
+            ],
             2 => [
                 'count' => 25,
                 'id'    => 2,
                 'name'  => 'Test 6',
                 'total' => 150,
-                ],
+            ],
         ];
 
-        $this->translator->expects($this->at(0))
-            ->method('trans')
-            ->willReturn($transDownloads);
-
-        $this->translator->expects($this->at(1))
-            ->method('trans')
-            ->willReturn($transHits);
+        $this->translator->method('trans')
+            ->willReturnOnConsecutiveCalls($transDownloads, $transHits);
 
         $this->em->expects($this->once())
             ->method('getRepository')
@@ -107,7 +100,7 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
         $expectedData = [
             $transDownloads => [$counts[1]['count'], $counts[2]['count']],
             $transHits      => [$counts[1]['total'], $counts[2]['total']],
-         ];
+        ];
 
         $abTestResults = $event->getAbTestResults();
 

@@ -1,21 +1,12 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CategoryBundle\Entity;
 
 use Doctrine\ORM\Tools\Pagination\Paginator;
 use Mautic\CoreBundle\Entity\CommonRepository;
 
 /**
- * Class CategoryRepository.
+ * @extends CommonRepository<Category>
  */
 class CategoryRepository extends CommonRepository
 {
@@ -36,12 +27,12 @@ class CategoryRepository extends CommonRepository
     }
 
     /**
-     * @param        $bundle
-     * @param string $search
+     * @param string $bundle
+     * @param mixed  $search
      * @param int    $limit
      * @param int    $start
      *
-     * @return array
+     * @return mixed[]
      */
     public function getCategoryList($bundle, $search = '', $limit = 10, $start = 0, $includeGlobal = true)
     {
@@ -65,8 +56,14 @@ class CategoryRepository extends CommonRepository
           ->setParameter('bundle', $bundle);
 
         if (!empty($search)) {
-            $q->andWhere($q->expr()->like('c.title', ':search'))
-                ->setParameter('search', "{$search}%");
+            if (is_array($search)) {
+                $search = array_map(intval(...), $search);
+                $q->andWhere($q->expr()->in('c.id', ':search'))
+                    ->setParameter('search', $search);
+            } else {
+                $q->andWhere($q->expr()->like('c.title', ':search'))
+                    ->setParameter('search', "{$search}%");
+            }
         }
 
         $q->orderBy('c.title');
@@ -81,11 +78,8 @@ class CategoryRepository extends CommonRepository
 
     /**
      * @param \Doctrine\ORM\QueryBuilder|\Doctrine\DBAL\Query\QueryBuilder $q
-     * @param                                                              $filter
-     *
-     * @return array
      */
-    protected function addCatchAllWhereClause($q, $filter)
+    protected function addCatchAllWhereClause($q, $filter): array
     {
         return $this->addStandardCatchAllWhereClause($q, $filter, [
             'c.title',
@@ -95,15 +89,12 @@ class CategoryRepository extends CommonRepository
 
     /**
      * @param \Doctrine\ORM\QueryBuilder|\Doctrine\DBAL\Query\QueryBuilder $q
-     * @param                                                              $filter
-     *
-     * @return array
      */
-    protected function addSearchCommandWhereClause($q, $filter)
+    protected function addSearchCommandWhereClause($q, $filter): array
     {
         $command                 = $field                 = $filter->command;
         $unique                  = $this->generateRandomParameterName();
-        list($expr, $parameters) = parent::addSearchCommandWhereClause($q, $filter);
+        [$expr, $parameters]     = parent::addSearchCommandWhereClause($q, $filter);
 
         switch ($command) {
             case $this->translator->trans('mautic.core.searchcommand.ispublished'):
@@ -129,9 +120,9 @@ class CategoryRepository extends CommonRepository
     }
 
     /**
-     * @return array
+     * @return string[]
      */
-    public function getSearchCommands()
+    public function getSearchCommands(): array
     {
         $commands = [
             'mautic.core.searchcommand.ispublished',
@@ -142,9 +133,9 @@ class CategoryRepository extends CommonRepository
     }
 
     /**
-     * @return string
+     * @return array<array<string>>
      */
-    protected function getDefaultOrder()
+    protected function getDefaultOrder(): array
     {
         return [
             ['c.title', 'ASC'],
@@ -177,10 +168,7 @@ class CategoryRepository extends CommonRepository
         return $results['aliascount'];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getTableAlias()
+    public function getTableAlias(): string
     {
         return 'c';
     }

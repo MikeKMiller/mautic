@@ -2,73 +2,43 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Tests\Unit\Entity;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\AbstractQuery;
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\NoResultException;
+use Doctrine\ORM\Query;
+use Doctrine\ORM\Query\Parameter;
 use Doctrine\ORM\QueryBuilder;
+use Mautic\CoreBundle\Test\Doctrine\RepositoryConfiguratorTrait;
+use Mautic\IntegrationsBundle\Entity\ObjectMapping;
 use Mautic\IntegrationsBundle\Entity\ObjectMappingRepository;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 final class ObjectMappingRepositoryTest extends TestCase
 {
-    /**
-     * @var MockObject|EntityManagerInterface
-     */
-    private $entityManager;
+    use RepositoryConfiguratorTrait;
 
     /**
-     * @var MockObject|ClassMetadata
+     * @var MockObject&AbstractQuery<mixed>
      */
-    private $classMetadata;
+    private MockObject $query;
 
-    /**
-     * @var MockObject|AbstractQuery
-     */
-    private $query;
-
-    /**
-     * @var MockObject|QueryBuilder
-     */
-    private $queryBuilder;
-
-    /**
-     * @var ObjectMappingRepository
-     */
-    private $repository;
+    private ObjectMappingRepository $repository;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        defined('MAUTIC_TABLE_PREFIX') || define('MAUTIC_TABLE_PREFIX', getenv('MAUTIC_DB_PREFIX') ?: '');
-        $this->entityManager = $this->createMock(EntityManagerInterface::class);
-        $this->classMetadata = $this->createMock(ClassMetadata::class);
-        $this->queryBuilder  = new QueryBuilder($this->entityManager);
-        $this->repository    = new ObjectMappingRepository($this->entityManager, $this->classMetadata);
+        $this->repository = $this->configureRepository(ObjectMapping::class);
+
+        $this->entityManager->method('createQueryBuilder')->willReturnCallback(fn (): QueryBuilder => new QueryBuilder($this->entityManager));
 
         // This is terrible, but the Query class is final and AbstractQuery doesn't have some methods used.
-        $this->query = $this->getMockBuilder(AbstractQuery::class)
+        $this->query = $this->getMockBuilder(Query::class)
             ->disableOriginalConstructor()
-            ->setMethods(['setParameters', 'setFirstResult', 'setMaxResults', 'getSingleResult', 'getSQL', '_doExecute'])
+            ->onlyMethods(['setParameters', 'getSingleResult', 'getSQL', '_doExecute', 'setFirstResult', 'setMaxResults'])
             ->getMock();
-
-        $this->entityManager->expects($this->once())
-            ->method('createQueryBuilder')
-            ->willReturn($this->queryBuilder);
 
         $this->query->expects($this->once())
             ->method('setFirstResult')
@@ -88,7 +58,7 @@ final class ObjectMappingRepositoryTest extends TestCase
 
         $this->query->expects($this->once())
             ->method('setParameters')
-            ->with($this->callback(function (ArrayCollection $collection) {
+            ->with($this->callback(function (ArrayCollection $collection): true {
                 /** @var Parameter $parameter */
                 $parameter = $collection[0];
                 $this->assertSame('internalObject', $parameter->getName());
@@ -103,7 +73,7 @@ final class ObjectMappingRepositoryTest extends TestCase
             }))
             ->willReturnSelf();
 
-        // Stopping early to avoid Mocking hell. We have what we needed.
+        // // Stopping early to avoid Mocking hell. We have what we needed.
         $this->query->expects($this->once())
             ->method('_doExecute')
             ->willReturn(0);

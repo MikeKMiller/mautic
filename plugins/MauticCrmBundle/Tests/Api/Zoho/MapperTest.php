@@ -1,25 +1,17 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticCrmBundle\Tests\Api\Zoho;
 
 use MauticPlugin\MauticCrmBundle\Api\Zoho\Exception\MatchingKeyNotFoundException;
 use MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(Mapper::class)]
 class MapperTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var array
+     * @var array<string, array<string, array<string, mixed>>>
      */
-    protected $availableFields = [
+    protected array $availableFields = [
         'Leads' => [
             'Company'   => [
                 'type'     => 'string',
@@ -48,10 +40,8 @@ class MapperTest extends \PHPUnit\Framework\TestCase
         ],
     ];
 
-    /**
-     * @var array
-     */
-    protected $mappedFields = [
+    /** @var array<string, string> */
+    protected array $mappedFields = [
         'Company'   => 'company',
         'Email'     => 'email',
         'Country'   => 'country',
@@ -59,10 +49,8 @@ class MapperTest extends \PHPUnit\Framework\TestCase
         'LastName'  => 'lastname',
     ];
 
-    /**
-     * @var array
-     */
-    protected $contacts = [
+    /** @var array<int, array<string, int|string|null>> */
+    protected array $contacts = [
         [
             'firstname'             => 'FirstName1',
             'lastname'              => 'LastName1',
@@ -92,13 +80,8 @@ class MapperTest extends \PHPUnit\Framework\TestCase
         ],
     ];
 
-    /**
-     * @testdox Test that array is generated according to the mapping
-     *
-     * @covers  \MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper::map()
-     * @covers  \MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper::getArray()
-     */
-    public function testArrayIsGeneratedBasedOnMapping()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test that array is generated according to the mapping')]
+    public function testArrayIsGeneratedBasedOnMapping(): void
     {
         $mapper = new Mapper($this->availableFields);
         $mapper->setObject('Leads');
@@ -127,16 +110,11 @@ class MapperTest extends \PHPUnit\Framework\TestCase
             ],
         ];
 
-        $this->assertEquals($expected, $mapper->getArray());
+        $this->assertSame($expected, $mapper->getArray());
     }
 
-    /**
-     * @testdox Test that contacts do not inherit previous contact information
-     *
-     * @covers  \MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper::map()
-     * @covers  \MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper::getArray()
-     */
-    public function testContactDoesNotInheritPreviousContactData()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test that contacts do not inherit previous contact information')]
+    public function testContactDoesNotInheritPreviousContactData(): void
     {
         $mapper = new Mapper($this->availableFields);
         $mapper->setObject('Leads');
@@ -170,16 +148,11 @@ class MapperTest extends \PHPUnit\Framework\TestCase
             ],
         ];
 
-        $this->assertEquals($expected, $mapper->getArray());
+        $this->assertSame($expected, $mapper->getArray());
     }
 
-    /**
-     * @testdox Test that array is generated according to the mapping
-     *
-     * @covers  \MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper::map()
-     * @covers  \MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper::getArray()
-     */
-    public function testArrayIsGeneratedBasedOnMappingWithId()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test that array is generated according to the mapping')]
+    public function testArrayIsGeneratedBasedOnMappingWithId(): void
     {
         $mapper = new Mapper($this->availableFields);
         $mapper->setObject('Leads');
@@ -199,8 +172,8 @@ class MapperTest extends \PHPUnit\Framework\TestCase
             ],
             [
                 'id'         => 'def',
-                'First Name' => 'FirstName2',
                 'Email'      => 'zoho2@email.com',
+                'First Name' => 'FirstName2',
                 'Last Name'  => 'LastName2',
             ],
             [
@@ -211,15 +184,11 @@ class MapperTest extends \PHPUnit\Framework\TestCase
             ],
         ];
 
-        $this->assertEquals($expected, $mapper->getArray());
+        $this->assertSame($expected, $mapper->getArray());
     }
 
-    /**
-     * @testdox Test asking for a key returns the correct contact
-     *
-     * @covers  \MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper::getContactIdByKey()
-     */
-    public function testThatContactIdMatchesGivenKey()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test asking for a key returns the correct contact')]
+    public function testThatContactIdMatchesGivenKey(): void
     {
         $mapper = new Mapper($this->availableFields);
         $mapper->setObject('Leads');
@@ -235,12 +204,8 @@ class MapperTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(1, $mapper->getContactIdByKey(0));
     }
 
-    /**
-     * @testdox Test asking for a key that doesn't exist throws exception
-     *
-     * @covers  \MauticPlugin\MauticCrmBundle\Api\Zoho\Mapper::getContactIdByKey()
-     */
-    public function testThatExceptionIsThrownIfKeyNotFound()
+    #[\PHPUnit\Framework\Attributes\TestDox("Test asking for a key that doesn't exist throws exception")]
+    public function testThatExceptionIsThrownIfKeyNotFound(): void
     {
         $this->expectException(MatchingKeyNotFoundException::class);
 

@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\AssetBundle\Form\Type;
 
 use Mautic\AssetBundle\Entity\Asset;
@@ -18,36 +9,32 @@ use Mautic\CoreBundle\Form\EventListener\CleanFormSubscriber;
 use Mautic\CoreBundle\Form\EventListener\FormExitSubscriber;
 use Mautic\CoreBundle\Form\Type\ButtonGroupType;
 use Mautic\CoreBundle\Form\Type\FormButtonsType;
+use Mautic\CoreBundle\Form\Type\PublishDownDateType;
+use Mautic\CoreBundle\Form\Type\PublishUpDateType;
 use Mautic\CoreBundle\Form\Type\YesNoButtonGroupType;
+use Mautic\ProjectBundle\Form\Type\ProjectType;
 use Symfony\Component\Form\AbstractType;
-use Symfony\Component\Form\Extension\Core\Type\DateTimeType;
 use Symfony\Component\Form\Extension\Core\Type\HiddenType;
 use Symfony\Component\Form\Extension\Core\Type\LocaleType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Component\Validator\Constraints\NotBlank;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
+/**
+ * @extends AbstractType<Asset>
+ */
 class AssetType extends AbstractType
 {
-    /**
-     * @var TranslatorInterface
-     */
-    private $translator;
-
-    /**
-     * @var AssetModel
-     */
-    private $assetModel;
-
-    public function __construct(TranslatorInterface $translator, AssetModel $assetModel)
-    {
-        $this->translator = $translator;
-        $this->assetModel = $assetModel;
+    public function __construct(
+        private readonly TranslatorInterface $translator,
+        private readonly AssetModel $assetModel,
+    ) {
     }
 
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         $builder->addEventSubscriber(new CleanFormSubscriber(['description' => 'html']));
         $builder->addEventSubscriber(new FormExitSubscriber('asset.asset', $options));
@@ -68,9 +55,9 @@ class AssetType extends AbstractType
             'tempName',
             HiddenType::class,
             [
-                'label'      => $this->translator->trans('mautic.asset.asset.form.file.upload', ['%max%' => $maxUploadSize]),
-                'label_attr' => ['class' => 'control-label'],
-                'required'   => false,
+                'label'       => $this->translator->trans('mautic.asset.asset.form.file.upload', ['%max%' => $maxUploadSize]),
+                'label_attr'  => ['class' => 'control-label'],
+                'required'    => false,
             ]
         );
 
@@ -78,8 +65,8 @@ class AssetType extends AbstractType
             'originalFileName',
             HiddenType::class,
             [
-                'required' => false,
-            ]
+                'required'    => false,
+            ],
         );
         $builder->add(
             'disallow',
@@ -90,7 +77,7 @@ class AssetType extends AbstractType
                     'tooltip'      => 'mautic.asset.asset.form.disallow.crawlers.descr',
                     'data-show-on' => '{"asset_storageLocation_0":"checked"}',
                 ],
-                'data'=> empty($options['data']->getDisallow()) ? false : true,
+                'data'=> !empty($options['data']->getDisallow()),
             ]
         );
 
@@ -98,10 +85,10 @@ class AssetType extends AbstractType
             'remotePath',
             TextType::class,
             [
-                'label'      => 'mautic.asset.asset.form.remotePath',
-                'label_attr' => ['class' => 'control-label'],
-                'attr'       => ['class' => 'form-control'],
-                'required'   => false,
+                'label'       => 'mautic.asset.asset.form.remotePath',
+                'label_attr'  => ['class' => 'control-label'],
+                'attr'        => ['class' => 'form-control'],
+                'required'    => false,
             ]
         );
 
@@ -112,20 +99,6 @@ class AssetType extends AbstractType
                 'label'      => 'mautic.core.title',
                 'label_attr' => ['class' => 'control-label'],
                 'attr'       => ['class' => 'form-control'],
-            ]
-        );
-
-        $builder->add(
-            'alias',
-            TextType::class,
-            [
-                'label'      => 'mautic.core.alias',
-                'label_attr' => ['class' => 'control-label'],
-                'attr'       => [
-                    'class'   => 'form-control',
-                    'tooltip' => 'mautic.asset.asset.help.alias',
-                ],
-                'required' => false,
             ]
         );
 
@@ -148,6 +121,8 @@ class AssetType extends AbstractType
             ]
         );
 
+        $builder->add('projects', ProjectType::class);
+
         $builder->add('language', LocaleType::class, [
             'label'      => 'mautic.core.language',
             'label_attr' => ['class' => 'control-label'],
@@ -155,38 +130,21 @@ class AssetType extends AbstractType
                 'class'   => 'form-control',
                 'tooltip' => 'mautic.asset.asset.form.language.help',
             ],
-            'required' => false,
-        ]);
-
-        $builder->add('isPublished', YesNoButtonGroupType::class);
-
-        $builder->add('publishUp', DateTimeType::class, [
-            'widget'     => 'single_text',
-            'label'      => 'mautic.core.form.publishup',
-            'label_attr' => ['class' => 'control-label'],
-            'attr'       => [
-                'class'       => 'form-control',
-                'data-toggle' => 'datetime',
+            'required'    => true,
+            'constraints' => [
+                new NotBlank(
+                    [
+                        'message' => 'mautic.core.value.required',
+                    ]
+                ),
             ],
-            'format'   => 'yyyy-MM-dd HH:mm',
-            'required' => false,
         ]);
 
-        $builder->add(
-            'publishDown',
-            DateTimeType::class,
-            [
-                'widget'     => 'single_text',
-                'label'      => 'mautic.core.form.publishdown',
-                'label_attr' => ['class' => 'control-label'],
-                'attr'       => [
-                    'class'       => 'form-control',
-                    'data-toggle' => 'datetime',
-                ],
-                'format'   => 'yyyy-MM-dd HH:mm',
-                'required' => false,
-            ]
-        );
+        $builder->add('isPublished', YesNoButtonGroupType::class, [
+            'label' => 'mautic.core.form.available',
+        ]);
+        $builder->add('publishUp', PublishUpDateType::class);
+        $builder->add('publishDown', PublishDownDateType::class);
 
         $builder->add(
             'tempId',
@@ -203,16 +161,8 @@ class AssetType extends AbstractType
         }
     }
 
-    public function configureOptions(OptionsResolver $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
         $resolver->setDefaults(['data_class' => Asset::class]);
-    }
-
-    /**
-     * @return string
-     */
-    public function getBlockPrefix()
-    {
-        return 'asset';
     }
 }

@@ -1,17 +1,8 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
-use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
@@ -24,12 +15,12 @@ class UtmTag
     private $id;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
     /**
-     * @var \Mautic\LeadBundle\Entity\Lead
+     * @var Lead
      */
     private $lead;
 
@@ -39,48 +30,48 @@ class UtmTag
     private $query = [];
 
     /**
-     * @var string
+     * @var string|null
      */
     private $referer;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $remoteHost;
 
     private $url;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $userAgent;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $utmCampaign;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $utmContent;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $utmMedium;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $utmSource;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $utmTerm;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
@@ -89,24 +80,23 @@ class UtmTag
         $builder->addId();
         $builder->addDateAdded();
         $builder->addLead(false, 'CASCADE', false, 'utmtags');
-        $builder->addNullableField('query', Type::TARRAY);
-        $builder->addNullableField('referer', Type::TEXT);
-        $builder->addNullableField('remoteHost', Type::STRING, 'remote_host');
-        $builder->addNullableField('url', Type::TEXT);
-        $builder->addNullableField('userAgent', Type::TEXT, 'user_agent');
-        $builder->addNullableField('utmCampaign', Type::STRING, 'utm_campaign');
-        $builder->addNullableField('utmContent', Type::STRING, 'utm_content');
-        $builder->addNullableField('utmMedium', Type::STRING, 'utm_medium');
-        $builder->addNullableField('utmSource', Type::STRING, 'utm_source');
-        $builder->addNullableField('utmTerm', Type::STRING, 'utm_term');
+        $builder->addNullableField('query', Types::ARRAY);
+        $builder->addNullableField('referer', Types::TEXT);
+        $builder->addNullableField('remoteHost', Types::STRING, 'remote_host');
+        $builder->addNullableField('url', Types::TEXT);
+        $builder->addNullableField('userAgent', Types::TEXT, 'user_agent');
+        $builder->addNullableField('utmCampaign', Types::STRING, 'utm_campaign');
+        $builder->addNullableField('utmContent', Types::STRING, 'utm_content');
+        $builder->addNullableField('utmMedium', Types::STRING, 'utm_medium');
+        $builder->addNullableField('utmSource', Types::STRING, 'utm_source');
+        $builder->addNullableField('utmTerm', Types::STRING, 'utm_term');
+        $builder->addIndex(['date_added'], 'utm_date_added');
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('utmtags')
             ->addListProperties(
@@ -140,10 +130,8 @@ class UtmTag
 
     /**
      * Set date added.
-     *
-     * @return UtmTag
      */
-    public function setDateAdded(\DateTime $date)
+    public function setDateAdded(\DateTimeInterface $date): static
     {
         $this->dateAdded = $date;
 
@@ -153,7 +141,7 @@ class UtmTag
     /**
      * Get date added.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateAdded()
     {
@@ -168,10 +156,7 @@ class UtmTag
         return $this->lead;
     }
 
-    /**
-     * @return UtmTag
-     */
-    public function setLead(Lead $lead)
+    public function setLead(Lead $lead): static
     {
         $this->lead = $lead;
 
@@ -188,10 +173,8 @@ class UtmTag
 
     /**
      * @param array $query
-     *
-     * @return UtmTag
      */
-    public function setQuery($query)
+    public function setQuery($query): static
     {
         $this->query = $query;
 
@@ -202,10 +185,8 @@ class UtmTag
      * Set referer.
      *
      * @param string $referer
-     *
-     * @return UtmTag
      */
-    public function setReferer($referer)
+    public function setReferer($referer): static
     {
         $this->referer = $referer;
 
@@ -215,7 +196,7 @@ class UtmTag
     /**
      * Get referer.
      *
-     * @return string
+     * @return string|null
      */
     public function getReferer()
     {
@@ -226,10 +207,8 @@ class UtmTag
      * Set remoteHost.
      *
      * @param string $remoteHost
-     *
-     * @return UtmTag
      */
-    public function setRemoteHost($remoteHost)
+    public function setRemoteHost($remoteHost): static
     {
         $this->remoteHost = $remoteHost;
 
@@ -239,7 +218,7 @@ class UtmTag
     /**
      * Get remoteHost.
      *
-     * @return string
+     * @return string|null
      */
     public function getRemoteHost()
     {
@@ -250,10 +229,8 @@ class UtmTag
      * Set url.
      *
      * @param string $url
-     *
-     * @return UtmTag
      */
-    public function setUrl($url)
+    public function setUrl($url): static
     {
         $this->url = $url;
 
@@ -274,10 +251,8 @@ class UtmTag
      * Set userAgent.
      *
      * @param string $userAgent
-     *
-     * @return UtmTag
      */
-    public function setUserAgent($userAgent)
+    public function setUserAgent($userAgent): static
     {
         $this->userAgent = $userAgent;
 
@@ -287,7 +262,7 @@ class UtmTag
     /**
      * Get userAgent.
      *
-     * @return string
+     * @return string|null
      */
     public function getUserAgent()
     {
@@ -295,7 +270,7 @@ class UtmTag
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getUtmCampaign()
     {
@@ -304,10 +279,8 @@ class UtmTag
 
     /**
      * @param string $utmCampaign
-     *
-     * @return UtmTag
      */
-    public function setUtmCampaign($utmCampaign)
+    public function setUtmCampaign($utmCampaign): static
     {
         $this->utmCampaign = $utmCampaign;
 
@@ -315,7 +288,7 @@ class UtmTag
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getUtmContent()
     {
@@ -324,18 +297,17 @@ class UtmTag
 
     /**
      * @param string $utmContent
-     *
-     * @return UtmTag
      */
-    public function setUtmContent($utmContent)
+    public function setUtmContent($utmContent): static
     {
+        $utmContent       = mb_strlen($utmContent) <= ClassMetadataBuilder::MAX_VARCHAR_INDEXED_LENGTH ? $utmContent : mb_substr($utmContent, 0, ClassMetadataBuilder::MAX_VARCHAR_INDEXED_LENGTH);
         $this->utmContent = $utmContent;
 
         return $this;
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getUtmMedium()
     {
@@ -344,10 +316,8 @@ class UtmTag
 
     /**
      * @param string $utmMedium
-     *
-     * @return UtmTag
      */
-    public function setUtmMedium($utmMedium)
+    public function setUtmMedium($utmMedium): static
     {
         $this->utmMedium = $utmMedium;
 
@@ -355,7 +325,7 @@ class UtmTag
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getUtmSource()
     {
@@ -364,10 +334,8 @@ class UtmTag
 
     /**
      * @param string $utmSource
-     *
-     * @return UtmTag
      */
-    public function setUtmSource($utmSource)
+    public function setUtmSource($utmSource): static
     {
         $this->utmSource = $utmSource;
 
@@ -375,7 +343,7 @@ class UtmTag
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getUtmTerm()
     {
@@ -384,22 +352,23 @@ class UtmTag
 
     /**
      * @param string $utmTerm
-     *
-     * @return UtmTag
      */
-    public function setUtmTerm($utmTerm)
+    public function setUtmTerm($utmTerm): static
     {
         $this->utmTerm = $utmTerm;
 
         return $this;
     }
 
+    public function hasUtmTags(): bool
+    {
+        return !empty($this->utmCampaign) || !empty($this->utmSource) || !empty($this->utmMedium) || !empty($this->utmContent) || !empty($this->utmTerm);
+    }
+
     /**
      * Available fields and it's setters.
-     *
-     * @return array
      */
-    public function getFieldSetterList()
+    public function getFieldSetterList(): array
     {
         return [
             'utm_campaign' => 'setUtmCampaign',

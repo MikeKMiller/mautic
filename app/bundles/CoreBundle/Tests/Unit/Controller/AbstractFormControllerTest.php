@@ -2,48 +2,49 @@
 
 namespace Mautic\CoreBundle\Tests\Unit\Controller;
 
+use Doctrine\Persistence\ManagerRegistry;
 use Mautic\CoreBundle\Controller\AbstractFormController;
+use Mautic\CoreBundle\Factory\ModelFactory;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Helper\UserHelper;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Service\FlashBag;
+use Mautic\CoreBundle\Translation\Translator;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Form\Form;
-use Symfony\Component\HttpFoundation\ParameterBag;
+use Symfony\Component\HttpFoundation\InputBag;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 class AbstractFormControllerTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|AbstractFormController
-     */
-    private $classFromAbstractFormController;
+    private AbstractFormController $classFromAbstractFormController;
 
     /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|ParameterBag
+     * @var \PHPUnit\Framework\MockObject\MockObject&Form
      */
-    private $parameterBagMock;
+    private \PHPUnit\Framework\MockObject\MockObject $formMock;
 
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|Request
-     */
-    private $requestMock;
-
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|Form
-     */
-    private $formMock;
+    private RequestStack $requestStack;
 
     /**
      * Create a new instance from the AbstractFormController Class and creates mocks.
      */
     protected function setUp(): void
     {
-        $this->classFromAbstractFormController = new class() extends AbstractFormController {
-            public function returnIsFormCancelled(Form $form): bool
-            {
-                return $this->isFormCancelled($form);
-            }
+        $doctrine             = $this->createMock(ManagerRegistry::class);
+        $modelFactory         = $this->createMock(ModelFactory::class);
+        $userHelper           = $this->createMock(UserHelper::class);
+        $coreParametersHelper = $this->createMock(CoreParametersHelper::class);
+        $dispatcher           = $this->createMock(EventDispatcherInterface::class);
+        $translator           = $this->createMock(Translator::class);
+        $flashBag             = $this->createMock(FlashBag::class);
+        $this->requestStack   = new RequestStack();
+        $security             = $this->createMock(CorePermissions::class);
+
+        $this->classFromAbstractFormController = new class($doctrine, $modelFactory, $userHelper, $coreParametersHelper, $dispatcher, $translator, $flashBag, $this->requestStack, $security) extends AbstractFormController {
         };
-        $this->parameterBagMock     = $this->createMock(ParameterBag::class);
-        $this->requestMock          = $this->createMock(Request::class);
-        $this->requestMock->request = $this->parameterBagMock;
-        $this->formMock             = $this->createMock(Form::class);
+        $this->formMock = $this->createMock(Form::class);
     }
 
     /**
@@ -51,13 +52,11 @@ class AbstractFormControllerTest extends \PHPUnit\Framework\TestCase
      */
     public function testIsFormCancelledWhenFormArrayNull(): void
     {
-        $this->parameterBagMock->method('get')
-            ->with('company')
-            ->willReturn(null);
-        $this->classFromAbstractFormController->setRequest($this->requestMock);
+        $this->prepareRequestStack(['company' => null]);
+
         $this->formMock->method('getName')
             ->willReturn('company');
-        $isFormCancelled = $this->classFromAbstractFormController->returnIsFormCancelled($this->formMock);
+        $isFormCancelled = $this->invokeIsFormCancelled($this->formMock);
         $this->assertFalse($isFormCancelled);
     }
 
@@ -66,13 +65,11 @@ class AbstractFormControllerTest extends \PHPUnit\Framework\TestCase
      */
     public function testIsFormCancelledWhenCancelled(): void
     {
-        $this->parameterBagMock->method('get')
-            ->with('company_merge')
-            ->willReturn(['buttons' => ['cancel' => null]]);
-        $this->classFromAbstractFormController->setRequest($this->requestMock);
+        $this->prepareRequestStack(['company_merge' => ['buttons' => ['cancel' => null]]]);
+
         $this->formMock->method('getName')
             ->willReturn('company_merge');
-        $isFormCancelled = $this->classFromAbstractFormController->returnIsFormCancelled($this->formMock);
+        $isFormCancelled = $this->invokeIsFormCancelled($this->formMock);
         $this->assertTrue($isFormCancelled);
     }
 
@@ -81,13 +78,26 @@ class AbstractFormControllerTest extends \PHPUnit\Framework\TestCase
      */
     public function testIsFormCancelledWhenNotCancelled(): void
     {
-        $this->parameterBagMock->method('get')
-            ->with('company_merge')
-            ->willReturn(['buttons' => ['submit' => null]]);
-        $this->classFromAbstractFormController->setRequest($this->requestMock);
+        $this->prepareRequestStack(['company_merge' => ['buttons' => ['submit' => null]]]);
+
         $this->formMock->method('getName')
             ->willReturn('company_merge');
-        $isFormCancelled = $this->classFromAbstractFormController->returnIsFormCancelled($this->formMock);
+        $isFormCancelled = $this->invokeIsFormCancelled($this->formMock);
         $this->assertFalse($isFormCancelled);
+    }
+
+    private function invokeIsFormCancelled(Form $form): bool
+    {
+        $reflection = new \ReflectionClass(AbstractFormController::class);
+        $method     = $reflection->getMethod('isFormCancelled');
+
+        return (bool) $method->invoke($this->classFromAbstractFormController, $form);
+    }
+
+    private function prepareRequestStack(mixed $inputBagParameters): void
+    {
+        $requestMock          = $this->createMock(Request::class);
+        $requestMock->request = new InputBag($inputBagParameters);
+        $this->requestStack->push($requestMock);
     }
 }

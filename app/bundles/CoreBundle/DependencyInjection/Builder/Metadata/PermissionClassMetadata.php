@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        https://www.mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\DependencyInjection\Builder\Metadata;
 
 use Mautic\CoreBundle\DependencyInjection\Builder\BundleMetadata;
@@ -21,14 +12,9 @@ use Symfony\Component\Finder\Finder;
  */
 class PermissionClassMetadata
 {
-    /**
-     * @var BundleMetadata
-     */
-    private $metadata;
-
-    public function __construct(BundleMetadata $metadata)
-    {
-        $this->metadata = $metadata;
+    public function __construct(
+        private readonly BundleMetadata $metadata,
+    ) {
     }
 
     public function build(): void
@@ -42,10 +28,9 @@ class PermissionClassMetadata
             ->name('*Permissions.php')
             ->in($directory.'/Security/Permissions');
 
-        /** @var \SplFileInfo $file */
         foreach ($finder as $file) {
             $className       = basename($file->getFilename(), '.php');
-            $permissionClass = sprintf('\\%s\\Security\\Permissions\\%s', $this->metadata->getNamespace(), $className);
+            $permissionClass = sprintf('%s\\Security\\Permissions\\%s', $this->metadata->getNamespace(), $className);
 
             // Required because https://github.com/mautic/mautic/pull/7312 introduces permission DI and thus classes cannot be instantiated here
             $reflectionClass = new \ReflectionClass($permissionClass);
@@ -61,8 +46,7 @@ class PermissionClassMetadata
                 continue;
             }
 
-            $permissionName = $permissionInstance->getName();
-            $this->metadata->addPermissionClass($permissionName, $permissionClass);
+            $this->metadata->addPermissionClass($permissionClass);
         }
     }
 }

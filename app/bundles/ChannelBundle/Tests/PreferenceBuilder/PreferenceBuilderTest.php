@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ChannelBundle\Tests\PreferenceBuilder;
 
 use Doctrine\Common\Collections\ArrayCollection;
@@ -22,10 +13,9 @@ use Psr\Log\NullLogger;
 
 class PreferenceBuilderTest extends \PHPUnit\Framework\TestCase
 {
-    public function testChannelsArePrioritized()
+    public function testChannelsArePrioritized(): void
     {
-        $lead = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $lead = $this->createMock(Lead::class);
         $lead->expects($this->once())
             ->method('getChannelRules')
             ->willReturn(
@@ -39,15 +29,13 @@ class PreferenceBuilderTest extends \PHPUnit\Framework\TestCase
                 ]
             );
 
-        $log = $this->getMockBuilder(LeadEventLog::class)
-            ->getMock();
+        $log = $this->createMock(LeadEventLog::class);
         $log->method('getLead')
             ->willReturn($lead);
         $log->method('getId')
             ->willReturn(1);
 
-        $lead2 = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $lead2 = $this->createMock(Lead::class);
         $lead2->expects($this->once())
             ->method('getChannelRules')
             ->willReturn(
@@ -61,8 +49,7 @@ class PreferenceBuilderTest extends \PHPUnit\Framework\TestCase
                 ]
             );
 
-        $log2 = $this->getMockBuilder(LeadEventLog::class)
-            ->getMock();
+        $log2 = $this->createMock(LeadEventLog::class);
         $log2->method('getLead')
             ->willReturn($lead2);
         $log2->method('getId')
@@ -81,7 +68,7 @@ class PreferenceBuilderTest extends \PHPUnit\Framework\TestCase
         $this->assertTrue(isset($preferences['sms']));
         $this->assertTrue(isset($preferences['push']));
 
-        /** @var ChannelPreferences $emailLogs */
+        /** @var ChannelPreferences $email */
         $email = $preferences['email'];
 
         // First priority
@@ -95,7 +82,7 @@ class PreferenceBuilderTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(1, $emailLogs->first()->getId());
 
         // First priority for SMS which should just be one
-        /** @var ChannelPreferences $smsLogs */
+        /** @var ChannelPreferences $sms */
         $sms     = $preferences['sms'];
         $smsLogs = $sms->getLogsByPriority(1);
         $this->assertCount(1, $smsLogs);
@@ -111,10 +98,9 @@ class PreferenceBuilderTest extends \PHPUnit\Framework\TestCase
         $this->assertCount(0, $pushLogs);
     }
 
-    public function testLogIsRemovedFromAllChannels()
+    public function testLogIsRemovedFromAllChannels(): void
     {
-        $lead = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $lead = $this->createMock(Lead::class);
         $lead->expects($this->once())
             ->method('getChannelRules')
             ->willReturn(
@@ -128,8 +114,7 @@ class PreferenceBuilderTest extends \PHPUnit\Framework\TestCase
                 ]
             );
 
-        $log = $this->getMockBuilder(LeadEventLog::class)
-            ->getMock();
+        $log = $this->createMock(LeadEventLog::class);
         $log->method('getLead')
             ->willReturn($lead);
         $log->method('getId')

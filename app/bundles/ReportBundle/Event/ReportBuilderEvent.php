@@ -1,40 +1,25 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ReportBundle\Event;
 
+use Doctrine\ORM\Tools\Pagination\Paginator;
 use Mautic\ChannelBundle\Helper\ChannelListHelper;
 use Mautic\ReportBundle\Builder\MauticReportBuilder;
 use Mautic\ReportBundle\Helper\ReportHelper;
 use Mautic\ReportBundle\Model\ReportModel;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-/**
- * Class ReportBuilderEvent.
- */
 class ReportBuilderEvent extends AbstractReportEvent
 {
     /**
      * Container with registered tables and columns.
-     *
-     * @var array
      */
-    private $tableArray = [];
+    private array $tableArray = [];
 
     /**
-     * Supported graphs.
-     *
-     * @var array
+     * @var string[]
      */
-    private $supportedGraphs = [
+    private array $supportedGraphs = [
         'table',
         'bar',
         'pie',
@@ -42,43 +27,22 @@ class ReportBuilderEvent extends AbstractReportEvent
     ];
 
     /**
-     * @var ChannelListHelper
+     * @var mixed[]
      */
-    private $channelListHelper;
+    private array $graphArray = [];
 
     /**
-     * @var TranslatorInterface
+     * @param mixed[]|Paginator|array $leadFields list of published array of lead fields
      */
-    private $translator;
-
-    /**
-     * Container with registered graphs.
-     *
-     * @var array
-     */
-    private $graphArray = [];
-
-    /**
-     * List of published array of lead fields.
-     *
-     * @var array
-     */
-    private $leadFields = [];
-
-    private $reportHelper;
-
-    /**
-     * ReportBuilderEvent constructor.
-     *
-     * @param string $context
-     */
-    public function __construct(TranslatorInterface $translator, ChannelListHelper $channelListHelper, $context, $leadFields, ReportHelper $reportHelper)
-    {
-        $this->context           = $context;
-        $this->translator        = $translator;
-        $this->channelListHelper = $channelListHelper;
-        $this->leadFields        = $leadFields;
-        $this->reportHelper      = $reportHelper;
+    public function __construct(
+        private readonly TranslatorInterface $translator,
+        private readonly ChannelListHelper $channelListHelper,
+        string $context,
+        private readonly array|Paginator $leadFields,
+        private readonly ReportHelper $reportHelper,
+        private readonly ?string $reportSource = null,
+    ) {
+        $this->context = $context;
     }
 
     /**
@@ -90,15 +54,13 @@ class ReportBuilderEvent extends AbstractReportEvent
      *
      * @param string $context Context for data
      * @param array  $data    Data array for the table
-     *
-     * @return ReportBuilderEvent
      */
-    public function addTable($context, array $data, $group = null)
+    public function addTable($context, array $data, $group = null): static
     {
         $data['group'] = (null == $group) ? $context : $group;
 
         foreach ($data['columns'] as $column => &$d) {
-            $d['label'] = $this->translator->trans($d['label']);
+            $d['label'] = null !== $d['label'] ? $this->translator->trans($d['label']) : '';
             if (!isset($d['alias'])) {
                 $d['alias'] = substr(
                     $column,
@@ -107,12 +69,7 @@ class ReportBuilderEvent extends AbstractReportEvent
             }
         }
 
-        uasort(
-            $data['columns'],
-            function ($a, $b) {
-                return strnatcmp($a['label'], $b['label']);
-            }
-        );
+        uasort($data['columns'], fn ($a, $b): int => strnatcmp((string) $a['label'], (string) $b['label']));
 
         if (isset($data['filters'])) {
             foreach ($data['filters'] as $column => &$d) {
@@ -125,12 +82,7 @@ class ReportBuilderEvent extends AbstractReportEvent
                 }
             }
 
-            uasort(
-                $data['filters'],
-                function ($a, $b) {
-                    return strnatcmp($a['label'], $b['label']);
-                }
-            );
+            uasort($data['filters'], fn ($a, $b): int => strnatcmp((string) $a['label'], (string) $b['label']));
         }
 
         $this->tableArray[$context] = $data;
@@ -144,101 +96,36 @@ class ReportBuilderEvent extends AbstractReportEvent
 
     /**
      * Fetch the tables in the lookup array.
-     *
-     * @return array
      */
-    public function getTables()
+    public function getTables(): array
     {
         return $this->tableArray;
     }
 
     /**
+     * Fetch the source of the report.
+     */
+    public function getReportSource(): ?string
+    {
+        return $this->reportSource;
+    }
+
+    /**
      * Returns standard form fields such as id, name, publish_up, etc.
      *
-     * @param $prefix
+     * @param string $prefix
      *
-     * @return array
+     * @return array<string,array<string,string>>
      */
-    public function getStandardColumns($prefix, $removeColumns = [], $idLink = null)
+    public function getStandardColumns($prefix, $removeColumns = [], $idLink = null): array
     {
-        $aliasPrefix = str_replace('.', '_', $prefix);
-        $columns     = [
-            $prefix.'id' => [
-                'label' => 'mautic.core.id',
-                'type'  => 'int',
-                'link'  => $idLink,
-                'alias' => "{$aliasPrefix}id",
-            ],
-            $prefix.'name' => [
-                'label' => 'mautic.core.name',
-                'type'  => 'string',
-                'alias' => "{$aliasPrefix}name",
-            ],
-            $prefix.'created_by_user' => [
-                'label' => 'mautic.core.createdby',
-                'type'  => 'string',
-                'alias' => "{$aliasPrefix}created_by_user",
-            ],
-            $prefix.'date_added' => [
-                'label' => 'mautic.report.field.date_added',
-                'type'  => 'datetime',
-                'alias' => "{$aliasPrefix}date_added",
-            ],
-            $prefix.'modified_by_user' => [
-                'label' => 'mautic.report.field.modified_by_user',
-                'type'  => 'string',
-                'alias' => "{$aliasPrefix}modified_by_user",
-            ],
-            $prefix.'date_modified' => [
-                'label' => 'mautic.report.field.date_modified',
-                'type'  => 'datetime',
-                'alias' => "{$aliasPrefix}date_modified",
-            ],
-            $prefix.'description' => [
-                'label' => 'mautic.core.description',
-                'type'  => 'string',
-                'alias' => "{$aliasPrefix}description",
-            ],
-            $prefix.'publish_up' => [
-                'label' => 'mautic.report.field.publish_up',
-                'type'  => 'datetime',
-                'alias' => "{$aliasPrefix}publish_up",
-            ],
-            $prefix.'publish_down' => [
-                'label' => 'mautic.report.field.publish_down',
-                'type'  => 'datetime',
-                'alias' => "{$aliasPrefix}publish_down",
-            ],
-            $prefix.'is_published' => [
-                'label' => 'mautic.report.field.is_published',
-                'type'  => 'bool',
-                'alias' => "{$aliasPrefix}is_published",
-            ],
-        ];
-
-        if (empty($idLink)) {
-            unset($columns[$prefix.'id']['link']);
-        }
-
-        if (!empty($removeColumns)) {
-            foreach ($removeColumns as $c) {
-                if (isset($columns[$prefix.$c])) {
-                    unset($columns[$prefix.$c]);
-                }
-            }
-        }
-
-        return $columns;
+        return $this->reportHelper->getStandardColumns($prefix, $removeColumns, (string) $idLink);
     }
 
     /**
      * Returns lead columns.
-     *
-     * @param $prefix
-     *
-     * @return array
      */
-    public function getLeadColumns($prefix = 'l.')
+    public function getLeadColumns($prefix = 'l.'): array
     {
         $fields = [];
 
@@ -263,10 +150,8 @@ class ReportBuilderEvent extends AbstractReportEvent
      * Get IP Address column.
      *
      * @param string $prefix
-     *
-     * @return array
      */
-    public function getIpColumn($prefix = 'i.')
+    public function getIpColumn($prefix = 'i.'): array
     {
         return [
             $prefix.'ip_address' => [
@@ -280,10 +165,8 @@ class ReportBuilderEvent extends AbstractReportEvent
      * Add category columns.
      *
      * @param string $prefix
-     *
-     * @return array
      */
-    public function getCategoryColumns($prefix = 'c.')
+    public function getCategoryColumns($prefix = 'c.'): array
     {
         return [
             $prefix.'id' => [
@@ -301,10 +184,8 @@ class ReportBuilderEvent extends AbstractReportEvent
 
     /**
      * Add campaign columns joined by the campaign lead event log table.
-     *
-     * @return array
      */
-    public function getCampaignByChannelColumns()
+    public function getCampaignByChannelColumns(): array
     {
         return [
             'clel.campaign_id' => [
@@ -318,7 +199,10 @@ class ReportBuilderEvent extends AbstractReportEvent
         ];
     }
 
-    public function getChannelColumns()
+    /**
+     * @return array<MauticReportBuilder::*, mixed[]>
+     */
+    public function getChannelColumns(): array
     {
         $channelColumns = [
             MauticReportBuilder::CHANNEL_COLUMN_CATEGORY_ID => [
@@ -384,14 +268,9 @@ class ReportBuilderEvent extends AbstractReportEvent
     }
 
     /**
-     * @param       $context
-     * @param       $type
-     * @param       $graphId
      * @param array $options
-     *
-     * @return $this
      */
-    public function addGraph($context, $type, $graphId, $options = [])
+    public function addGraph($context, $type, $graphId, $options = []): static
     {
         if (in_array($type, $this->supportedGraphs)) {
             $this->graphArray[$context][$graphId] = [
@@ -405,10 +284,8 @@ class ReportBuilderEvent extends AbstractReportEvent
 
     /**
      * Get graphs.
-     *
-     * @return array
      */
-    public function getGraphs()
+    public function getGraphs(): array
     {
         return $this->graphArray;
     }

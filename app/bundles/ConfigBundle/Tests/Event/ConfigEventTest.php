@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ConfigBundle\Tests\Event;
 
 use Mautic\ConfigBundle\Event\ConfigEvent;
@@ -17,11 +8,11 @@ use Symfony\Component\HttpFoundation\ParameterBag;
 
 class ConfigEventTest extends \PHPUnit\Framework\TestCase
 {
-    public function testGetSetConfig()
+    public function testGetSetConfig(): void
     {
         // Config not defined
         $config   = [];
-        $paramBag = $this->createMock(ParameterBag::class);
+        $paramBag = $this->createStub(ParameterBag::class);
         $event    = new ConfigEvent($config, $paramBag);
         $key      = 'undefined';
         $this->assertEquals([], $event->getConfig($key));
@@ -29,7 +20,7 @@ class ConfigEventTest extends \PHPUnit\Framework\TestCase
         // Config defined with setter
         $key    = 'defined';
         $config = ['config' => []];
-        $this->assertNull($event->setConfig($config, $key));
+        $event->setConfig($config, $key);
         $this->assertEquals($config, $event->getConfig($key));
 
         // Config not found by key so complete config returned;
@@ -41,43 +32,43 @@ class ConfigEventTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals($config, $event->getConfig());
     }
 
-    public function testGetSetPreserved()
+    public function testGetSetPreserved(): void
     {
         $config   = [];
-        $paramBag = $this->createMock(ParameterBag::class);
+        $paramBag = $this->createStub(ParameterBag::class);
         $event    = new ConfigEvent($config, $paramBag);
 
-        $this->assertEquals([], $event->getPreservedFields());
+        $this->assertSame([], $event->getPreservedFields());
 
         $preserved = 'preserved';
         $result    = [$preserved];
-        $this->assertNull($event->unsetIfEmpty($preserved));
-        $this->assertEquals($result, $event->getPreservedFields());
+        $event->unsetIfEmpty($preserved);
+        $this->assertSame($result, $event->getPreservedFields());
 
         $preserved = ['preserved' => 'value'];
         $result    = array_merge($result, $preserved);
-        $this->assertNull($event->unsetIfEmpty($preserved));
+        $event->unsetIfEmpty($preserved);
         $this->assertEquals($result, $event->getPreservedFields());
     }
 
-    public function testGetSetErrors()
+    public function testGetSetErrors(): void
     {
         $config   = [];
-        $paramBag = $this->createMock(ParameterBag::class);
+        $paramBag = $this->createStub(ParameterBag::class);
         $event    = new ConfigEvent($config, $paramBag);
 
-        $this->assertEquals([], $event->getErrors());
+        $this->assertSame([], $event->getErrors());
 
         $message  = 'message';
         $messages = [$message => []];
         $this->assertEquals($event, $event->setError($message));
-        $this->assertEquals($messages, $event->getErrors());
+        $this->assertSame($messages, $event->getErrors());
 
         $message     = 'message';
         $messageVars = ['var' => 'value'];
         $messages    = [$message => $messageVars];
         $this->assertEquals($event, $event->setError($message, $messageVars));
-        $this->assertEquals($messages, $event->getErrors());
+        $this->assertSame($messages, $event->getErrors());
 
         $message                   = 'message';
         $messageVars               = ['var' => 'value'];
@@ -88,13 +79,13 @@ class ConfigEventTest extends \PHPUnit\Framework\TestCase
             $messageVars,
         ];
         $this->assertEquals($event, $event->setError($message, $messageVars, $key, $field));
-        $this->assertEquals($fieldErrors, $event->getFieldErrors());
+        $this->assertSame($fieldErrors, $event->getFieldErrors());
     }
 
-    public function testGetFileContent()
+    public function testGetFileContent(): void
     {
         $config   = [];
-        $paramBag = $this->createMock(ParameterBag::class);
+        $paramBag = $this->createStub(ParameterBag::class);
         $event    = new ConfigEvent($config, $paramBag);
 
         $fileContent = 'content';
@@ -107,35 +98,35 @@ class ConfigEventTest extends \PHPUnit\Framework\TestCase
             ->method('getRealPath')
             ->willReturn($realPath);
 
-        $this->assertEquals($fileContent, $event->getFileContent($uploadedFile));
+        $this->assertSame($fileContent, $event->getFileContent($uploadedFile));
         $this->assertFalse(file_exists($realPath));
     }
 
-    public function testEncodeFileContents()
+    public function testEncodeFileContents(): void
     {
         $config   = [];
-        $paramBag = $this->createMock(ParameterBag::class);
+        $paramBag = $this->createStub(ParameterBag::class);
         $event    = new ConfigEvent($config, $paramBag);
 
         $string = 'řčžýřžýčř';
         $result = 'xZnEjcW+w73FmcW+w73EjcWZ';
-        $this->assertEquals($result, $event->encodeFileContents($string));
+        $this->assertSame($result, $event->encodeFileContents($string));
     }
 
-    public function testNormalizedDataGetSet()
+    public function testNormalizedDataGetSet(): void
     {
         $config   = [];
-        $paramBag = $this->createMock(ParameterBag::class);
+        $paramBag = $this->createStub(ParameterBag::class);
         $event    = new ConfigEvent($config, $paramBag);
 
         $origNormData = ['orig'];
 
         $this->assertInstanceOf(ConfigEvent::class, $event->setOriginalNormData($origNormData));
-        $this->assertEquals($origNormData, $event->getOriginalNormData());
+        $this->assertSame($origNormData, $event->getOriginalNormData());
 
         $normData = ['norm'];
 
-        $this->assertNull($event->setNormData($normData));
+        $event->setNormData($normData);
         $this->assertEquals($normData, $event->getNormData());
     }
 }

@@ -1,90 +1,46 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\NotificationBundle\Helper;
 
-use Doctrine\ORM\EntityManager;
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
-use Mautic\CoreBundle\Templating\Helper\AssetsHelper;
+use Mautic\CoreBundle\Twig\Helper\AssetsHelper;
 use Mautic\LeadBundle\Entity\DoNotContact;
+use Mautic\LeadBundle\Entity\LeadRepository;
+use Mautic\LeadBundle\Model\DoNotContact as DoNotContactModel;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
-use Symfony\Bundle\FrameworkBundle\Routing\Router;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Component\Routing\RouterInterface;
 
 class NotificationHelper
 {
-    /**
-     * @var EntityManager
-     */
-    protected $em;
-
-    /**
-     * @var IntegrationHelper
-     */
-    protected $integrationHelper;
-
-    /**
-     * @var CoreParametersHelper
-     */
-    protected $coreParametersHelper;
-
-    /**
-     * @var AssetsHelper
-     */
-    protected $assetsHelper;
-
-    /**
-     * @var Router
-     */
-    protected $router;
-
-    /**
-     * @var Request
-     */
-    protected $request;
-
-    /**
-     * @var \Mautic\LeadBundle\Model\DoNotContact
-     */
-    private $doNotContact;
-
-    /**
-     * NotificationHelper constructor.
-     */
-    public function __construct(EntityManager $em, AssetsHelper $assetsHelper, CoreParametersHelper $coreParametersHelper, IntegrationHelper $integrationHelper, Router $router, RequestStack $requestStack, \Mautic\LeadBundle\Model\DoNotContact $doNotContact)
-    {
-        $this->em                   = $em;
-        $this->assetsHelper         = $assetsHelper;
-        $this->coreParametersHelper = $coreParametersHelper;
-        $this->integrationHelper    = $integrationHelper;
-        $this->router               = $router;
-        $this->request              = $requestStack;
-        $this->doNotContact         = $doNotContact;
+    public function __construct(
+        protected LeadRepository $leadRepository,
+        protected AssetsHelper $assetsHelper,
+        protected CoreParametersHelper $coreParametersHelper,
+        protected IntegrationHelper $integrationHelper,
+        protected RouterInterface $router,
+        protected RequestStack $requestStack,
+        private readonly DoNotContactModel $doNotContact,
+    ) {
     }
 
     /**
      * @param string $notification
      *
-     * @return bool
+     * @return bool|DoNotContact
+     *
+     * @deprecated as unused. To be removed in 8.0
      */
     public function unsubscribe($notification)
     {
-        /** @var \Mautic\LeadBundle\Entity\LeadRepository $repo */
-        $repo = $this->em->getRepository('MauticLeadBundle:Lead');
+        $lead = $this->leadRepository->getLeadByEmail($notification);
 
-        $lead = $repo->getLeadByEmail($notification);
+        if (!is_array($lead) || !isset($lead['id'])) {
+            return false;
+        }
 
-        return $this->doNotContact->addDncForContact($lead->getId(), 'notification', DoNotContact::UNSUBSCRIBED);
+        return $this->doNotContact->addDncForContact((int) $lead['id'], 'notification', DoNotContact::UNSUBSCRIBED);
     }
 
     public function getHeaderScript()
@@ -125,8 +81,8 @@ class NotificationHelper
                 $welcomenotificationText = 'welcomeNotification: { "disable": true },';
             }
 
-            $server        = $this->request->getCurrentRequest()->server;
-            $https         = ('https' == parse_url($server->get('HTTP_REFERER'), PHP_URL_SCHEME)) ? true : false;
+            $server        = $this->requestStack->getCurrentRequest()->server;
+            $https         = 'https' == parse_url($server->get('HTTP_REFERER'), PHP_URL_SCHEME);
             $subdomainName = '';
 
             if (!$https && $notificationSubdomainName) {
@@ -204,17 +160,17 @@ JS;
         }
     }
 
-    private function hasScript()
+    private function hasScript(): bool
     {
         $landingPage = true;
-        $server      = $this->request->getCurrentRequest()->server;
-        $cookies     = $this->request->getCurrentRequest()->cookies;
+        $server      = $this->requestStack->getCurrentRequest()->server;
+        $cookies     = $this->requestStack->getCurrentRequest()->cookies;
         // already exist
         if ($cookies->get('mtc_osid')) {
             return false;
         }
 
-        if (false === strpos($server->get('HTTP_REFERER'), $this->coreParametersHelper->get('site_url'))) {
+        if (!str_contains($server->get('HTTP_REFERER'), $this->coreParametersHelper->get('site_url'))) {
             $landingPage = false;
         }
 
@@ -232,10 +188,6 @@ JS;
         }
 
         // disable on Landing pages
-        if (false === $landingPage && !in_array('tracking_page_enabled', $supportedFeatures)) {
-            return false;
-        }
-
-        return true;
+        return false !== $landingPage || in_array('tracking_page_enabled', $supportedFeatures);
     }
 }

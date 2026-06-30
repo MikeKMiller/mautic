@@ -1,12 +1,4 @@
 <?php
-/*
- * @copyright   2019 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
 
 namespace Mautic\PluginBundle\Tests\Integration;
 
@@ -15,120 +7,128 @@ use Mautic\CoreBundle\Helper\CacheStorageHelper;
 use Mautic\CoreBundle\Helper\EncryptionHelper;
 use Mautic\CoreBundle\Helper\PathsHelper;
 use Mautic\CoreBundle\Model\NotificationModel;
+use Mautic\LeadBundle\Field\FieldsWithUniqueIdentifier;
 use Mautic\LeadBundle\Model\CompanyModel;
 use Mautic\LeadBundle\Model\DoNotContact;
 use Mautic\LeadBundle\Model\FieldModel;
 use Mautic\LeadBundle\Model\LeadModel;
 use Mautic\PluginBundle\Model\IntegrationEntityModel;
 use Monolog\Logger;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\Routing\Router;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class AbstractIntegrationTestCase extends TestCase
 {
     /**
-     * @var EventDispatcherInterface|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&EventDispatcherInterface
      */
-    protected $dispatcher;
+    protected MockObject $dispatcher;
 
     /**
-     * @var CacheStorageHelper|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&CacheStorageHelper
      */
-    protected $cache;
+    protected MockObject $cache;
 
     /**
-     * @var EntityManager|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&EntityManager
      */
-    protected $em;
+    protected MockObject $em;
 
     /**
-     * @var Session|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&Session
      */
-    protected $session;
+    protected MockObject $session;
 
     /**
-     * @var RequestStack|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&RequestStack
      */
-    protected $request;
+    protected MockObject $request;
 
     /**
-     * @var Router|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&Router
      */
-    protected $router;
+    protected MockObject $router;
 
     /**
-     * @var TranslatorInterface|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&TranslatorInterface
      */
-    protected $translator;
+    protected MockObject $translator;
 
     /**
-     * @var Logger|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&Logger
      */
-    protected $logger;
+    protected MockObject $logger;
 
     /**
-     * @var EncryptionHelper|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&EncryptionHelper
      */
-    protected $encryptionHelper;
+    protected MockObject $encryptionHelper;
 
     /**
-     * @var LeadModel|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&LeadModel
      */
-    protected $leadModel;
+    protected MockObject $leadModel;
 
     /**
-     * @var CompanyModel|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&CompanyModel
      */
-    protected $companyModel;
+    protected MockObject $companyModel;
 
     /**
-     * @var PathsHelper|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&PathsHelper
      */
-    protected $pathsHelper;
+    protected MockObject $pathsHelper;
 
     /**
-     * @var NotificationModel|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&NotificationModel
      */
-    protected $notificationModel;
+    protected MockObject $notificationModel;
 
     /**
-     * @var FieldModel|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&FieldModel
      */
-    protected $fieldModel;
+    protected MockObject $fieldModel;
 
     /**
-     * @var IntegrationEntityModel|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&IntegrationEntityModel
      */
-    protected $integrationEntityModel;
+    protected MockObject $integrationEntityModel;
 
     /**
-     * @var DoNotContact|\PHPUnit\Framework\MockObject\MockObject
+     * @var MockObject&DoNotContact
      */
-    protected $doNotContact;
+    protected MockObject $doNotContact;
+
+    /**
+     * @var MockObject&FieldsWithUniqueIdentifier
+     */
+    protected MockObject $fieldsWithUniqueIdentifier;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->dispatcher             = $this->createMock(EventDispatcherInterface::class);
-        $this->cache                  = $this->createMock(CacheStorageHelper::class);
-        $this->em                     = $this->createMock(EntityManager::class);
-        $this->session                = $this->createMock(Session::class);
-        $this->request                = $this->createMock(RequestStack::class);
-        $this->router                 = $this->createMock(Router::class);
-        $this->translator             = $this->createMock(TranslatorInterface::class);
-        $this->logger                 = $this->createMock(Logger::class);
-        $this->encryptionHelper       = $this->createMock(EncryptionHelper::class);
-        $this->leadModel              = $this->createMock(LeadModel::class);
-        $this->companyModel           = $this->createMock(CompanyModel::class);
-        $this->pathsHelper            = $this->createMock(PathsHelper::class);
-        $this->notificationModel      = $this->createMock(NotificationModel::class);
-        $this->fieldModel             = $this->createMock(FieldModel::class);
-        $this->integrationEntityModel = $this->createMock(IntegrationEntityModel::class);
-        $this->doNotContact           = $this->createMock(DoNotContact::class);
+        $this->dispatcher                 = $this->createMock(EventDispatcherInterface::class);
+        $this->cache                      = $this->createMock(CacheStorageHelper::class);
+        $this->em                         = $this->createMock(EntityManager::class);
+        $this->session                    = $this->createMock(Session::class);
+        $this->request                    = $this->createMock(RequestStack::class);
+        $this->router                     = $this->createMock(Router::class);
+        $this->translator                 = $this->createMock(TranslatorInterface::class);
+        $this->logger                     = $this->createMock(Logger::class);
+        $this->encryptionHelper           = $this->createMock(EncryptionHelper::class);
+        $this->leadModel                  = $this->createMock(LeadModel::class);
+        $this->companyModel               = $this->createMock(CompanyModel::class);
+        $this->pathsHelper                = $this->createMock(PathsHelper::class);
+        $this->notificationModel          = $this->createMock(NotificationModel::class);
+        $this->fieldModel                 = $this->createMock(FieldModel::class);
+        $this->integrationEntityModel     = $this->createMock(IntegrationEntityModel::class);
+        $this->doNotContact               = $this->createMock(DoNotContact::class);
+        $this->fieldsWithUniqueIdentifier = $this->createMock(FieldsWithUniqueIdentifier::class);
     }
 }

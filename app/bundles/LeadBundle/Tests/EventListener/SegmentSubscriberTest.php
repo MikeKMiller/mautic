@@ -1,47 +1,104 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\EventListener;
 
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Helper\IpLookupHelper;
 use Mautic\CoreBundle\Model\AuditLogModel;
 use Mautic\LeadBundle\Entity\LeadList;
 use Mautic\LeadBundle\Event\LeadListEvent as SegmentEvent;
 use Mautic\LeadBundle\EventListener\SegmentSubscriber;
+use Mautic\LeadBundle\Helper\SegmentCountCacheHelper;
 use Mautic\LeadBundle\LeadEvents;
+use Mautic\LeadBundle\Model\ListModel;
+use Mautic\LeadBundle\Validator\SegmentUsedInCampaignsValidator;
+use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\TestCase;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-class SegmentSubscriberTest extends \PHPUnit\Framework\TestCase
+class SegmentSubscriberTest extends TestCase
 {
-    public function testGetSubscribedEvents()
-    {
-        $ipLookupHelper = $this->createMock(IpLookupHelper::class);
-        $auditLogModel  = $this->createMock(AuditLogModel::class);
-        $subscriber     = new SegmentSubscriber($ipLookupHelper, $auditLogModel);
+    /**
+     * @var MockObject&IpLookupHelper
+     */
+    private MockObject $ipLookupHelper;
 
-        $this->assertEquals(
+    /**
+     * @var MockObject&AuditLogModel
+     */
+    private MockObject $auditLogModel;
+
+    /**
+     * @var MockObject&ListModel
+     */
+    private MockObject $listModel;
+
+    /**
+     * @var TranslatorInterface&\PHPUnit\Framework\MockObject\Stub
+     */
+    private \PHPUnit\Framework\MockObject\Stub $translator;
+
+    private CoreParametersHelper&MockObject $coreParametersHelper;
+
+    private SegmentCountCacheHelper&\PHPUnit\Framework\MockObject\Stub $segmentCountCacheHelper;
+
+    /**
+     * @var SegmentUsedInCampaignsValidator&\PHPUnit\Framework\MockObject\Stub
+     */
+    private \PHPUnit\Framework\MockObject\Stub $segmentUsedInCampaignsValidator;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->ipLookupHelper                  = $this->createMock(IpLookupHelper::class);
+        $this->auditLogModel                   = $this->createMock(AuditLogModel::class);
+        $this->listModel                       = $this->createMock(ListModel::class);
+        $this->segmentUsedInCampaignsValidator = $this->createStub(SegmentUsedInCampaignsValidator::class);
+        $this->translator                      = $this->createStub(TranslatorInterface::class);
+        $this->coreParametersHelper            = $this->createMock(CoreParametersHelper::class);
+        $this->segmentCountCacheHelper         = $this->createStub(SegmentCountCacheHelper::class);
+        $this->coreParametersHelper->method('get')->willReturnCallback(fn (): false => false);
+    }
+
+    public function testGetSubscribedEvents(): void
+    {
+        $subscriber  = new SegmentSubscriber(
+            $this->ipLookupHelper,
+            $this->auditLogModel,
+            $this->listModel,
+            $this->segmentUsedInCampaignsValidator,
+            $this->coreParametersHelper,
+            $this->segmentCountCacheHelper,
+            $this->translator
+        );
+
+        $this->assertSame(
             [
-                LeadEvents::LIST_POST_SAVE   => ['onSegmentPostSave', 0],
-                LeadEvents::LIST_POST_DELETE => ['onSegmentDelete', 0],
+                LeadEvents::LIST_POST_SAVE     => ['onSegmentPostSave', 0],
+                LeadEvents::ON_LIST_DELETE     => ['onSegmentDelete', 0],
+                LeadEvents::LIST_POST_DELETE   => [
+                    ['onSegmentPostDelete', 0],
+                    ['clearSegmentCountCache', 0],
+                ],
+                LeadEvents::LIST_PRE_DELETE   => [
+                    ['onSegmentPreDelete', 0],
+                ],
+                LeadEvents::LIST_PRE_UNPUBLISH => [
+                    ['onSegmentPreUnpublish', 0],
+                ],
             ],
             $subscriber->getSubscribedEvents()
         );
     }
 
-    public function testOnSegmentPostSave()
+    public function testOnSegmentPostSave(): void
     {
         $this->onSegmentPostSaveMethodCall(false); // update segment log
         $this->onSegmentPostSaveMethodCall(true); // create segment log
     }
 
-    public function testOnSegmentDelete()
+    public function testOnSegmentPostDelete(): void
     {
         $segmentId        = 1;
         $segmentName      = 'name';
@@ -55,38 +112,78 @@ class SegmentSubscriberTest extends \PHPUnit\Framework\TestCase
             'ipAddress' => $ip,
         ];
 
-        $ipLookupHelper = $this->createMock(IpLookupHelper::class);
-        $ipLookupHelper->expects($this->once())
+        $this->ipLookupHelper->expects($this->once())
             ->method('getIpAddressFromRequest')
-            ->will($this->returnValue($ip));
+            ->willReturn($ip);
 
-        $auditLogModel = $this->createMock(AuditLogModel::class);
-        $auditLogModel->expects($this->once())
+        $this->auditLogModel->expects($this->once())
             ->method('writeToLog')
             ->with($log);
 
-        $subscriber = new SegmentSubscriber($ipLookupHelper, $auditLogModel);
+        $subscriber  = new SegmentSubscriber(
+            $this->ipLookupHelper,
+            $this->auditLogModel,
+            $this->listModel,
+            $this->segmentUsedInCampaignsValidator,
+            $this->coreParametersHelper,
+            $this->segmentCountCacheHelper,
+            $this->translator
+        );
 
         $segment            = $this->createMock(LeadList::class);
         $segment->deletedId = $segmentId;
         $segment->expects($this->once())
             ->method('getName')
-            ->will($this->returnValue($segmentName));
+            ->willReturn($segmentName);
 
         $event = $this->createMock(SegmentEvent::class);
         $event->expects($this->once())
             ->method('getList')
-            ->will($this->returnValue($segment));
+            ->willReturn($segment);
+
+        $subscriber->onSegmentPostDelete($event);
+    }
+
+    public function testOnSegmentDelete(): void
+    {
+        $segmentId = 1;
+
+        $this->listModel->expects($this->once())
+            ->method('removeLeadsByListId')
+            ->with($segmentId);
+
+        $this->listModel->expects($this->once())
+            ->method('hardDeleteEntity');
+
+        $subscriber = new SegmentSubscriber(
+            $this->ipLookupHelper,
+            $this->auditLogModel,
+            $this->listModel,
+            $this->segmentUsedInCampaignsValidator,
+            $this->coreParametersHelper,
+            $this->segmentCountCacheHelper,
+            $this->translator
+        );
+
+        $segment            = $this->createMock(LeadList::class);
+        $segment->deletedId = $segmentId;
+
+        $segment->expects($this->once())
+            ->method('getId')
+            ->willReturn($segmentId);
+
+        $event = $this->createMock(SegmentEvent::class);
+        $event->expects($this->once())
+            ->method('getList')
+            ->willReturn($segment);
 
         $subscriber->onSegmentDelete($event);
     }
 
     /**
      * Test create or update segment logging.
-     *
-     * @param bool $isNew
      */
-    private function onSegmentPostSaveMethodCall($isNew)
+    private function onSegmentPostSaveMethodCall(bool $isNew): void
     {
         $segmentId = 1;
         $changes   = ['changes'];
@@ -104,30 +201,38 @@ class SegmentSubscriberTest extends \PHPUnit\Framework\TestCase
         $ipLookupHelper = $this->createMock(IpLookupHelper::class);
         $ipLookupHelper->expects($this->once())
             ->method('getIpAddressFromRequest')
-            ->will($this->returnValue($ip));
+            ->willReturn($ip);
 
         $auditLogModel = $this->createMock(AuditLogModel::class);
         $auditLogModel->expects($this->once())
             ->method('writeToLog')
             ->with($log);
 
-        $subscriber = new SegmentSubscriber($ipLookupHelper, $auditLogModel);
+        $subscriber  = new SegmentSubscriber(
+            $ipLookupHelper,
+            $auditLogModel,
+            $this->listModel,
+            $this->segmentUsedInCampaignsValidator,
+            $this->coreParametersHelper,
+            $this->segmentCountCacheHelper,
+            $this->translator
+        );
 
         $segment = $this->createMock(LeadList::class);
         $segment->expects($this->once())
             ->method('getId')
-            ->will($this->returnValue($segmentId));
+            ->willReturn($segmentId);
 
         $event = $this->createMock(SegmentEvent::class);
         $event->expects($this->once())
             ->method('getList')
-            ->will($this->returnValue($segment));
+            ->willReturn($segment);
         $event->expects($this->once())
             ->method('getChanges')
-            ->will($this->returnValue($changes));
+            ->willReturn($changes);
         $event->expects($this->once())
             ->method('isNew')
-            ->will($this->returnValue($isNew));
+            ->willReturn($isNew);
 
         $subscriber->onSegmentPostSave($event);
     }

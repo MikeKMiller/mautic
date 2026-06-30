@@ -1,25 +1,15 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PluginBundle\Controller;
 
 use Mautic\CoreBundle\Controller\FormController;
 use Mautic\PluginBundle\Event\PluginIntegrationAuthRedirectEvent;
+use Mautic\PluginBundle\Helper\IntegrationHelper;
 use Mautic\PluginBundle\PluginEvents;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
 
-/**
- * Class AuthController.
- */
 class AuthController extends FormController
 {
     /**
@@ -27,23 +17,21 @@ class AuthController extends FormController
      *
      * @return JsonResponse
      */
-    public function authCallbackAction($integration)
+    public function authCallbackAction(Request $request, IntegrationHelper $integrationHelper, $integration): JsonResponse|RedirectResponse
     {
-        $isAjax  = $this->request->isXmlHttpRequest();
-        $session = $this->get('session');
+        $isAjax  = $request->isXmlHttpRequest();
+        $session = $request->getSession();
 
-        /** @var \Mautic\PluginBundle\Helper\IntegrationHelper $integrationHelper */
-        $integrationHelper = $this->factory->getHelper('integration');
         $integrationObject = $integrationHelper->getIntegrationObject($integration);
 
-        //check to see if the service exists
+        // check to see if the service exists
         if (!$integrationObject) {
             $session->set('mautic.integration.postauth.message', ['mautic.integration.notfound', ['%name%' => $integration], 'error']);
             if ($isAjax) {
                 return new JsonResponse(['url' => $this->generateUrl('mautic_integration_auth_postauth', ['integration' => $integration])]);
-            } else {
-                return new RedirectResponse($this->generateUrl('mautic_integration_auth_postauth', ['integration' => $integration]));
             }
+
+            return new RedirectResponse($this->generateUrl('mautic_integration_auth_postauth', ['integration' => $integration]));
         }
 
         try {
@@ -53,12 +41,12 @@ class AuthController extends FormController
             $redirectUrl = $this->generateUrl('mautic_integration_auth_postauth', ['integration' => $integration]);
             if ($isAjax) {
                 return new JsonResponse(['url' => $redirectUrl]);
-            } else {
-                return new RedirectResponse($redirectUrl);
             }
+
+            return new RedirectResponse($redirectUrl);
         }
 
-        //check for error
+        // check for error
         if ($error) {
             $type    = 'error';
             $message = 'mautic.integration.error.oauthfail';
@@ -80,16 +68,11 @@ class AuthController extends FormController
         return new RedirectResponse($this->generateUrl('mautic_integration_auth_postauth', ['integration' => $integration]));
     }
 
-    /**
-     * @param $integration
-     *
-     * @return \Symfony\Component\HttpFoundation\Response
-     */
-    public function authStatusAction($integration)
+    public function authStatusAction(Request $request, $integration): \Symfony\Component\HttpFoundation\Response
     {
-        $postAuthTemplate = 'MauticPluginBundle:Auth:postauth.html.php';
+        $postAuthTemplate = '@MauticPlugin/Auth/postauth.html.twig';
 
-        $session     = $this->get('session');
+        $session     = $request->getSession();
         $postMessage = $session->get('mautic.integration.postauth.message');
         $userData    = [];
 
@@ -111,15 +94,8 @@ class AuthController extends FormController
         return $this->render($postAuthTemplate, ['message' => $message, 'alert' => $alert, 'data' => $userData]);
     }
 
-    /**
-     * @param $integration
-     *
-     * @return RedirectResponse
-     */
-    public function authUserAction($integration)
+    public function authUserAction(IntegrationHelper $integrationHelper, $integration): RedirectResponse
     {
-        /** @var \Mautic\PluginBundle\Helper\IntegrationHelper $integrationHelper */
-        $integrationHelper = $this->factory->getHelper('integration');
         $integrationObject = $integrationHelper->getIntegrationObject($integration);
 
         $settings['method']      = 'GET';
@@ -127,11 +103,11 @@ class AuthController extends FormController
 
         /** @var \Mautic\PluginBundle\Integration\AbstractIntegration $integrationObject */
         $event = $this->dispatcher->dispatch(
-            PluginEvents::PLUGIN_ON_INTEGRATION_AUTH_REDIRECT,
             new PluginIntegrationAuthRedirectEvent(
                 $integrationObject,
                 $integrationObject->getAuthLoginUrl()
-            )
+            ),
+            PluginEvents::PLUGIN_ON_INTEGRATION_AUTH_REDIRECT
         );
         $oauthUrl = $event->getAuthUrl();
 

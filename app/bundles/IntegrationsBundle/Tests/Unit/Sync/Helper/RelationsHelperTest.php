@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2019 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Tests\Unit\Sync\Helper;
 
 use Mautic\IntegrationsBundle\Sync\DAO\Mapping\MappingManualDAO;
@@ -29,24 +20,21 @@ use PHPUnit\Framework\TestCase;
 class RelationsHelperTest extends TestCase
 {
     /**
-     * @var MappingHelper|\PHPUnit\Framework\MockObject\MockObject
+     * @var \PHPUnit\Framework\MockObject\MockObject&MappingHelper
      */
-    private $mappingHelper;
+    private \PHPUnit\Framework\MockObject\MockObject $mappingHelper;
+
+    private RelationsHelper $relationsHelper;
 
     /**
-     * @var RelationsHelper
+     * @var \PHPUnit\Framework\MockObject\MockObject&ReportDAO
      */
-    private $relationsHelper;
+    private \PHPUnit\Framework\MockObject\MockObject $syncReport;
 
     /**
-     * @var ReportDAO|\PHPUnit\Framework\MockObject\MockObject
+     * @var \PHPUnit\Framework\MockObject\MockObject&MappingManualDAO
      */
-    private $syncReport;
-
-    /**
-     * @var MappingManualDAO|\PHPUnit\Framework\MockObject\MockObject
-     */
-    private $mappingManual;
+    private \PHPUnit\Framework\MockObject\MockObject $mappingManual;
 
     protected function setUp(): void
     {

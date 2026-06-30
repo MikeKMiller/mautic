@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\AssetBundle\EventListener;
 
 use Mautic\AssetBundle\Entity\DownloadRepository;
@@ -19,46 +10,19 @@ use Mautic\LeadBundle\Event\LeadTimelineEvent;
 use Mautic\LeadBundle\LeadEvents;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Routing\RouterInterface;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class LeadSubscriber implements EventSubscriberInterface
 {
-    /**
-     * @var AssetModel
-     */
-    private $assetModel;
-
-    /**
-     * @var TranslatorInterface
-     */
-    private $translator;
-
-    /**
-     * @var RouterInterface
-     */
-    private $router;
-
-    /**
-     * @var DownloadRepository
-     */
-    private $downloadRepository;
-
     public function __construct(
-        AssetModel $assetModel,
-        TranslatorInterface $translator,
-        RouterInterface $router,
-        DownloadRepository $downloadRepository
+        private readonly AssetModel $assetModel,
+        private readonly TranslatorInterface $translator,
+        private readonly RouterInterface $router,
+        private readonly DownloadRepository $downloadRepository,
     ) {
-        $this->assetModel         = $assetModel;
-        $this->translator         = $translator;
-        $this->router             = $router;
-        $this->downloadRepository = $downloadRepository;
     }
 
-    /**
-     * @return array
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             LeadEvents::TIMELINE_ON_GENERATE => ['onTimelineGenerate', 0],
@@ -70,7 +34,7 @@ class LeadSubscriber implements EventSubscriberInterface
     /**
      * Compile events for the lead timeline.
      */
-    public function onTimelineGenerate(LeadTimelineEvent $event)
+    public function onTimelineGenerate(LeadTimelineEvent $event): void
     {
         // Set available event types
         $eventTypeKey  = 'asset.download';
@@ -91,23 +55,29 @@ class LeadSubscriber implements EventSubscriberInterface
         if (!$event->isEngagementCount()) {
             // Add the downloads to the event array
             foreach ($downloads['results'] as $download) {
-                $asset = $this->assetModel->getEntity($download['asset_id']);
+                $asset    = $download['asset_id'] ? $this->assetModel->getEntity($download['asset_id']) : null;
+                $hasAsset = $asset && $asset->getId();
+
+                $eventLabel = $hasAsset
+                    ? [
+                        'label' => $download['title'],
+                        'href'  => $this->router->generate('mautic_asset_action', ['objectAction' => 'view', 'objectId' => $download['asset_id']]),
+                    ]
+                    : (string) ($download['title'] ?? $this->translator->trans('mautic.asset.asset.deleted'));
+
                 $event->addEvent(
                     [
                         'event'      => $eventTypeKey,
                         'eventId'    => $eventTypeKey.$download['download_id'],
-                        'eventLabel' => [
-                            'label' => $download['title'],
-                            'href'  => $this->router->generate('mautic_asset_action', ['objectAction' => 'view', 'objectId' => $download['asset_id']]),
-                        ],
-                        'extra' => [
-                            'asset'            => $asset,
-                            'assetDownloadUrl' => $this->assetModel->generateUrl($asset),
+                        'eventLabel' => $eventLabel,
+                        'extra'      => [
+                            'asset'            => $hasAsset ? $asset : null,
+                            'assetDownloadUrl' => $hasAsset ? $this->assetModel->generateUrl($asset) : null,
                         ],
                         'eventType'       => $eventTypeName,
                         'timestamp'       => $download['dateDownload'],
-                        'icon'            => 'fa-download',
-                        'contentTemplate' => 'MauticAssetBundle:SubscribedEvents\Timeline:index.html.php',
+                        'icon'            => 'ri-download-line',
+                        'contentTemplate' => '@MauticAsset/SubscribedEvents/Timeline/index.html.twig',
                         'contactId'       => $download['lead_id'],
                     ]
                 );
@@ -115,7 +85,7 @@ class LeadSubscriber implements EventSubscriberInterface
         }
     }
 
-    public function onLeadChange(LeadChangeEvent $event)
+    public function onLeadChange(LeadChangeEvent $event): void
     {
         $this->assetModel->getDownloadRepository()->updateLeadByTrackingId(
             $event->getNewLead()->getId(),
@@ -124,7 +94,7 @@ class LeadSubscriber implements EventSubscriberInterface
         );
     }
 
-    public function onLeadMerge(LeadMergeEvent $event)
+    public function onLeadMerge(LeadMergeEvent $event): void
     {
         $this->assetModel->getDownloadRepository()->updateLead($event->getLoser()->getId(), $event->getVictor()->getId());
     }

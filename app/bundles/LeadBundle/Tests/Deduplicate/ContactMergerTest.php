@@ -1,20 +1,15 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Deduplicate;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Mautic\CoreBundle\Entity\IpAddress;
+use Mautic\CoreBundle\Test\ReflectionHelper;
 use Mautic\LeadBundle\Deduplicate\ContactMerger;
 use Mautic\LeadBundle\Deduplicate\Exception\SameContactException;
+use Mautic\LeadBundle\Entity\Company;
+use Mautic\LeadBundle\Entity\CompanyLead;
+use Mautic\LeadBundle\Entity\CompanyLeadRepository;
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Entity\LeadRepository;
 use Mautic\LeadBundle\Entity\MergeRecordRepository;
@@ -27,42 +22,40 @@ use Symfony\Component\EventDispatcher\EventDispatcher;
 class ContactMergerTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|LeadModel
+     * @var \PHPUnit\Framework\MockObject\MockObject&LeadModel
      */
-    private $leadModel;
+    private \PHPUnit\Framework\MockObject\MockObject $leadModel;
 
     /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|MergeRecordRepository
+     * @var \PHPUnit\Framework\MockObject\MockObject&MergeRecordRepository
      */
-    private $leadRepo;
+    private \PHPUnit\Framework\MockObject\MockObject $mergeRecordRepo;
 
     /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|MergeRecordRepository
+     * @var \PHPUnit\Framework\MockObject\Stub|EventDispatcher
      */
-    private $mergeRecordRepo;
+    private \PHPUnit\Framework\MockObject\Stub $dispatcher;
 
     /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|EventDispatcher
+     * @var \PHPUnit\Framework\MockObject\MockObject&Logger
      */
-    private $dispatcher;
+    private \PHPUnit\Framework\MockObject\MockObject $logger;
 
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|Logger
-     */
-    private $logger;
+    private \PHPUnit\Framework\MockObject\MockObject&CompanyLeadRepository $companyLeadRepo;
 
     protected function setUp(): void
     {
         $this->leadModel       = $this->createMock(LeadModel::class);
-        $this->leadRepo        = $this->createMock(LeadRepository::class);
+        $leadRepo              = $this->createMock(LeadRepository::class);
         $this->mergeRecordRepo = $this->createMock(MergeRecordRepository::class);
-        $this->dispatcher      = $this->createMock(EventDispatcher::class);
+        $this->dispatcher      = $this->createStub(EventDispatcher::class);
         $this->logger          = $this->createMock(Logger::class);
+        $this->companyLeadRepo = $this->createMock(CompanyLeadRepository::class);
 
-        $this->leadModel->method('getRepository')->willReturn($this->leadRepo);
+        $this->leadModel->method('getRepository')->willReturn($leadRepo);
     }
 
-    public function testMergeTimestamps()
+    public function testMergeTimestamps(): void
     {
         $oldestDateTime = new \DateTime('-60 minutes');
         $latestDateTime = new \DateTime('-30 minutes');
@@ -97,16 +90,16 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals($latestDateTime, $winner->getDateIdentified());
     }
 
-    public function testMergeIpAddresses()
+    public function testMergeIpAddresses(): void
     {
         $winner = new Lead();
-        $winner->addIpAddress((new IpAddress('1.2.3.4'))->setIpDetails('from winner'));
-        $winner->addIpAddress((new IpAddress('4.3.2.1'))->setIpDetails('from winner'));
-        $winner->addIpAddress((new IpAddress('5.6.7.8'))->setIpDetails('from winner'));
+        $winner->addIpAddress((new IpAddress('1.2.3.4'))->setIpDetails(['extra' => 'from winner']));
+        $winner->addIpAddress((new IpAddress('4.3.2.1'))->setIpDetails(['extra' => 'from winner']));
+        $winner->addIpAddress((new IpAddress('5.6.7.8'))->setIpDetails(['extra' => 'from winner']));
 
         $loser = new Lead();
-        $loser->addIpAddress((new IpAddress('5.6.7.8'))->setIpDetails('from loser'));
-        $loser->addIpAddress((new IpAddress('8.7.6.5'))->setIpDetails('from loser'));
+        $loser->addIpAddress((new IpAddress('5.6.7.8'))->setIpDetails(['extra' => 'from loser']));
+        $loser->addIpAddress((new IpAddress('8.7.6.5'))->setIpDetails(['extra' => 'from loser']));
 
         $this->getMerger()->mergeIpAddressHistory($winner, $loser);
 
@@ -116,10 +109,10 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $ipAddressArray = $ipAddresses->toArray();
 
         $expectedIpAddressArray = [
-            '1.2.3.4' => 'from winner',
-            '4.3.2.1' => 'from winner',
-            '5.6.7.8' => 'from winner',
-            '8.7.6.5' => 'from loser',
+            '1.2.3.4' => ['extra' => 'from winner'],
+            '4.3.2.1' => ['extra' => 'from winner'],
+            '5.6.7.8' => ['extra' => 'from winner'],
+            '8.7.6.5' => ['extra' => 'from loser'],
         ];
 
         foreach ($expectedIpAddressArray as $ipAddress => $ipId) {
@@ -128,10 +121,9 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         }
     }
 
-    public function testMergeFieldDataWithLoserAsNewlyUpdated()
+    public function testMergeFieldDataWithLoserAsNewlyUpdated(): void
     {
-        $winner = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $winner = $this->createMock(Lead::class);
         $winner->expects($this->once())
             ->method('getProfileFields')
             ->willReturn(
@@ -142,8 +134,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
                 ]
             );
 
-        $loser = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $loser = $this->createMock(Lead::class);
         $loser->expects($this->once())
             ->method('getProfileFields')
             ->willReturn(
@@ -158,10 +149,10 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
 
         $winnerDateModified = new \DateTime('-30 minutes');
         $loserDateModified  = new \DateTime();
-        $winner->expects($this->exactly(2))
+        $winner->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn($winnerDateModified);
-        $loser->expects($this->exactly(2))
+        $loser->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn($loserDateModified);
         $winner->expects($this->once())
@@ -201,10 +192,9 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $merger->mergeFieldData($winner, $loser);
     }
 
-    public function testMergeFieldDataWithWinnerAsNewlyUpdated()
+    public function testMergeFieldDataWithWinnerAsNewlyUpdated(): void
     {
-        $winner = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $winner = $this->createMock(Lead::class);
         $winner->expects($this->once())
             ->method('getProfileFields')
             ->willReturn(
@@ -215,8 +205,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
                 ]
             );
 
-        $loser = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $loser = $this->createMock(Lead::class);
         $loser->expects($this->once())
             ->method('getProfileFields')
             ->willReturn(
@@ -231,7 +220,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
 
         $winnerDateModified = new \DateTime();
         $loserDateModified  = new \DateTime('-30 minutes');
-        $winner->expects($this->exactly(2))
+        $winner->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn($winnerDateModified);
 
@@ -255,7 +244,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
             ->with('email')
             ->willReturn('winner@test.com');
 
-        $loser->expects($this->exactly(2))
+        $loser->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn($loserDateModified);
 
@@ -274,10 +263,9 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $merger->mergeFieldData($winner, $loser);
     }
 
-    public function testMergeFieldDataWithLoserAsNewlyCreated()
+    public function testMergeFieldDataWithLoserAsNewlyCreated(): void
     {
-        $winner = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $winner = $this->createMock(Lead::class);
         $winner->expects($this->once())
             ->method('getProfileFields')
             ->willReturn(
@@ -288,8 +276,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
                 ]
             );
 
-        $loser = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $loser = $this->createMock(Lead::class);
         $loser->expects($this->once())
             ->method('getProfileFields')
             ->willReturn(
@@ -304,7 +291,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
 
         $winnerDateModified = new \DateTime('-30 minutes');
         $loserDateModified  = new \DateTime();
-        $winner->expects($this->exactly(2))
+        $winner->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn($winnerDateModified);
 
@@ -352,10 +339,9 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $merger->mergeFieldData($winner, $loser);
     }
 
-    public function testMergeFieldDataWithWinnerAsNewlyCreated()
+    public function testMergeFieldDataWithWinnerAsNewlyCreated(): void
     {
-        $winner = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $winner = $this->createMock(Lead::class);
         $winner->expects($this->once())
             ->method('getProfileFields')
             ->willReturn(
@@ -366,8 +352,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
                 ]
             );
 
-        $loser = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $loser = $this->createMock(Lead::class);
         $loser->expects($this->once())
             ->method('getProfileFields')
             ->willReturn(
@@ -409,7 +394,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
             ->with('email')
             ->willReturn('winner@test.com');
 
-        $loser->expects($this->exactly(2))
+        $loser->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn($loserDateModified);
 
@@ -433,7 +418,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
      * The browser must contain no Mautic cookies. A new contact is created with only default values.
      * If default values from the new contact overwrite the values of the original contact then data are lost.
      */
-    public function testMergeFieldDataWithDefaultValues()
+    public function testMergeFieldDataWithDefaultValues(): void
     {
         $winner = $this->createMock(Lead::class);
         $loser  = $this->createMock(Lead::class);
@@ -462,59 +447,101 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
 
         $winner->method('getDateModified')->willReturn($winnerDateModified);
         $winner->method('getId')->willReturn(1);
+
         $loser->method('getDateModified')->willReturn($loserDateModified);
         $loser->method('getId')->willReturn(2);
         $loser->method('isAnonymous')->willReturn(true);
 
-        $winner->expects($this->exactly(3))
+        $matcher = $this->exactly(3);
+        $winner->expects($matcher)
             ->method('getFieldValue')
-            ->withConsecutive(['email'], ['consent'], ['boolean'])
-            ->will($this->onConsecutiveCalls('winner@test.com', 'Yes', 1));
+            ->willReturnCallback(function ($parameter) use ($matcher) {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('email', $parameter);
 
-        $winner->expects($this->exactly(3))
+                    return 'winner@test.com';
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('consent', $parameter);
+
+                    return 'Yes';
+                }
+                if (3 === $matcher->numberOfInvocations()) {
+                    $this->assertSame('boolean', $parameter);
+
+                    return 1;
+                }
+            });
+
+        $matcher2 = $this->exactly(3);
+        $winner->expects($matcher2)
             ->method('getField')
-            ->withConsecutive(['email'], ['consent'], ['boolean'])
-            ->will($this->onConsecutiveCalls([
-                'id'            => 22,
-                'label'         => 'Email',
-                'alias'         => 'email',
-                'type'          => 'email',
-                'group'         => 'core',
-                'object'        => 'lead',
-                'is_fixed'      => true,
-                'default_value' => null,
-            ], [
-                'id'            => 44,
-                'label'         => 'Email Consent',
-                'alias'         => 'consent',
-                'type'          => 'select',
-                'group'         => 'core',
-                'object'        => 'lead',
-                'is_fixed'      => true,
-                'default_value' => 'No',
-            ], [
-                'id'            => 45,
-                'label'         => 'Boolean Field',
-                'alias'         => 'boolean',
-                'type'          => 'boolean',
-                'group'         => 'core',
-                'object'        => 'lead',
-                'is_fixed'      => true,
-                'default_value' => 0,
-            ]));
+            ->willReturnCallback(function ($parameter) use ($matcher2) {
+                if (1 === $matcher2->numberOfInvocations()) {
+                    $this->assertSame('email', $parameter);
 
-        $winner->expects($this->exactly(3))
-            ->method('addUpdatedField')
-            ->withConsecutive(
-                ['email', 'winner@test.com'],
-                ['consent', 'Yes'],
-                ['boolean', 1]
-            );
+                    return [
+                        'id'            => 22,
+                        'label'         => 'Email',
+                        'alias'         => 'email',
+                        'type'          => 'email',
+                        'group'         => 'core',
+                        'object'        => 'lead',
+                        'is_fixed'      => true,
+                        'default_value' => null,
+                    ];
+                }
+                if (2 === $matcher2->numberOfInvocations()) {
+                    $this->assertSame('consent', $parameter);
+
+                    return [
+                        'id'            => 44,
+                        'label'         => 'Email Consent',
+                        'alias'         => 'consent',
+                        'type'          => 'select',
+                        'group'         => 'core',
+                        'object'        => 'lead',
+                        'is_fixed'      => true,
+                        'default_value' => 'No',
+                    ];
+                }
+                if (3 === $matcher2->numberOfInvocations()) {
+                    $this->assertSame('boolean', $parameter);
+
+                    return [
+                        'id'            => 45,
+                        'label'         => 'Boolean Field',
+                        'alias'         => 'boolean',
+                        'type'          => 'boolean',
+                        'group'         => 'core',
+                        'object'        => 'lead',
+                        'is_fixed'      => true,
+                        'default_value' => 0,
+                    ];
+                }
+            });
+        $matcher3 = $this->exactly(3);
+
+        $winner->expects($matcher3)
+            ->method('addUpdatedField')->willReturnCallback(function (...$parameters) use ($matcher3): void {
+                if (1 === $matcher3->numberOfInvocations()) {
+                    $this->assertSame('email', $parameters[0]);
+                    $this->assertSame('winner@test.com', $parameters[1]);
+                }
+                if (2 === $matcher3->numberOfInvocations()) {
+                    $this->assertSame('consent', $parameters[0]);
+                    $this->assertSame('Yes', $parameters[1]);
+                }
+                if (3 === $matcher3->numberOfInvocations()) {
+                    $this->assertSame('boolean', $parameters[0]);
+                    $this->assertSame(1, $parameters[1]);
+                }
+            });
 
         $merger->mergeFieldData($winner, $loser);
     }
 
-    public function testMergeOwners()
+    public function testMergeOwners(): void
     {
         $winner = new Lead();
         $loser  = new Lead();
@@ -529,16 +556,16 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
 
         // Should not have been merged due to winner already having one
         $this->getMerger()->mergeOwners($winner, $loser);
-        $this->assertEquals($winnerOwner->getUsername(), $winner->getOwner()->getUsername());
+        $this->assertEquals($winnerOwner->getUserIdentifier(), $winner->getOwner()->getUserIdentifier());
 
-        $winner->setOwner(null);
+        $winner->setOwner();
         $this->getMerger()->mergeOwners($winner, $loser);
 
         // Should be set to loser owner since winner owner was null
-        $this->assertEquals($loserOwner->getUsername(), $winner->getOwner()->getUsername());
+        $this->assertEquals($loserOwner->getUserIdentifier(), $winner->getOwner()->getUserIdentifier());
     }
 
-    public function testMergePoints()
+    public function testMergePoints(): void
     {
         $winner = new Lead();
         $loser  = new Lead();
@@ -551,7 +578,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(150, $winner->getPoints());
     }
 
-    public function testMergeTags()
+    public function testMergeTags(): void
     {
         $winner = new Lead();
         $loser  = new Lead();
@@ -565,16 +592,14 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $this->getMerger()->mergeTags($winner, $loser);
     }
 
-    public function testFullMergeThrowsSameContactException()
+    public function testFullMergeThrowsSameContactException(): void
     {
-        $winner = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $winner = $this->createMock(Lead::class);
         $winner->expects($this->once())
             ->method('getId')
             ->willReturn(1);
 
-        $loser = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $loser = $this->createMock(Lead::class);
         $loser->expects($this->once())
             ->method('getId')
             ->willReturn(1);
@@ -584,10 +609,9 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $this->getMerger()->merge($winner, $loser);
     }
 
-    public function testFullMerge()
+    public function testFullMerge(): void
     {
-        $winner = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $winner = $this->createMock(Lead::class);
         $winner->expects($this->any())
             ->method('getId')
             ->willReturn(1);
@@ -600,12 +624,11 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
                     'email'  => 'winner@test.com',
                 ]
             );
-        $winner->expects($this->exactly(2))
+        $winner->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn(new \DateTime('-30 minutes'));
 
-        $loser = $this->getMockBuilder(Lead::class)
-            ->getMock();
+        $loser = $this->createMock(Lead::class);
         $loser->expects($this->any())
             ->method('getId')
             ->willReturn(2);
@@ -618,7 +641,7 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
                     'email'  => 'loser@test.com',
                 ]
             );
-        $loser->expects($this->exactly(2))
+        $loser->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn(new \DateTime());
 
@@ -684,16 +707,16 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $this->getMerger()->merge($winner, $loser);
     }
 
-    public function testMergeFieldWithEmptyFieldData()
+    public function testMergeFieldWithEmptyFieldData(): void
     {
         $loser  = $this->createMock(Lead::class);
         $winner = $this->createMock(Lead::class);
 
-        $loser->expects($this->exactly(2))
+        $loser->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn(new \DateTime('-10 minutes'));
 
-        $winner->expects($this->exactly(2))
+        $winner->expects($this->exactly(1))
             ->method('getDateModified')
             ->willReturn(new \DateTime());
 
@@ -723,16 +746,128 @@ class ContactMergerTest extends \PHPUnit\Framework\TestCase
         $this->getMerger()->mergeFieldData($winner, $loser);
     }
 
-    /**
-     * @return ContactMerger
-     */
-    private function getMerger()
+    public function testMergeCompaniesMovesLoserCompaniesToWinner(): void
+    {
+        $winner = new Lead();
+        $winner->setId(1);
+        $loser = new Lead();
+        $loser->setId(2);
+
+        $company = $this->getCompany(11);
+
+        $loserCompanyLead = new CompanyLead();
+        $loserCompanyLead->setCompany($company);
+        $loserCompanyLead->setLead($loser);
+        $loserCompanyLead->setDateAdded(new \DateTime('-1 day'));
+        $loserCompanyLead->setPrimary(true);
+
+        $this->companyLeadRepo->expects($this->exactly(2))->method('findBy')
+            ->willReturnMap([
+                [['lead' => $loser], null, null, null, [$loserCompanyLead]],
+                [['lead' => $winner], null, null, null, []],
+            ]);
+
+        $this->companyLeadRepo->expects($this->once())
+            ->method('saveEntities')
+            ->with($this->callback(function (array $companyLeads) use ($winner, $company): bool {
+                $this->assertCount(1, $companyLeads);
+                $this->assertSame($winner, $companyLeads[0]->getLead());
+                $this->assertSame($company, $companyLeads[0]->getCompany());
+                // The winner had no primary company so it inherits the loser's
+                $this->assertTrue($companyLeads[0]->getPrimary());
+
+                return true;
+            }), false);
+
+        $this->getMerger()->mergeCompanies($winner, $loser);
+    }
+
+    public function testMergeCompaniesKeepsWinnerPrimaryCompany(): void
+    {
+        $winner = new Lead();
+        $winner->setId(1);
+        $loser = new Lead();
+        $loser->setId(2);
+
+        $winnerCompanyLead = new CompanyLead();
+        $winnerCompanyLead->setCompany($this->getCompany(11));
+        $winnerCompanyLead->setLead($winner);
+        $winnerCompanyLead->setDateAdded(new \DateTime('-1 day'));
+        $winnerCompanyLead->setPrimary(true);
+
+        $loserCompanyLead = new CompanyLead();
+        $loserCompanyLead->setCompany($this->getCompany(22));
+        $loserCompanyLead->setLead($loser);
+        $loserCompanyLead->setDateAdded(new \DateTime('-1 day'));
+        $loserCompanyLead->setPrimary(true);
+
+        $this->companyLeadRepo->expects($this->exactly(2))->method('findBy')
+            ->willReturnMap([
+                [['lead' => $loser], null, null, null, [$loserCompanyLead]],
+                [['lead' => $winner], null, null, null, [$winnerCompanyLead]],
+            ]);
+
+        $this->companyLeadRepo->expects($this->once())
+            ->method('saveEntities')
+            ->with($this->callback(function (array $companyLeads): bool {
+                $this->assertCount(1, $companyLeads);
+                // The winner already has a primary company so the loser's company is added as non-primary
+                $this->assertFalse((bool) $companyLeads[0]->getPrimary());
+
+                return true;
+            }), false);
+
+        $this->getMerger()->mergeCompanies($winner, $loser);
+    }
+
+    public function testMergeCompaniesSkipsCompaniesTheWinnerAlreadyHas(): void
+    {
+        $winner = new Lead();
+        $winner->setId(1);
+        $loser = new Lead();
+        $loser->setId(2);
+
+        $company = $this->getCompany(11);
+
+        $winnerCompanyLead = new CompanyLead();
+        $winnerCompanyLead->setCompany($company);
+        $winnerCompanyLead->setLead($winner);
+        $winnerCompanyLead->setDateAdded(new \DateTime('-1 day'));
+        $winnerCompanyLead->setPrimary(true);
+
+        $loserCompanyLead = new CompanyLead();
+        $loserCompanyLead->setCompany($company);
+        $loserCompanyLead->setLead($loser);
+        $loserCompanyLead->setDateAdded(new \DateTime('-1 day'));
+
+        $this->companyLeadRepo->expects($this->exactly(2))->method('findBy')
+            ->willReturnMap([
+                [['lead' => $loser], null, null, null, [$loserCompanyLead]],
+                [['lead' => $winner], null, null, null, [$winnerCompanyLead]],
+            ]);
+
+        $this->companyLeadRepo->expects($this->never())
+            ->method('saveEntities');
+
+        $this->getMerger()->mergeCompanies($winner, $loser);
+    }
+
+    private function getCompany(int $id): Company
+    {
+        $company = new Company();
+        ReflectionHelper::setValue($company, 'id', $id);
+
+        return $company;
+    }
+
+    private function getMerger(): ContactMerger
     {
         return new ContactMerger(
             $this->leadModel,
             $this->mergeRecordRepo,
             $this->dispatcher,
-            $this->logger
+            $this->logger,
+            $this->companyLeadRepo
         );
     }
 }

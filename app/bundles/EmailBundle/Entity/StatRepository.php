@@ -1,32 +1,23 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Entity;
 
-use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Query\QueryBuilder;
 use Mautic\CoreBundle\Entity\CommonRepository;
 use Mautic\CoreBundle\Helper\Chart\ChartQuery;
 use Mautic\CoreBundle\Helper\DateTimeHelper;
 use Mautic\LeadBundle\Entity\TimelineTrait;
 
 /**
- * Class StatRepository.
+ * @extends CommonRepository<Stat>
  */
 class StatRepository extends CommonRepository
 {
     use TimelineTrait;
 
     /**
-     * @param $trackingHash
-     *
      * @return mixed
      *
      * @throws \Doctrine\ORM\NoResultException
@@ -63,12 +54,10 @@ class StatRepository extends CommonRepository
             ->setParameter('leadId', $contactId)
             ->setParameter('emailId', $emailId);
 
-        $result = $q->execute()->fetchAll();
+        $result = $q->executeQuery()->fetchAllAssociative();
 
-        if ($result) {
-            foreach ($result as $row) {
-                $data[$row['date_hit']] = $row['url'];
-            }
+        foreach ($result as $row) {
+            $data[$row['date_hit']] = $row['url'];
         }
 
         return $data;
@@ -80,8 +69,6 @@ class StatRepository extends CommonRepository
      * @param int|null $companyId
      * @param int|null $campaignId
      * @param int|null $segmentId
-     *
-     * @return array
      */
     public function getSentEmailToContactData(
         $limit,
@@ -90,14 +77,36 @@ class StatRepository extends CommonRepository
         $createdByUserId = null,
         $companyId = null,
         $campaignId = null,
-        $segmentId = null
-    ) {
+        $segmentId = null,
+    ): array {
+        $columnMap = [
+            's.id'            => 'id',
+            's.lead_id'       => 'lead_id',
+            's.email_address' => 'email_address',
+            's.is_read'       => 'is_read',
+            's.email_id'      => 'email_id',
+            's.date_sent'     => 'date_sent',
+            's.date_read'     => 'date_read',
+            'e.name'          => 'email_name',
+            'c.id'            => 'company_id',
+            'c.companyname'   => 'company_name',
+            'campaign.id'     => 'campaign_id',
+            'campaign.name'   => 'campaign_name',
+            'll.id'           => 'segment_id',
+            'll.name'         => 'segment_name',
+        ];
+
+        $selectColumns = array_map(
+            static fn (string $column, string $alias): string => sprintf('%s AS %s', $column, $alias),
+            array_keys($columnMap),
+            array_values($columnMap)
+        );
+
         $q = $this->getEntityManager()->getConnection()->createQueryBuilder();
-        $q->select('s.id, s.lead_id, s.email_address, s.is_read, s.email_id, s.date_sent, s.date_read')
+        $q->select(...$selectColumns)
             ->from(MAUTIC_TABLE_PREFIX.'email_stats', 's')
             ->leftJoin('s', MAUTIC_TABLE_PREFIX.'emails', 'e', 's.email_id = e.id')
-            ->addSelect('e.name AS email_name')
-            ->leftJoin('s', MAUTIC_TABLE_PREFIX.'page_hits', 'ph', 'ph.source = "email" and ph.source_id = s.email_id and ph.lead_id = s.lead_id')
+            ->leftJoin('s', MAUTIC_TABLE_PREFIX.'page_hits', 'ph', 'ph.source = \'email\' and ph.source_id = s.email_id and ph.lead_id = s.lead_id')
             ->addSelect('COUNT(ph.id) AS link_hits');
 
         if (null !== $createdByUserId) {
@@ -109,46 +118,36 @@ class StatRepository extends CommonRepository
             ->setParameter('dateFrom', $dateFrom->format('Y-m-d H:i:s'))
             ->setParameter('dateTo', $dateTo->format('Y-m-d H:i:s'));
 
-        $companyJoinOnExpr = $q->expr()->andX(
-            $q->expr()->eq('s.lead_id', 'cl.lead_id')
-        );
-        if (null === $companyId) {
-            // Must force a one to one relationship
-            $companyJoinOnExpr->add(
-                $q->expr()->eq('cl.is_primary', 1)
-            );
+        $companyJoinOnExpr = 's.lead_id = cl.lead_id';
+        if (empty($companyId)) {
+            // Must force a one to one relationship when no specific company filter is applied.
+            $companyJoinOnExpr .= ' AND cl.is_primary = 1';
         }
 
         $q->leftJoin('s', MAUTIC_TABLE_PREFIX.'companies_leads', 'cl', $companyJoinOnExpr)
-            ->leftJoin('s', MAUTIC_TABLE_PREFIX.'companies', 'c', 'cl.company_id = c.id')
-            ->addSelect('c.id AS company_id')
-            ->addSelect('c.companyname AS company_name');
+            ->leftJoin('s', MAUTIC_TABLE_PREFIX.'companies', 'c', 'cl.company_id = c.id');
 
-        if (null !== $companyId) {
+        if (!empty($companyId)) {
             $q->andWhere('cl.company_id = :companyId')
                 ->setParameter('companyId', $companyId);
         }
 
         $q->leftJoin('s', MAUTIC_TABLE_PREFIX.'campaign_events', 'ce', 's.source = "campaign.event" and s.source_id = ce.id')
-            ->leftJoin('ce', MAUTIC_TABLE_PREFIX.'campaigns', 'campaign', 'ce.campaign_id = campaign.id')
-            ->addSelect('campaign.id AS campaign_id')
-            ->addSelect('campaign.name AS campaign_name');
+            ->leftJoin('ce', MAUTIC_TABLE_PREFIX.'campaigns', 'campaign', 'ce.campaign_id = campaign.id');
 
         if (null !== $campaignId) {
             $q->andWhere('ce.campaign_id = :campaignId')
                 ->setParameter('campaignId', $campaignId);
         }
 
-        $q->leftJoin('s', MAUTIC_TABLE_PREFIX.'lead_lists', 'll', 's.list_id = ll.id')
-            ->addSelect('ll.id AS segment_id')
-            ->addSelect('ll.name AS segment_name');
+        $q->leftJoin('s', MAUTIC_TABLE_PREFIX.'lead_lists', 'll', 's.list_id = ll.id');
 
         if (null !== $segmentId) {
             $sb = $this->getEntityManager()->getConnection()->createQueryBuilder();
             $sb->select('null')
                 ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'lll')
                 ->where(
-                    $sb->expr()->andX(
+                    $sb->expr()->and(
                         $sb->expr()->eq('lll.leadlist_id', ':segmentId'),
                         $sb->expr()->eq('lll.lead_id', 'ph.lead_id'),
                         $sb->expr()->eq('lll.manually_removed', 0)
@@ -157,9 +156,9 @@ class StatRepository extends CommonRepository
 
             // Filter for both broadcasts and campaign related segments
             $q->andWhere(
-                $q->expr()->orX(
+                $q->expr()->or(
                     $q->expr()->eq('s.list_id', ':segmentId'),
-                    $q->expr()->andX(
+                    $q->expr()->and(
                         $q->expr()->isNull('s.list_id'),
                         sprintf('EXISTS (%s)', $sb->getSQL())
                     )
@@ -169,18 +168,17 @@ class StatRepository extends CommonRepository
         }
 
         $q->setMaxResults($limit);
-        $q->groupBy('s.id');
+        $q->groupBy(...array_keys($columnMap));
         $q->orderBy('s.id', 'DESC');
 
-        return $q->execute()->fetchAll();
+        return $q->executeQuery()->fetchAllAssociative();
     }
 
     /**
-     * @param null $listId
-     *
-     * @return array
+     * @param array<int,int|string>|int|null      $emailIds
+     * @param array<int,int|string>|int|true|null $listId
      */
-    public function getSentStats($emailIds, $listId = null)
+    public function getSentStats($emailIds, $listId = null): array
     {
         if (!is_array($emailIds)) {
             $emailIds = [(int) $emailIds];
@@ -190,17 +188,18 @@ class StatRepository extends CommonRepository
         $q->select('s.lead_id')
             ->from(MAUTIC_TABLE_PREFIX.'email_stats', 's')
             ->where(
-                $q->expr()->in('s.email_id', $emailIds)
-            );
+                $q->expr()->in('s.email_id', ':emailIds')
+            )
+            ->setParameter('emailIds', $emailIds, ArrayParameterType::INTEGER);
 
         if ($listId) {
             $q->andWhere('s.list_id = :list')
                 ->setParameter('list', $listId);
         }
 
-        $result = $q->execute()->fetchAll();
+        $result = $q->executeQuery()->fetchAllAssociative();
 
-        //index by lead
+        // index by lead
         $stats = [];
         foreach ($result as $r) {
             $stats[$r['lead_id']] = $r['lead_id'];
@@ -212,50 +211,50 @@ class StatRepository extends CommonRepository
     }
 
     /**
-     * @param null $emailIds
-     * @param null $listId
-     * @param bool $combined
+     * @param array<int,int|string>|int|null      $emailIds
+     * @param array<int,int|string>|int|true|null $listId
+     * @param bool                                $combined
      *
      * @return array|int
      */
-    public function getSentCount($emailIds = null, $listId = null, ChartQuery $chartQuery = null, $combined = false)
+    public function getSentCount($emailIds = null, $listId = null, ?ChartQuery $chartQuery = null, $combined = false)
     {
         return $this->getStatusCount('is_sent', $emailIds, $listId, $chartQuery, $combined);
     }
 
     /**
-     * @param null $emailIds
-     * @param null $listId
-     * @param bool $combined
+     * @param array<int,int|string>|int|null $emailIds
+     * @param array<int,int|string>|int|null $listId
+     * @param bool                           $combined
      *
      * @return array|int
      */
-    public function getReadCount($emailIds = null, $listId = null, ChartQuery $chartQuery = null, $combined = false)
+    public function getReadCount($emailIds = null, $listId = null, ?ChartQuery $chartQuery = null, $combined = false)
     {
         return $this->getStatusCount('is_read', $emailIds, $listId, $chartQuery, $combined);
     }
 
     /**
-     * @param null $emailIds
-     * @param null $listId
-     * @param bool $combined
+     * @param array<int,int|string>|int|null      $emailIds
+     * @param array<int,int|string>|int|true|null $listId
+     * @param bool                                $combined
      *
      * @return array|int
      */
-    public function getFailedCount($emailIds = null, $listId = null, ChartQuery $chartQuery = null, $combined = false)
+    public function getFailedCount($emailIds = null, $listId = null, ?ChartQuery $chartQuery = null, $combined = false)
     {
         return $this->getStatusCount('is_failed', $emailIds, $listId, $chartQuery, $combined);
     }
 
     /**
-     * @param      $column
-     * @param null $emailIds
-     * @param null $listId
-     * @param bool $combined
+     * @param string                              $column
+     * @param array<int,int|string>|int|null      $emailIds
+     * @param array<int,int|string>|int|true|null $listId
+     * @param bool                                $combined
      *
      * @return array|int
      */
-    public function getStatusCount($column, $emailIds = null, $listId = null, ChartQuery $chartQuery = null, $combined = false)
+    public function getStatusCount($column, $emailIds = null, $listId = null, ?ChartQuery $chartQuery = null, $combined = false)
     {
         $q = $this->_em->getConnection()->createQueryBuilder();
 
@@ -267,8 +266,8 @@ class StatRepository extends CommonRepository
                 $emailIds = [(int) $emailIds];
             }
             $q->where(
-                $q->expr()->in('s.email_id', $emailIds)
-            );
+                $q->expr()->in('s.email_id', ':emailIds')
+            )->setParameter('emailIds', $emailIds, ArrayParameterType::INTEGER);
         }
 
         if ($listId) {
@@ -278,8 +277,9 @@ class StatRepository extends CommonRepository
                         ->groupBy('s.list_id');
                 } elseif (is_array($listId)) {
                     $q->andWhere(
-                        $q->expr()->in('s.list_id', array_map('intval', $listId))
+                        $q->expr()->in('s.list_id', ':segmentIds')
                     );
+                    $q->setParameter('segmentIds', $listId, ArrayParameterType::INTEGER);
 
                     $q->addSelect('s.list_id')
                         ->groupBy('s.list_id');
@@ -292,13 +292,14 @@ class StatRepository extends CommonRepository
                 $subQ->select('null')
                     ->from(MAUTIC_TABLE_PREFIX.'lead_lists_leads', 'list')
                     ->andWhere(
-                        $q->expr()->andX(
-                            $q->expr()->in('list.leadlist_id', array_map('intval', $listId)),
+                        $q->expr()->and(
+                            $q->expr()->in('list.leadlist_id', ':subQListIds'),
                             $q->expr()->eq('list.lead_id', 's.lead_id')
                         )
                     );
 
-                $q->andWhere(sprintf('EXISTS (%s)', $subQ->getSQL()));
+                $q->andWhere(sprintf('EXISTS (%s)', $subQ->getSQL()))
+                    ->setParameter('subQListIds', array_map(intval(...), $listId), ArrayParameterType::INTEGER);
             }
         }
 
@@ -311,10 +312,14 @@ class StatRepository extends CommonRepository
         }
 
         if ($chartQuery) {
-            $chartQuery->applyDateFilters($q, 'date_sent', 's');
+            if ('is_read' === $column) {
+                $chartQuery->applyDateFilters($q, 'date_read', 's');
+            } else {
+                $chartQuery->applyDateFilters($q, 'date_sent', 's');
+            }
         }
 
-        $results = $q->execute()->fetchAll();
+        $results = $q->executeQuery()->fetchAllAssociative();
 
         if ((true === $listId || is_array($listId)) && !$combined) {
             // Return list group of counts
@@ -330,12 +335,9 @@ class StatRepository extends CommonRepository
     }
 
     /**
-     * @param           $emailIds
-     * @param \DateTime $fromDate
-     *
-     * @return array
+     * @param array<int,int|string>|int $emailIds
      */
-    public function getOpenedRates($emailIds, \DateTime $fromDate = null)
+    public function getOpenedRates($emailIds, ?\DateTime $fromDate = null, ?\DateTime $toDate = null): array
     {
         $inIds = (!is_array($emailIds)) ? [$emailIds] : $emailIds;
 
@@ -343,23 +345,36 @@ class StatRepository extends CommonRepository
         $sq->select('e.email_id, count(e.id) as the_count')
             ->from(MAUTIC_TABLE_PREFIX.'email_stats', 'e')
             ->where(
-                $sq->expr()->andX(
+                $sq->expr()->and(
                     $sq->expr()->eq('e.is_failed', ':false'),
-                    $sq->expr()->in('e.email_id', $inIds)
+                    $sq->expr()->in('e.email_id', ':inIds')
                 )
-            )->setParameter('false', false, 'boolean');
+            )->setParameter('false', false, 'boolean')
+            ->setParameter('inIds', $inIds, ArrayParameterType::INTEGER);
 
         if (null !== $fromDate) {
-            //make sure the date is UTC
+            // make sure the date is UTC
             $dt = new DateTimeHelper($fromDate);
             $sq->andWhere(
                 $sq->expr()->gte('e.date_sent', $sq->expr()->literal($dt->toUtcString()))
             );
         }
+
+        if (null !== $toDate) {
+            $dt = new DateTimeHelper($toDate);
+            $sq->andWhere(
+                $sq->expr()->lte('e.date_sent', $sq->expr()->literal($dt->toUtcString())),
+                $sq->expr()->or(
+                    $sq->expr()->lte('e.date_read', $sq->expr()->literal($dt->toUtcString())),
+                    $sq->expr()->isNull('e.date_read')
+                )
+            );
+        }
+
         $sq->groupBy('e.email_id');
 
-        //get a total number of sent emails first
-        $totalCounts = $sq->execute()->fetchAll();
+        // get a total number of sent emails first
+        $totalCounts = $sq->executeQuery()->fetchAllAssociative();
 
         $return = [];
         foreach ($inIds as $id) {
@@ -376,10 +391,10 @@ class StatRepository extends CommonRepository
             }
         }
 
-        //now get a read count
+        // now get a read count
         $sq->andWhere('e.is_read = :true')
             ->setParameter('true', true, 'boolean');
-        $readCounts = $sq->execute()->fetchAll();
+        $readCounts = $sq->executeQuery()->fetchAllAssociative();
 
         foreach ($readCounts as $r) {
             $return[$r['email_id']]['readCount'] = (int) $r['the_count'];
@@ -392,11 +407,11 @@ class StatRepository extends CommonRepository
     }
 
     /**
-     * @param array|int $emailIds
+     * @param array<int,int|string>|int $emailIds
      *
-     * @return int
+     * @return array<int, array<string, mixed>>
      */
-    public function getOpenedStatIds($emailIds = null, $listId = null)
+    public function getOpenedStatIds($emailIds = null, $listId = null): array
     {
         $q = $this->_em->getConnection()->createQueryBuilder();
 
@@ -408,8 +423,9 @@ class StatRepository extends CommonRepository
                 $emailIds = [(int) $emailIds];
             }
             $q->where(
-                $q->expr()->in('s.email_id', $emailIds)
-            );
+                $q->expr()->in('s.email_id', ':emailIds')
+            )
+            ->setParameter('emailIds', $emailIds, ArrayParameterType::INTEGER);
         }
 
         $q->andWhere('open_count > 0');
@@ -418,7 +434,7 @@ class StatRepository extends CommonRepository
             $q->andWhere('s.list_id = '.(int) $listId);
         }
 
-        return $q->execute()->fetchAll();
+        return $q->executeQuery()->fetchAllAssociative();
     }
 
     /**
@@ -439,9 +455,8 @@ class StatRepository extends CommonRepository
             ->leftJoin('s', MAUTIC_TABLE_PREFIX.'email_copies', 'ec', 's.copy_id = ec.id');
 
         if ($leadId) {
-            $query->andWhere(
-                $query->expr()->eq('s.lead_id', (int) $leadId)
-            );
+            $query->andWhere('s.lead_id = :leadId')
+                ->setParameter('leadId', $leadId);
         }
 
         if (!empty($options['basic_select'])) {
@@ -455,9 +470,12 @@ class StatRepository extends CommonRepository
                 ->leftJoin('s', MAUTIC_TABLE_PREFIX.'lead_lists', 'l', 's.list_id = l.id');
         }
 
+        $timestampColumn = 's.date_sent';
+
         if (isset($options['state'])) {
             $state = $options['state'];
             if ('read' == $state) {
+                $timestampColumn = 's.date_read';
                 $query->andWhere(
                     $query->expr()->eq('s.is_read', 1)
                 );
@@ -467,26 +485,25 @@ class StatRepository extends CommonRepository
                 );
             }
         }
-        $state = 'sent';
 
         if (isset($options['search']) && $options['search']) {
             $query->andWhere(
-                $query->expr()->orX(
-                    $query->expr()->like('ec.subject', $query->expr()->literal('%'.$options['search'].'%')),
-                    $query->expr()->like('e.subject', $query->expr()->literal('%'.$options['search'].'%')),
-                    $query->expr()->like('e.name', $query->expr()->literal('%'.$options['search'].'%'))
+                $query->expr()->or(
+                    $query->expr()->like('ec.subject', ':search'),
+                    $query->expr()->like('e.subject', ':search'),
+                    $query->expr()->like('e.name', ':search')
                 )
-            );
+            )->setParameter('search', '%'.$options['search'].'%');
         }
 
         if (isset($options['fromDate']) && $options['fromDate']) {
             $dt = new DateTimeHelper($options['fromDate']);
             $query->andWhere(
-                $query->expr()->gte('s.date_sent', $query->expr()->literal($dt->toUtcString()))
-            );
+                $query->expr()->gte($timestampColumn, ':fromDate')
+            )->setParameter('fromDate', $dt->toUtcString());
         }
 
-        $timeToReadParser = function (&$stat) {
+        $timeToReadParser = function (&$stat): void {
             $dateSent = new DateTimeHelper($stat['dateSent']);
             if (!empty($stat['dateSent']) && !empty($stat['dateRead'])) {
                 $stat['timeToRead'] = $dateSent->getDiff($stat['dateRead']);
@@ -499,10 +516,11 @@ class StatRepository extends CommonRepository
             $query,
             $options,
             'storedSubject, e.subject',
-            's.date_'.$state,
+            $timestampColumn,
             ['openDetails'],
             ['dateRead', 'dateSent'],
-            $timeToReadParser
+            $timeToReadParser,
+            's.id'
         );
     }
 
@@ -520,10 +538,14 @@ class StatRepository extends CommonRepository
     {
         $query->select('count(es.id) as sent, count(CASE WHEN es.is_read THEN 1 ELSE null END) as "read", count(CASE WHEN es.is_failed THEN 1 ELSE null END) as failed');
 
-        $results = $query->execute()->fetch();
+        $results = $query->executeQuery()->fetchAssociative();
 
-        $results['ignored'] = $results['sent'] - $results['read'] - $results['failed'];
-        unset($results['sent']);
+        if ($results) {
+            $results['ignored'] = $results['sent'] - $results['read'] - $results['failed'];
+            unset($results['sent']);
+        } else {
+            $results['ignored'] = $results['sent'] = $results['read'] = $results['failed']  = 0;
+        }
 
         return $results;
     }
@@ -533,50 +555,54 @@ class StatRepository extends CommonRepository
      *
      * @param QueryBuilder $query
      *
-     * @return array
-     *
      * @throws \Doctrine\ORM\NoResultException
      * @throws \Doctrine\ORM\NonUniqueResultException
      */
-    public function getMostEmails($query, $limit = 10, $offset = 0)
+    public function getMostEmails($query, $limit = 10, $offset = 0): array
     {
         $query
             ->setMaxResults($limit)
             ->setFirstResult($offset);
 
-        return $query->execute()->fetchAll();
+        return $query->executeQuery()->fetchAllAssociative();
     }
 
     /**
      * Get sent counts based grouped by email Id.
      *
      * @param array $emailIds
-     *
-     * @return array
      */
-    public function getSentCounts($emailIds = [], \DateTime $fromDate = null)
+    public function getSentCounts($emailIds = [], ?\DateTime $fromDate = null, ?\DateTime $toDate = null): array
     {
         $q = $this->_em->getConnection()->createQueryBuilder();
         $q->select('e.email_id, count(e.id) as sentcount')
             ->from(MAUTIC_TABLE_PREFIX.'email_stats', 'e')
             ->where(
-                $q->expr()->andX(
-                    $q->expr()->in('e.email_id', $emailIds),
+                $q->expr()->and(
+                    $q->expr()->in('e.email_id', ':emailIds'),
                     $q->expr()->eq('e.is_failed', ':false')
                 )
-            )->setParameter('false', false, 'boolean');
+            )->setParameter('false', false, 'boolean')
+            ->setParameter('emailIds', $emailIds, ArrayParameterType::INTEGER);
 
         if (null !== $fromDate) {
-            //make sure the date is UTC
+            // make sure the date is UTC
             $dt = new DateTimeHelper($fromDate);
             $q->andWhere(
                 $q->expr()->gte('e.date_read', $q->expr()->literal($dt->toUtcString()))
             );
         }
+        if (null !== $toDate) {
+            // make sure the date is UTC
+            $dt = new DateTimeHelper($toDate);
+            $q->andWhere(
+                $q->expr()->lte('e.date_read', $q->expr()->literal($dt->toUtcString()))
+            );
+        }
         $q->groupBy('e.email_id');
 
-        //get a total number of sent emails first
-        $results = $q->execute()->fetchAll();
+        // get a total number of sent emails first
+        $results = $q->executeQuery()->fetchAllAssociative();
 
         $counts = [];
 
@@ -589,88 +615,73 @@ class StatRepository extends CommonRepository
 
     /**
      * Updates lead ID (e.g. after a lead merge).
-     *
-     * @param $fromLeadId
-     * @param $toLeadId
      */
-    public function updateLead($fromLeadId, $toLeadId)
+    public function updateLead($fromLeadId, $toLeadId): void
     {
         $q = $this->_em->getConnection()->createQueryBuilder();
         $q->update(MAUTIC_TABLE_PREFIX.'email_stats')
             ->set('lead_id', (int) $toLeadId)
             ->where('lead_id = '.(int) $fromLeadId)
-            ->execute();
+            ->executeStatement();
     }
 
     /**
      * Delete a stat.
-     *
-     * @param $id
      */
-    public function deleteStat($id)
+    public function deleteStat($id): void
     {
         $this->getEntityManager()->getConnection()->delete(MAUTIC_TABLE_PREFIX.'email_stats', ['id' => (int) $id]);
     }
 
-    public function deleteStats(array $ids)
+    public function deleteStats(array $ids): void
     {
         $qb = $this->getEntityManager()->getConnection()->createQueryBuilder();
 
         $qb->delete(MAUTIC_TABLE_PREFIX.'email_stats')
             ->where(
-                $qb->expr()->in('id', $ids)
+                $qb->expr()->in('id', ':ids')
             )
-            ->execute();
+            ->setParameter('ids', $ids, ArrayParameterType::INTEGER)
+            ->executeStatement();
     }
 
-    /**
-     * @return string
-     */
-    public function getTableAlias()
+    public function getTableAlias(): string
     {
         return 's';
     }
 
     /**
-     * @param $leadId
-     * @param $emailId
-     *
      * @return array
      */
     public function findContactEmailStats($leadId, $emailId)
     {
         return $this->createQueryBuilder('s')
-            ->where('IDENTITY(s.lead) = '.(int) $leadId.' AND IDENTITY(s.email) = '.(int) $emailId)
+            ->where('IDENTITY(s.lead) = :leadId AND IDENTITY(s.email) =  :emailId')
+            ->setParameter('leadId', (int) $leadId)
+            ->setParameter('emailId', (int) $emailId)
             ->getQuery()
             ->getResult();
     }
 
-    /**
-     * @param $contacts
-     * @param $emailId
-     *
-     * @return mixed
-     */
-    public function checkContactsSentEmail($contacts, $emailId)
+    public function checkContactSentEmail(int $contactId, int $emailId): bool
     {
         $query = $this->getEntityManager()->getConnection()->createQueryBuilder();
         $query->from(MAUTIC_TABLE_PREFIX.'email_stats', 's');
-        $query->select('id, lead_id')
-            ->where('s.email_id = :email')
-            ->andWhere('s.lead_id in (:contacts)')
+        $query->select('1')
+            ->where('s.email_id = :emailId')
+            ->andWhere('s.lead_id = :contactId')
             ->andWhere('is_failed = 0')
-            ->setParameter(':email', $emailId)
-            ->setParameter(':contacts', $contacts);
+            ->setParameter('emailId', $emailId)
+            ->setParameter('contactId', $contactId)
+            ->setMaxResults(1);
 
-        return $query->execute()->fetch();
+        return (bool) $query->executeQuery()->fetchOne();
     }
 
     /**
-     * @param $emailId
-     *
      * @return array Formatted as [contactId => sentCount]
      */
-    public function getSentCountForContacts(array $contacts, $emailId)
+    public function getSentCountForContacts(array $contacts, $emailId): array
     {
         $query = $this->getEntityManager()->getConnection()->createQueryBuilder();
         $query->from(MAUTIC_TABLE_PREFIX.'email_stats', 's');
@@ -678,11 +689,11 @@ class StatRepository extends CommonRepository
             ->where('s.email_id = :email')
             ->andWhere('s.lead_id in (:contacts)')
             ->andWhere('s.is_failed = 0')
-            ->setParameter(':email', $emailId)
-            ->setParameter(':contacts', $contacts, Connection::PARAM_INT_ARRAY)
+            ->setParameter('email', $emailId)
+            ->setParameter('contacts', $contacts, ArrayParameterType::INTEGER)
             ->groupBy('s.lead_id');
 
-        $results = $query->execute()->fetchAll();
+        $results = $query->executeQuery()->fetchAllAssociative();
 
         $contacts = [];
         foreach ($results as $result) {
@@ -690,5 +701,258 @@ class StatRepository extends CommonRepository
         }
 
         return $contacts;
+    }
+
+    /**
+     * @param array<int> $contacts
+     *
+     * @return array<int, array<string, int|float>>
+     *
+     * @throws Exception
+     */
+    public function getStatsSummaryForContacts(array $contacts): array
+    {
+        $queryBuilder               = $this->getEntityManager()->getConnection()->createQueryBuilder();
+        $subQueryBuilder            = $this->getEntityManager()->getConnection()->createQueryBuilder();
+
+        $leadAlias     = 'l'; // leads
+        $statsAlias    = 'es'; // email_stats
+        $subQueryAlias = 'sq'; // sub query
+        $cutAlias      = 'cut'; // channel_url_trackables
+        $pageHitsAlias = 'ph'; // page_hits
+
+        // use sub query to get page hits for and unique page hits selected contacts
+        $subQueryBuilder->select(
+            "COUNT({$pageHitsAlias}.id) AS hits",
+            "COUNT(DISTINCT({$pageHitsAlias}.redirect_id)) AS unique_hits",
+            "{$cutAlias}.channel_id",
+            "{$pageHitsAlias}.lead_id"
+        )
+            ->from(MAUTIC_TABLE_PREFIX.'channel_url_trackables', $cutAlias)
+            ->join(
+                $cutAlias,
+                MAUTIC_TABLE_PREFIX.'page_hits',
+                $pageHitsAlias,
+                "{$cutAlias}.redirect_id = {$pageHitsAlias}.redirect_id AND {$cutAlias}.channel_id = {$pageHitsAlias}.source_id"
+            )
+            ->where("{$cutAlias}.channel = 'email' AND {$pageHitsAlias}.source = 'email'")
+            ->andWhere("{$pageHitsAlias}.lead_id in (:contacts)")
+            ->setParameter('contacts', $contacts, ArrayParameterType::INTEGER)
+            ->groupBy("{$cutAlias}.channel_id, {$pageHitsAlias}.lead_id");
+
+        // main query
+        $queryBuilder->select(
+            "{$leadAlias}.id AS `lead_id`",
+            "COUNT({$statsAlias}.id) AS `sent_count`",
+            "SUM(IF({$statsAlias}.is_read IS NULL, 0, {$statsAlias}.is_read)) AS `read_count`",
+            "SUM(IF({$subQueryAlias}.hits is NULL, 0, 1)) AS `clicked_through_count`",
+        )->from(MAUTIC_TABLE_PREFIX.'email_stats', $statsAlias)
+            ->rightJoin(
+                $statsAlias,
+                MAUTIC_TABLE_PREFIX.'leads',
+                $leadAlias,
+                "{$statsAlias}.lead_id=l.id"
+            )->leftJoin(
+                $statsAlias,
+                "({$subQueryBuilder->getSQL()})",
+                $subQueryAlias,
+                "{$statsAlias}.email_id = {$subQueryAlias}.channel_id AND {$statsAlias}.lead_id = {$subQueryAlias}.lead_id"
+            )->andWhere("{$leadAlias}.id in (:contacts)")
+            ->setParameter('contacts', $contacts, ArrayParameterType::INTEGER)
+            ->groupBy("{$leadAlias}.id");
+
+        $results = $queryBuilder->executeQuery()->fetchAllAssociative();
+
+        $contacts = [];
+        foreach ($results as $result) {
+            $sentCount    = (int) $result['sent_count'];
+            $readCount    = (int) $result['read_count'];
+            $clickedCount = (int) $result['clicked_through_count'];
+
+            $contacts[(int) $result['lead_id']] = [
+                'sent_count'              => $sentCount,
+                'read_count'              => $readCount,
+                'clicked_count'           => $clickedCount,
+                'open_rate'               => round($sentCount > 0 ? ($readCount / $sentCount) : 0, 4),
+                'click_through_rate'      => round($sentCount > 0 ? ($clickedCount / $sentCount) : 0, 4),
+                'click_through_open_rate' => round($readCount > 0 ? ($clickedCount / $readCount) : 0, 4),
+            ];
+        }
+
+        return $contacts;
+    }
+
+    /**
+     * @param array<int> $eventIds
+     *
+     * @return array<int, array{
+     *   sent_count: int,
+     *   read_count: int,
+     *   clicked_count: int,
+     *   open_rate: float,
+     *   click_through_rate: float,
+     *   click_through_open_rate: float
+     * }>
+     */
+    public function getStatsSummaryForCampaignEvents(array $eventIds): array
+    {
+        $queryBuilder    = $this->getEntityManager()->getConnection()->createQueryBuilder();
+        $subQueryBuilder = $this->getEntityManager()->getConnection()->createQueryBuilder();
+
+        $eventAlias     = 'e';  // campaign events
+        $statsAlias     = 'es'; // email_stats
+        $subQueryAlias  = 'sq'; // sub query
+        $pageHitsAlias  = 'ph';  // page_hits
+
+        // sub query to get page hits for emails sent through campaign events
+        $subQueryBuilder->select(
+            "{$statsAlias}.id AS stat_id",
+            "COUNT(DISTINCT {$pageHitsAlias}.id) AS hits"
+        )
+            ->from(MAUTIC_TABLE_PREFIX.'email_stats', $statsAlias)
+            ->join(
+                $statsAlias,
+                MAUTIC_TABLE_PREFIX.'page_hits',
+                $pageHitsAlias,
+                "{$pageHitsAlias}.email_id = {$statsAlias}.email_id AND {$pageHitsAlias}.lead_id = {$statsAlias}.lead_id"
+            )
+            ->where("{$pageHitsAlias}.source = 'email'")
+            ->andWhere("{$statsAlias}.source = 'campaign.event' AND {$statsAlias}.source_id IN (:events)")
+            ->setParameter('events', $eventIds, ArrayParameterType::INTEGER)
+            ->groupBy("{$statsAlias}.id");
+
+        // main query
+        $queryBuilder->select(
+            "{$eventAlias}.id AS `event_id`",
+            "COUNT({$statsAlias}.id) AS `sent_count`",
+            "SUM(IF({$statsAlias}.is_read IS NULL, 0, {$statsAlias}.is_read)) AS `read_count`",
+            "COUNT(DISTINCT CASE WHEN {$subQueryAlias}.hits > 0 THEN {$statsAlias}.id END) AS `clicked_through_count`"
+        )->from(MAUTIC_TABLE_PREFIX.'email_stats', $statsAlias)
+            ->rightJoin(
+                $statsAlias,
+                MAUTIC_TABLE_PREFIX.'campaign_events',
+                $eventAlias,
+                "{$statsAlias}.source_id = {$eventAlias}.id AND {$statsAlias}.source = 'campaign.event'"
+            )->leftJoin(
+                $statsAlias,
+                "({$subQueryBuilder->getSQL()})",
+                $subQueryAlias,
+                "{$statsAlias}.id = {$subQueryAlias}.stat_id"
+            )->andWhere("{$eventAlias}.id IN (:events)")
+            ->setParameter('events', $eventIds, ArrayParameterType::INTEGER)
+            ->groupBy("{$eventAlias}.id");
+
+        $results = $queryBuilder->executeQuery()->fetchAllAssociative();
+
+        $events = [];
+        foreach ($results as $result) {
+            $sentCount    = (int) $result['sent_count'];
+            $readCount    = (int) $result['read_count'];
+            $clickedCount = (int) $result['clicked_through_count'];
+
+            $events[(int) $result['event_id']] = [
+                'sent_count'              => $sentCount,
+                'read_count'              => $readCount,
+                'clicked_count'           => $clickedCount,
+                'open_rate'               => round($sentCount > 0 ? ($readCount / $sentCount) : 0, 4),
+                'click_through_rate'      => round($sentCount > 0 ? ($clickedCount / $sentCount) : 0, 4),
+                'click_through_open_rate' => round($readCount > 0 ? ($clickedCount / $readCount) : 0, 4),
+            ];
+        }
+
+        return $events;
+    }
+
+    /**
+     * @param array<int|string> $emailsIds
+     * @param array<int>        $eventsIds
+     *
+     * @return array<int, array<string, int|string>>
+     *
+     * @throws Exception
+     */
+    public function getStatsSummaryByCountry(\DateTimeImmutable $dateFrom, \DateTimeImmutable $dateTo, array $emailsIds, string $sourceType = 'email', array $eventsIds = []): array
+    {
+        $queryBuilder               = $this->getEntityManager()->getConnection()->createQueryBuilder();
+        $subQueryBuilder            = $this->getEntityManager()->getConnection()->createQueryBuilder();
+
+        $leadAlias     = 'l'; // leads
+        $statsAlias    = 'es'; // email_stats
+        $subQueryAlias = 'sq'; // sub query
+        $cutAlias      = 'cut'; // channel_url_trackables
+        $pageHitsAlias = 'ph'; // page_hits
+
+        // use sub query to get page hits for and unique page hits selected contacts
+        $subQueryBuilder->select(
+            "COUNT({$pageHitsAlias}.id) AS hits",
+            "COUNT(DISTINCT({$pageHitsAlias}.redirect_id)) AS unique_hits",
+            "{$cutAlias}.channel_id",
+            "{$pageHitsAlias}.lead_id"
+        )
+            ->from(MAUTIC_TABLE_PREFIX.'channel_url_trackables', $cutAlias)
+            ->join(
+                $cutAlias,
+                MAUTIC_TABLE_PREFIX.'page_hits',
+                $pageHitsAlias,
+                "{$cutAlias}.redirect_id = {$pageHitsAlias}.redirect_id AND {$cutAlias}.channel_id = {$pageHitsAlias}.source_id"
+            )
+            ->where("{$cutAlias}.channel = 'email' AND {$pageHitsAlias}.source = 'email'")
+            ->andWhere("{$cutAlias}.channel_id in (:emails)")
+            ->groupBy("{$cutAlias}.channel_id, {$pageHitsAlias}.lead_id");
+
+        // main query
+        $queryBuilder->addSelect(
+            "COUNT({$statsAlias}.id) AS `sent_count`",
+            "SUM(IF({$statsAlias}.is_read IS NULL, 0, {$statsAlias}.is_read)) AS `read_count`",
+            "SUM(IF({$subQueryAlias}.hits is NULL, 0, 1)) AS `clicked_through_count`",
+        )->from(MAUTIC_TABLE_PREFIX.'email_stats', $statsAlias)
+            ->rightJoin(
+                $statsAlias,
+                MAUTIC_TABLE_PREFIX.'leads',
+                $leadAlias,
+                "{$statsAlias}.lead_id=l.id"
+            )->leftJoin(
+                $statsAlias,
+                "({$subQueryBuilder->getSQL()})",
+                $subQueryAlias,
+                "{$statsAlias}.email_id = {$subQueryAlias}.channel_id AND {$statsAlias}.lead_id = {$subQueryAlias}.lead_id"
+            );
+
+        switch ($sourceType) {
+            case 'campaign':
+                $queryBuilder->addSelect("{$leadAlias}.country AS `country`")
+                    ->andWhere("{$statsAlias}.source_id in (:events)")
+                    ->andWhere("{$statsAlias}.source = :source")
+                    ->setParameter('emails', $emailsIds, ArrayParameterType::INTEGER)
+                    ->setParameter('events', $eventsIds, ArrayParameterType::INTEGER)
+                    ->setParameter('source', 'campaign.event');
+                break;
+            case 'email':
+                $queryBuilder->addSelect("{$leadAlias}.country AS `country`")
+                    ->andWhere("{$statsAlias}.email_id in (:emails)")
+                    ->setParameter('emails', $emailsIds, ArrayParameterType::INTEGER);
+        }
+
+        $queryBuilder->groupBy("{$leadAlias}.country")
+                    ->orderBy("{$leadAlias}.country", 'ASC');
+        $queryBuilder->andWhere("{$statsAlias}.date_sent BETWEEN :dateFrom AND :dateTo");
+        $queryBuilder->setParameter('dateFrom', $dateFrom->format(DateTimeHelper::FORMAT_DB));
+        $queryBuilder->setParameter('dateTo', $dateTo->setTime(23, 59, 59)->format('Y-m-d H:i:s'));
+
+        return $queryBuilder->executeQuery()->fetchAllAssociative();
+    }
+
+    public function getEmailSentLastDate(int $emailId): ?string
+    {
+        $result = $this->createQueryBuilder('s')
+            ->select('MAX(s.dateSent)')
+            ->join('s.email', 'e')
+            ->where('s.email = :emailId')
+            ->orWhere('e.variantParent = :emailId')
+            ->setParameter('emailId', $emailId)
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return null === $result ? null : (string) $result;
     }
 }

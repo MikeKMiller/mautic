@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ReportBundle\Tests\Model;
 
 use Mautic\CoreBundle\Exception\FilePathException;
@@ -19,22 +10,18 @@ use Mautic\ReportBundle\Model\ExportHandler;
 
 class ExportHandlerTest extends \PHPUnit\Framework\TestCase
 {
-    public function testHandler()
+    public function testHandler(): void
     {
         $tmpDir = sys_get_temp_dir();
 
-        $coreParametersHelperMock = $this->getMockBuilder(CoreParametersHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $coreParametersHelperMock = $this->createMock(CoreParametersHelper::class);
 
         $coreParametersHelperMock->expects($this->any())
             ->method('get')
             ->with('report_temp_dir')
             ->willReturn($tmpDir);
 
-        $filePathResolver = $this->getMockBuilder(FilePathResolver::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $filePathResolver = $this->createMock(FilePathResolver::class);
 
         $filePathResolver->expects($this->once())
             ->method('createDirectory');
@@ -42,34 +29,27 @@ class ExportHandlerTest extends \PHPUnit\Framework\TestCase
         $exportHandler = new ExportHandler($coreParametersHelperMock, $filePathResolver);
 
         $handler = $exportHandler->getHandler('myFile');
+        $this->assertIsResource($handler);
 
-        $this->assertTrue(is_resource($handler));
-
-        $handler = $exportHandler->closeHandler($handler);
-
-        $this->assertFalse(is_resource($handler));
-        $this->assertNull($handler);
+        $exportHandler->closeHandler($handler);
+        $this->assertIsClosedResource($handler);
     }
 
-    public function testCreateDirectoryError()
+    public function testCreateDirectoryError(): void
     {
         $tmpDir = sys_get_temp_dir();
 
         $this->expectException(FileIOException::class);
         $this->expectExceptionMessage('Could not create directory '.$tmpDir);
 
-        $coreParametersHelperMock = $this->getMockBuilder(CoreParametersHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $coreParametersHelperMock = $this->createMock(CoreParametersHelper::class);
 
         $coreParametersHelperMock->expects($this->any())
             ->method('get')
             ->with('report_temp_dir')
             ->willReturn($tmpDir);
 
-        $filePathResolver = $this->getMockBuilder(FilePathResolver::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $filePathResolver = $this->createMock(FilePathResolver::class);
 
         $filePathResolver->expects($this->once())
             ->method('createDirectory')
@@ -80,25 +60,21 @@ class ExportHandlerTest extends \PHPUnit\Framework\TestCase
         $exportHandler->getHandler('myFile');
     }
 
-    public function testOpenFileError()
+    public function testOpenFileError(): void
     {
         $tmpDir = 'xxx';
 
         $this->expectException(FileIOException::class);
         $this->expectExceptionMessage('Could not open file xxx/myFile.csv');
 
-        $coreParametersHelperMock = $this->getMockBuilder(CoreParametersHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $coreParametersHelperMock = $this->createMock(CoreParametersHelper::class);
 
         $coreParametersHelperMock->expects($this->any())
             ->method('get')
             ->with('report_temp_dir')
             ->willReturn($tmpDir);
 
-        $filePathResolver = $this->getMockBuilder(FilePathResolver::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $filePathResolver = $this->createMock(FilePathResolver::class);
 
         $filePathResolver->expects($this->once())
             ->method('createDirectory');

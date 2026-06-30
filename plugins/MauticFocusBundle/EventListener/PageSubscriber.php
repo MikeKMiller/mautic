@@ -1,16 +1,8 @@
 <?php
 
-/*
- * @copyright   2016 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticFocusBundle\EventListener;
 
+use Mautic\CoreBundle\DTO\TokenFormatOptions;
 use Mautic\CoreBundle\Helper\BuilderTokenHelperFactory;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\PageBundle\Event\PageBuilderEvent;
@@ -22,44 +14,17 @@ use Symfony\Component\Routing\RouterInterface;
 
 class PageSubscriber implements EventSubscriberInterface
 {
-    private $regex = '{focus=(.*?)}';
-
-    /**
-     * @var FocusModel
-     */
-    private $model;
-
-    /**
-     * @var RouterInterface
-     */
-    private $router;
-
-    /**
-     * @var CorePermissions
-     */
-    private $security;
-
-    /**
-     * @var BuilderTokenHelperFactory
-     */
-    private $builderTokenHelperFactory;
+    private string $regex = '{focus=(.*?)}';
 
     public function __construct(
-        CorePermissions $security,
-        FocusModel $model,
-        RouterInterface $router,
-        BuilderTokenHelperFactory $builderTokenHelperFactory
+        private readonly CorePermissions $security,
+        private readonly FocusModel $model,
+        private readonly RouterInterface $router,
+        private readonly BuilderTokenHelperFactory $builderTokenHelperFactory,
     ) {
-        $this->security                  = $security;
-        $this->router                    = $router;
-        $this->model                     = $model;
-        $this->builderTokenHelperFactory = $builderTokenHelperFactory;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             PageEvents::PAGE_ON_DISPLAY => ['onPageDisplay', 0],
@@ -70,15 +35,23 @@ class PageSubscriber implements EventSubscriberInterface
     /**
      * Add forms to available page tokens.
      */
-    public function onPageBuild(PageBuilderEvent $event)
+    public function onPageBuild(PageBuilderEvent $event): void
     {
         if ($event->tokensRequested($this->regex)) {
             $tokenHelper = $this->builderTokenHelperFactory->getBuilderTokenHelper('focus', $this->model->getPermissionBase(), 'MauticFocusBundle', 'mautic.focus');
-            $event->addTokensFromHelper($tokenHelper, $this->regex, 'name');
+            $tokenFilter = $event->getTokenFilter();
+            $tokens      = $tokenHelper->getFormattedTokens(
+                $this->regex,
+                TokenFormatOptions::simplePrefix('mautic.focus.focus_item'),
+                'label' === $tokenFilter['target'] ? $tokenFilter['filter'] : '',
+            );
+            if ($tokens) {
+                $event->addTokens($tokens);
+            }
         }
     }
 
-    public function onPageDisplay(PageDisplayEvent $event)
+    public function onPageDisplay(PageDisplayEvent $event): void
     {
         $content = $event->getContent();
         $regex   = '/'.$this->regex.'/i';
@@ -87,7 +60,7 @@ class PageSubscriber implements EventSubscriberInterface
 
         if (count($matches[0])) {
             foreach ($matches[1] as $id) {
-                $focus = $this->model->getEntity($id);
+                $focus = $this->model->getEntity((int) $id);
                 if (null !== $focus
                     && (
                         $focus->isPublished()
@@ -98,7 +71,7 @@ class PageSubscriber implements EventSubscriberInterface
                         )
                     )
                 ) {
-                    $script = '<script src="'.$this->router->generate('mautic_focus_generate', ['id' => $id], true)
+                    $script = '<script src="'.$this->router->generate('mautic_focus_generate', ['id' => $id], \Symfony\Component\Routing\Generator\UrlGeneratorInterface::ABSOLUTE_URL)
                         .'" type="text/javascript" charset="utf-8" async="async"></script>';
                     $content = preg_replace('#{focus='.$id.'}#', $script, $content);
                 } else {

@@ -1,13 +1,6 @@
 <?php
 
-/*
- * @copyright   2019 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\PageBundle\Tests\EventListener;
 
@@ -16,17 +9,23 @@ use Mautic\CoreBundle\Event\DetermineWinnerEvent;
 use Mautic\PageBundle\Entity\HitRepository;
 use Mautic\PageBundle\Entity\Page;
 use Mautic\PageBundle\EventListener\DetermineWinnerSubscriber;
-use Symfony\Component\Translation\TranslatorInterface;
+use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\TestCase;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
+class DetermineWinnerSubscriberTest extends TestCase
 {
-    private $hitRepository;
-    private $translator;
+    /**
+     * @var MockObject&HitRepository
+     */
+    private MockObject $hitRepository;
 
     /**
-     * @var DetermineWinnerSubscriber
+     * @var MockObject&TranslatorInterface
      */
-    private $subscriber;
+    private MockObject $translator;
+
+    private DetermineWinnerSubscriber $subscriber;
 
     protected function setUp(): void
     {
@@ -37,7 +36,7 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
         $this->subscriber    = new DetermineWinnerSubscriber($this->hitRepository, $this->translator);
     }
 
-    public function testOnDetermineBounceRateWinner()
+    public function testOnDetermineBounceRateWinner(): void
     {
         $parentMock    = $this->createMock(Page::class);
         $childMock     = $this->createMock(Page::class);
@@ -55,13 +54,13 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
                 'bounces'   => 5,
                 'rate'      => 25,
                 'title'     => 'Page 1.1',
-                ],
+            ],
             2 => [
                 'totalHits' => 10,
                 'bounces'   => 1,
                 'rate'      => 10,
                 'title'     => 'Page 1.2',
-                ],
+            ],
             3 => [
                 'totalHits' => 30,
                 'bounces'   => 15,
@@ -76,31 +75,26 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
             ],
         ];
 
-        $this->translator->expects($this->any())
+        $this->translator
             ->method('trans')
             ->willReturn($translation);
 
-        $parentMock->expects($this->any())
+        $parentMock
             ->method('hasTranslations')
-            ->willReturn(true);
+            ->willReturn(1);
 
-        $childMock->expects($this->any())
+        $childMock
             ->method('hasTranslations')
-            ->willReturn(true);
+            ->willReturn(1);
 
-        $transChildren->expects($this->at(0))
-            ->method('getKeys')
-            ->willReturn([2]);
+        $transChildren->method('getKeys')
+            ->willReturnOnConsecutiveCalls([2], [4]);
 
-        $transChildren->expects($this->at(1))
-            ->method('getKeys')
-            ->willReturn([4]);
-
-        $parentMock->expects($this->any())
+        $parentMock
             ->method('getTranslationChildren')
             ->willReturn($transChildren);
 
-        $childMock->expects($this->any())
+        $childMock
             ->method('getTranslationChildren')
             ->willReturn($transChildren);
 
@@ -108,11 +102,11 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
             ->method('getRelatedEntityIds')
             ->willReturn($ids);
 
-        $parentMock->expects($this->any())
+        $parentMock
             ->method('getId')
             ->willReturn(1);
 
-        $childMock->expects($this->any())
+        $childMock
             ->method('getId')
             ->willReturn(3);
 
@@ -131,11 +125,12 @@ class DetermineWinnerSubscriberTest extends \PHPUnit\Framework\TestCase
 
         $abTestResults = $event->getAbTestResults();
 
-        $this->assertEquals($abTestResults['winners'], [3]);
-        $this->assertEquals($abTestResults['support']['data'][$translation], $expectedData);
+        // Check for lowest bounce rates
+        self::assertSame([1], $abTestResults['winners']);
+        self::assertEquals($expectedData, $abTestResults['support']['data'][$translation]);
     }
 
-    public function testOnDetermineDwellTimeWinner()
+    public function testOnDetermineDwellTimeWinner(): void
     {
         $parentMock  = $this->createMock(Page::class);
         $ids         = [1, 2];

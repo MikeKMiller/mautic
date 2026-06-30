@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2019 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Auth\Provider\Oauth2TwoLegged;
 
 use GuzzleHttp\Client;
@@ -45,27 +36,18 @@ class HttpFactory implements AuthProviderInterface
 {
     public const NAME = 'oauth2_two_legged';
 
-    /**
-     * @var PasswordCredentialsGrantInterface|ClientCredentialsGrantInterface
-     */
-    private $credentials;
+    private PasswordCredentialsGrantInterface|ClientCredentialsGrantInterface|null $credentials = null;
 
-    /**
-     * @var ConfigCredentialsSignerInterface|ConfigTokenPersistenceInterface|ConfigTokenSignerInterface
-     */
-    private $config;
+    private ConfigCredentialsSignerInterface|ConfigTokenPersistenceInterface|ConfigTokenSignerInterface|AuthConfigInterface|ConfigTokenFactoryInterface|null $config = null;
 
-    /**
-     * @var Client
-     */
-    private $reAuthClient;
+    private ?Client $reAuthClient = null;
 
     /**
      * Cache of initialized clients.
      *
      * @var Client[]
      */
-    private $initializedClients = [];
+    private array $initializedClients = [];
 
     public function getAuthType(): string
     {
@@ -73,7 +55,7 @@ class HttpFactory implements AuthProviderInterface
     }
 
     /**
-     * @param PasswordCredentialsGrantInterface|ClientCredentialsGrantInterface|AuthCredentialsInterface                                                  $credentials
+     * @param PasswordCredentialsGrantInterface|ClientCredentialsGrantInterface                                                                           $credentials
      * @param ConfigCredentialsSignerInterface|ConfigTokenPersistenceInterface|ConfigTokenSignerInterface|AuthConfigInterface|ConfigTokenFactoryInterface $config
      *
      * @throws PluginNotConfiguredException
@@ -112,20 +94,13 @@ class HttpFactory implements AuthProviderInterface
         return $credentials instanceof PasswordCredentialsGrantInterface || $credentials instanceof ClientCredentialsGrantInterface;
     }
 
-    /**
-     * @param ClientCredentialsGrantInterface|PasswordCredentialsGrantInterface|AuthCredentialsInterface $credentials
-     */
     private function credentialsAreConfigured(AuthCredentialsInterface $credentials): bool
     {
         if (empty($credentials->getAuthorizationUrl()) || empty($credentials->getClientId()) || empty($credentials->getClientSecret())) {
             return false;
         }
 
-        if ($credentials instanceof PasswordCredentialsGrantInterface && (empty($credentials->getUsername()) || empty($credentials->getPassword()))) {
-            return false;
-        }
-
-        return true;
+        return !$credentials instanceof PasswordCredentialsGrantInterface || !empty($credentials->getUsername()) && !empty($credentials->getPassword());
     }
 
     private function getStackHandler(): HandlerStack

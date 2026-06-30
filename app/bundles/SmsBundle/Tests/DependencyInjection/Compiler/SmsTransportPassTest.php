@@ -1,12 +1,4 @@
 <?php
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
 
 namespace Mautic\SmsBundle\Tests\DependencyInjection\Compiler;
 
@@ -18,7 +10,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 class SmsTransportPassTest extends TestCase
 {
-    public function testProcess()
+    public function testProcess(): void
     {
         $container = new ContainerBuilder();
         $container->addCompilerPass(new SmsTransportPass());
@@ -41,13 +33,13 @@ class SmsTransportPassTest extends TestCase
 
         $transport = $this->getMockBuilder(TransportChain::class)
             ->disableOriginalConstructor()
-            ->setMethods(['addTransport'])
+            ->onlyMethods(['addTransport'])
             ->getMock();
 
         $container
             ->register('mautic.sms.transport_chain')
-            ->setClass(get_class($transport))
-            ->setArguments(['foo', $this->createMock(IntegrationHelper::class)])
+            ->setClass($transport::class)
+            ->setArguments(['foo', $this->createStub(IntegrationHelper::class)])
             ->setShared(false)
             ->setSynthetic(true)
             ->setAbstract(true);
@@ -55,7 +47,7 @@ class SmsTransportPassTest extends TestCase
         $pass = new SmsTransportPass();
         $pass->process($container);
 
-        $this->assertEquals(2, count($container->findTaggedServiceIds('mautic.sms_transport')));
+        $this->assertCount(2, $container->findTaggedServiceIds('mautic.sms_transport'));
 
         $methodCalls = $container->getDefinition('mautic.sms.transport_chain')->getMethodCalls();
         $this->assertCount(count($methodCalls), $container->findTaggedServiceIds('mautic.sms_transport'));

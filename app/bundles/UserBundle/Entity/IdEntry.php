@@ -5,13 +5,11 @@ namespace Mautic\UserBundle\Entity;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * @ORM\Entity()
- */
+#[ORM\Entity]
 class IdEntry
 {
     /**
-     * @var int
+     * @var string
      */
     protected $id;
 
@@ -25,7 +23,7 @@ class IdEntry
      */
     protected $expiryTimestamp;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
@@ -47,7 +45,7 @@ class IdEntry
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getEntityId()
     {
@@ -56,20 +54,15 @@ class IdEntry
 
     /**
      * @param string $entityId
-     *
-     * @return IdEntry
      */
-    public function setEntityId($entityId)
+    public function setEntityId($entityId): static
     {
         $this->entityId = $entityId;
 
         return $this;
     }
 
-    /**
-     * @return \DateTime
-     */
-    public function getExpiryTime()
+    public function getExpiryTime(): \DateTime
     {
         $dt = new \DateTime();
         $dt->setTimestamp($this->expiryTimestamp);
@@ -77,10 +70,7 @@ class IdEntry
         return $dt;
     }
 
-    /**
-     * @return IdEntry
-     */
-    public function setExpiryTime(\DateTime $expiryTime)
+    public function setExpiryTime(\DateTime $expiryTime): static
     {
         $this->expiryTimestamp = $expiryTime->getTimestamp();
 
@@ -88,7 +78,7 @@ class IdEntry
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getId()
     {
@@ -96,13 +86,11 @@ class IdEntry
     }
 
     /**
-     * @param int $id
-     *
-     * @return IdEntry
+     * @param string $id
      */
-    public function setId($id)
+    public function setId($id): static
     {
-        $this->id = $id;
+        $this->id =  $id;
 
         return $this;
     }

@@ -6,29 +6,26 @@ use Mautic\CoreBundle\Helper\LanguageHelper;
 use Mautic\CoreBundle\Update\Step\UpdateTranslationsStep;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-class UpdateTranslationsStepTest extends AbstractStepTest
+class UpdateTranslationsStepTest extends AbstractStepTestCase
 {
     /**
-     * @var MockObject|TranslatorInterface
+     * @var MockObject&TranslatorInterface
      */
-    private $translator;
+    private MockObject $translator;
 
     /**
-     * @var MockObject|LanguageHelper
+     * @var MockObject&LanguageHelper
      */
-    private $languageHelper;
+    private MockObject $languageHelper;
 
     /**
-     * @var MockObject|LoggerInterface
+     * @var MockObject&LoggerInterface
      */
-    private $logger;
+    private MockObject $logger;
 
-    /**
-     * @var UpdateTranslationsStep
-     */
-    private $step;
+    private UpdateTranslationsStep $step;
 
     protected function setUp(): void
     {
@@ -41,7 +38,7 @@ class UpdateTranslationsStepTest extends AbstractStepTest
         $this->step = new UpdateTranslationsStep($this->translator, $this->languageHelper, $this->logger);
     }
 
-    public function testLanguageUnpackingSkippedIfJustOneLanguageIsEnabled()
+    public function testLanguageUnpackingSkippedIfJustOneLanguageIsEnabled(): void
     {
         $this->languageHelper->expects($this->once())
             ->method('getSupportedLanguages')
@@ -53,7 +50,7 @@ class UpdateTranslationsStepTest extends AbstractStepTest
         $this->step->execute($this->progressBar, $this->input, $this->output);
     }
 
-    public function testFetchingLanguagesLogError()
+    public function testFetchingLanguagesLogError(): void
     {
         $this->languageHelper->expects($this->once())
             ->method('getSupportedLanguages')
@@ -72,10 +69,14 @@ class UpdateTranslationsStepTest extends AbstractStepTest
             ->method('error')
             ->with('UPDATE ERROR: there was an error');
 
+        $this->translator->expects($this->any())
+            ->method('trans')
+            ->willReturn('');
+
         $this->step->execute($this->progressBar, $this->input, $this->output);
     }
 
-    public function testUsPackageSkipped()
+    public function testUsPackageSkipped(): void
     {
         $this->languageHelper->expects($this->once())
             ->method('getSupportedLanguages')
@@ -95,10 +96,14 @@ class UpdateTranslationsStepTest extends AbstractStepTest
             ->with('es_MX')
             ->willReturn(['error' => false]);
 
+        $this->translator->expects($this->any())
+            ->method('trans')
+            ->willReturn('');
+
         $this->step->execute($this->progressBar, $this->input, $this->output);
     }
 
-    public function testExtractionErrorIsLogged()
+    public function testExtractionErrorIsLogged(): void
     {
         $this->languageHelper->expects($this->once())
             ->method('getSupportedLanguages')
@@ -120,9 +125,7 @@ class UpdateTranslationsStepTest extends AbstractStepTest
 
         $this->translator->method('trans')
             ->willReturnCallback(
-                function (string $key) {
-                    return $key;
-                }
+                fn (string $key): string => $key
             );
 
         $this->logger->expects($this->once())

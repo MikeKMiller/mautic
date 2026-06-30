@@ -1,20 +1,15 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Entity;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Symfony\Component\Serializer\Attribute\Groups;
 
+/**
+ * @template T of TranslationEntityInterface
+ */
 trait TranslationEntityTrait
 {
     /**
@@ -22,29 +17,29 @@ trait TranslationEntityTrait
      *
      * @var string
      */
+    #[Groups(['page:read', 'download:read', 'email:read'])]
     public $languageSlug;
 
     /**
-     * @var ArrayCollection
+     * @var Collection
+     *
+     * @phpstan-var Collection<int, T>
      **/
+    #[Groups(['page:read', 'page:write', 'download:read', 'download:write', 'email:read', 'email:write', 'dynamicContent:read', 'dynamicContent:write'])]
     private $translationChildren;
 
     /**
-     * @var TranslationEntityInterface
+     * @var TranslationEntityInterface|null
+     *
+     * @phpstan-var T|null
      **/
+    #[Groups(['page:read', 'page:write', 'download:read', 'download:write', 'email:read', 'email:write', 'dynamicContent:read', 'dynamicContent:write'])]
     private $translationParent;
 
-    /**
-     * @var string
-     */
-    private $language = 'en';
+    #[Groups(['page:read', 'page:write', 'download:read', 'download:write', 'email:read', 'email:write', 'dynamicContent:read', 'dynamicContent:write'])]
+    private string $language = 'en';
 
-    /**
-     * @param ClassMetadata $builder
-     * @param               $entityClass
-     * @param string        $languageColumnName
-     */
-    protected static function addTranslationMetadata(ClassMetadataBuilder $builder, $entityClass, $languageColumnName = 'lang')
+    protected static function addTranslationMetadata(ClassMetadataBuilder $builder, string $entityClass, string $languageColumnName = 'lang'): void
     {
         $builder->createOneToMany('translationChildren', $entityClass)
             ->setIndexBy('id')
@@ -62,12 +57,7 @@ trait TranslationEntityTrait
             ->build();
     }
 
-    /**
-     * Add translation.
-     *
-     * @return $this
-     */
-    public function addTranslationChild(TranslationEntityInterface $child)
+    public function addTranslationChild(TranslationEntityInterface $child): static
     {
         if (!$this->translationChildren->contains($child)) {
             $this->translationChildren[] = $child;
@@ -76,30 +66,20 @@ trait TranslationEntityTrait
         return $this;
     }
 
-    /**
-     * Remove translation.
-     */
-    public function removeTranslationChild(TranslationEntityInterface $child)
+    public function removeTranslationChild(TranslationEntityInterface $child): void
     {
         $this->translationChildren->removeElement($child);
     }
 
     /**
      * Get translated items.
-     *
-     * @return \Doctrine\Common\Collections\Collection
      */
-    public function getTranslationChildren()
+    public function getTranslationChildren(): ?Collection
     {
         return $this->translationChildren;
     }
 
-    /**
-     * Set translation parent.
-     *
-     * @return $this
-     */
-    public function setTranslationParent(TranslationEntityInterface $parent = null)
+    public function setTranslationParent(?TranslationEntityInterface $parent = null): self
     {
         if (method_exists($this, 'isChanged')) {
             $this->isChanged('translationParent', $parent);
@@ -110,20 +90,12 @@ trait TranslationEntityTrait
         return $this;
     }
 
-    /**
-     * Get translation parent.
-     *
-     * @return $this
-     */
-    public function getTranslationParent()
+    public function getTranslationParent(): ?TranslationEntityInterface
     {
         return $this->translationParent;
     }
 
-    /**
-     * Remove translation parent.
-     */
-    public function removeTranslationParent()
+    public function removeTranslationParent(): void
     {
         if (method_exists($this, 'isChanged')) {
             $this->isChanged('translationParent', '');
@@ -132,14 +104,7 @@ trait TranslationEntityTrait
         $this->translationParent = null;
     }
 
-    /**
-     * Set language.
-     *
-     * @param string $language
-     *
-     * @return $this
-     */
-    public function setLanguage($language)
+    public function setLanguage(?string $language): self
     {
         if (method_exists($this, 'isChanged')) {
             $this->isChanged('language', $language);
@@ -150,49 +115,37 @@ trait TranslationEntityTrait
         return $this;
     }
 
-    /**
-     * Get language.
-     *
-     * @return string
-     */
-    public function getLanguage()
+    public function getLanguage(): ?string
     {
         return $this->language;
     }
 
     /**
      * @param bool $isChild True to return if the item is a translation of a parent
-     *
-     * @return bool
      */
-    public function isTranslation($isChild = false)
+    public function isTranslation(bool $isChild = false): bool
     {
         $parent   = $this->getTranslationParent();
         $children = $this->getTranslationChildren();
 
         if ($isChild) {
-            return (null === $parent) ? false : true;
-        } else {
-            return (!empty($parent) || count($children)) ? true : false;
+            return null !== $parent;
         }
+
+        return !empty($parent) || ($children && count($children));
     }
 
     /**
      * Check if this entity has translations.
-     *
-     * @return int
      */
-    public function hasTranslations()
+    public function hasTranslations(): int
     {
         $children = $this->getTranslationChildren();
 
-        return count($children);
+        return $children ? count($children) : 0;
     }
 
-    /**
-     * Clear translations.
-     */
-    public function clearTranslations()
+    public function clearTranslations(): void
     {
         $this->translationChildren = new ArrayCollection();
         $this->translationParent   = null;
@@ -201,11 +154,9 @@ trait TranslationEntityTrait
     /**
      * Get translation parent/children.
      *
-     * @param bool $onlyChildren
-     *
-     * @return array|\Doctrine\Common\Collections\ArrayCollection
+     * @return array<mixed>
      */
-    public function getTranslations($onlyChildren = false)
+    public function getTranslations(bool $onlyChildren = false): array
     {
         $parent = $this->getTranslationParent();
 
@@ -213,10 +164,10 @@ trait TranslationEntityTrait
             $parent = $this;
         }
 
-        if ($children = $parent->getTranslationChildren()) {
-            if ($children instanceof Collection) {
-                $children = $children->toArray();
-            }
+        $children = $parent->getTranslationChildren();
+
+        if ($children instanceof Collection) {
+            $children = $children->toArray();
         }
 
         if (!is_array($children)) {
@@ -231,15 +182,16 @@ trait TranslationEntityTrait
     }
 
     /**
-     * @param $getter
+     * @param string                      $getter
+     * @param ?TranslationEntityInterface $variantParent
      *
-     * @return mixed
+     * @return int
      */
     protected function getAccumulativeTranslationCount($getter, $variantParent = null)
     {
         $count = 0;
 
-        list($parent, $children) = $this->getTranslations();
+        [$parent, $children] = $this->getTranslations();
         if ($variantParent != $parent) {
             $count = $parent->$getter();
         }

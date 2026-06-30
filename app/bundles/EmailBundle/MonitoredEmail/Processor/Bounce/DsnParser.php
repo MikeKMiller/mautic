@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\MonitoredEmail\Processor\Bounce;
 
 use Mautic\EmailBundle\MonitoredEmail\Exception\BounceNotFound;
@@ -17,20 +8,15 @@ use Mautic\EmailBundle\MonitoredEmail\Processor\Address;
 use Mautic\EmailBundle\MonitoredEmail\Processor\Bounce\Definition\Category;
 use Mautic\EmailBundle\MonitoredEmail\Processor\Bounce\Mapper\CategoryMapper;
 
-/**
- * Class DsnParser.
- */
 class DsnParser
 {
     /**
-     * @return BouncedEmail
-     *
      * @throws BounceNotFound
      */
-    public function getBounce(Message $message)
+    public function getBounce(Message $message): BouncedEmail
     {
         // Parse the bounce
-        $dsnMessage = ($message->dsnMessage) ? $message->dsnMessage : $message->textPlain;
+        $dsnMessage = $message->dsnMessage ?: $message->textPlain;
         $dsnReport  = $message->dsnReport;
 
         // Try parsing the report
@@ -52,13 +38,8 @@ class DsnParser
 
     /**
      * @todo - refactor to get rid of the if/else statements
-     *
-     * @param $dsnMessage
-     * @param $dsnReport
-     *
-     * @return array
      */
-    public function parse($dsnMessage, $dsnReport)
+    public function parse(string $dsnMessage, string $dsnReport): array
     {
         // initialize the result array
         $result = [
@@ -75,8 +56,7 @@ class DsnParser
         // get the recipient email
         if (
             preg_match('/Original-Recipient: rfc822;(.*)/i', $dsnReport, $match)
-            ||
-            preg_match('/Final-Recipient:\s?rfc822;(.*)/i', $dsnReport, $match)
+            || preg_match('/Final-Recipient:\s?rfc822;(.*)/i', $dsnReport, $match)
         ) {
             if ($parsedAddressList = Address::parseList($match[1])) {
                 $result['email'] = key($parsedAddressList);
@@ -339,6 +319,16 @@ class DsnParser
                         $result['rule_no']  = '0138';
                     }
 
+                    /**
+                     * rule: user_reject
+                     * sample:
+                     * Diagnostic-Code: smtp;550 5.4.1 Recipient address rejected: Access denied.
+                     */
+                    elseif (preg_match('/Recipient address rejected: Access denied/i', $diagnosisCode)) {
+                        $result['rule_cat'] = Category::USER_REJECT;
+                        $result['rule_no']  = '0233';
+                    }
+
                     /* rule: unknown
                      * sample:
                      * Diagnostic-Code: SMTP; 550 <xxxxx@yourdomain.com> recipient rejected
@@ -405,6 +395,24 @@ class DsnParser
                     elseif (preg_match('/(?:alias|account|recipient|address|email|mailbox|user).*not OK/is', $diagnosisCode)) {
                         $result['rule_cat'] = Category::UNKNOWN;
                         $result['rule_no']  = '0186';
+                    }
+
+                    /* rule: antispam
+                     * sample:
+                     * Diagnostic-Code: smtp;550 5.7.511 Access denied, banned sender
+                     */
+                    elseif (preg_match('/Access denied, banned sender/i', $diagnosisCode)) {
+                        $result['rule_cat'] = Category::ANTISPAM;
+                        $result['rule_no']  = '0234';
+                    }
+
+                    /* rule: antispam
+                     * sample:
+                     * Diagnostic-Code: smtp;550 5.7.606 Access denied, banned sending IP [1.2.3.4]
+                     */
+                    elseif (preg_match('/Access denied, banned sending IP/i', $diagnosisCode)) {
+                        $result['rule_cat'] = Category::ANTISPAM;
+                        $result['rule_no']  = '0235';
                     }
 
                     /* rule: unknown
@@ -580,6 +588,15 @@ class DsnParser
                     elseif (preg_match('/sender.*not/is', $diagnosisCode)) {
                         $result['rule_cat'] = Category::USER_REJECT;
                         $result['rule_no']  = '0206';
+                    }
+
+                    /* rule: user_reject
+                     * sample:
+                     * Diagnostic-Code: smtp;550 5.7.193 UnifiedGroupAgent; Delivery failed because the sender isn't a group member or external senders aren't permitted to send to this group.
+                     */
+                    elseif (preg_match('/UnifiedGroupAgent.*(?:group member|external senders.*not.*permitted)/is', $diagnosisCode)) {
+                        $result['rule_cat'] = Category::USER_REJECT;
+                        $result['rule_no']  = '0230';
                     }
 
                     /* rule: command_reject
@@ -778,6 +795,15 @@ class DsnParser
                     elseif (preg_match('/unrouteable address/is', $diagnosisCode)) {
                         $result['rule_cat'] = Category::DNS_UNKNOWN;
                         $result['rule_no']  = '0208';
+                    }
+
+                    /* rule: dns_unknown
+                     * sample:
+                     * Diagnostic-Code: smtp;550 5.4.317 Message expired, cannot connect to remote server
+                     */
+                    elseif (preg_match('/Message expired.*cannot connect to remote server/is', $diagnosisCode)) {
+                        $result['rule_cat'] = Category::DNS_UNKNOWN;
+                        $result['rule_no']  = '0232';
                     }
 
                     /* rule: defer
@@ -1239,20 +1265,18 @@ class DsnParser
                     $result['rule_cat'] = Category::DELAYED;
                     $result['rule_no']  = '0110';
                     break;
+                    // unhandled cases
                 case 'delivered':
                 case 'relayed':
-                case 'expanded': // unhandled cases
-                    break;
+                case 'expanded':
                 default:
                     break;
             }
         }
 
-        if (false === $result['bounce_type']) {
-            $categoryObject        = CategoryMapper::map($result['rule_cat']);
-            $result['bounce_type'] = $categoryObject->getType();
-            $result['remove']      = $categoryObject->isPermanent();
-        }
+        $categoryObject        = CategoryMapper::map($result['rule_cat']);
+        $result['bounce_type'] = $categoryObject->getType();
+        $result['remove']      = $categoryObject->isPermanent();
 
         return $result;
     }

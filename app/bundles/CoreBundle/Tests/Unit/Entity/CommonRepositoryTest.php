@@ -1,70 +1,70 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\Entity;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Query\Expression\ExpressionBuilder;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\QueryBuilder;
+use Doctrine\Persistence\ManagerRegistry;
 use Mautic\CoreBundle\Entity\CommonRepository;
+use Mautic\LeadBundle\Entity\Lead;
+use PHPUnit\Framework\MockObject\MockObject;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(CommonRepository::class)]
 class CommonRepositoryTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var CommonRepository
+     * @var MockObject&CommonRepository<object>
      */
-    private $repo;
+    private MockObject $repo;
+
+    private QueryBuilder $qb;
 
     /**
-     * @var QueryBuilder
+     * @var MockObject&Connection
      */
-    private $qb;
+    private MockObject $connectionMock;
 
     /**
      * Sets up objects used in the tests.
      */
     protected function setUp(): void
     {
+        /** @var EntityManager&MockObject $emMock */
         $emMock = $this->getMockBuilder(EntityManager::class)
-            ->setMethods(['none'])
+            ->onlyMethods(['getClassMetadata'])
             ->disableOriginalConstructor()
             ->getMock();
 
-        $metaMock = $this->getMockBuilder(ClassMetadata::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        /** @var ManagerRegistry&MockObject $managerRegistry */
+        $managerRegistry = $this->createMock(ManagerRegistry::class);
+        $managerRegistry->method('getManagerForClass')->willReturn($emMock);
 
-        $this->repo = new CommonRepository($emMock, $metaMock);
-        $this->qb   = new QueryBuilder($emMock);
+        /** @var ClassMetadata<object>&MockObject $classMetadata */
+        $classMetadata = $this->createMock(ClassMetadata::class);
+        $emMock->method('getClassMetadata')->willReturn($classMetadata);
+
+        $this->repo = $this->getMockBuilder(CommonRepository::class)
+            ->setConstructorArgs([$managerRegistry, Lead::class])
+            ->onlyMethods([])
+            ->getMock();
+        $this->qb             = new QueryBuilder($emMock);
+        $this->connectionMock = $this->createMock(Connection::class);
+        $this->connectionMock->method('getExpressionBuilder')
+            ->willReturn(new ExpressionBuilder($this->connectionMock));
     }
 
-    /**
-     * @testdox Check that the query is being build without providing any order statements
-     *
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::buildClauses
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::buildOrderByClause
-     */
-    public function testBuildingQueryWithUndefinedOrder()
+    #[\PHPUnit\Framework\Attributes\TestDox('Check that the query is being build without providing any order statements')]
+    public function testBuildingQueryWithUndefinedOrder(): void
     {
         $this->callProtectedMethod('buildClauses', [$this->qb, []]);
         $this->assertSame('SELECT e', (string) $this->qb);
     }
 
-    /**
-     * @testdox Check that providing orderBy and orderByDir builds the query correctly
-     *
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::buildClauses
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::buildOrderByClause
-     */
-    public function testBuildingQueryWithBasicOrder()
+    #[\PHPUnit\Framework\Attributes\TestDox('Check that providing orderBy and orderByDir builds the query correctly')]
+    public function testBuildingQueryWithBasicOrder(): void
     {
         $args = [
             'orderBy'    => 'e.someCol',
@@ -74,14 +74,8 @@ class CommonRepositoryTest extends \PHPUnit\Framework\TestCase
         $this->assertSame('SELECT e ORDER BY e.someCol DESC', (string) $this->qb);
     }
 
-    /**
-     * @testdox Check that array of ORDER statements is correct
-     *
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::buildClauses
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::buildOrderByClause
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::buildOrderByClauseFromArray
-     */
-    public function testBuildingQueryWithOrderArray()
+    #[\PHPUnit\Framework\Attributes\TestDox('Check that array of ORDER statements is correct')]
+    public function testBuildingQueryWithOrderArray(): void
     {
         $args = [
             'filter' => [
@@ -97,12 +91,8 @@ class CommonRepositoryTest extends \PHPUnit\Framework\TestCase
         $this->assertSame('SELECT e ORDER BY e.someCol DESC', (string) $this->qb);
     }
 
-    /**
-     * @testdox Check that order by validation will allow dots in the column name
-     *
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::validateOrderByClause
-     */
-    public function testValidateOrderByClauseWithColContainingAliasWillNotRemoveTheDot()
+    #[\PHPUnit\Framework\Attributes\TestDox('Check that order by validation will allow dots in the column name')]
+    public function testValidateOrderByClauseWithColContainingAliasWillNotRemoveTheDot(): void
     {
         $provided = [
             'col' => 'e.someCol',
@@ -118,12 +108,8 @@ class CommonRepositoryTest extends \PHPUnit\Framework\TestCase
         $this->assertSame($expected, $result);
     }
 
-    /**
-     * @testdox Check that order validation will remove funky characters that can be used in an attack
-     *
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::validateOrderByClause
-     */
-    public function testValidateOrderByClauseWillRemoveFunkyChars()
+    #[\PHPUnit\Framework\Attributes\TestDox('Check that order validation will remove funky characters that can be used in an attack')]
+    public function testValidateOrderByClauseWillRemoveFunkyChars(): void
     {
         $provided = [
             'col' => '" DELETE * FROM users',
@@ -138,31 +124,235 @@ class CommonRepositoryTest extends \PHPUnit\Framework\TestCase
         $this->assertSame($expected, $result);
     }
 
-    /**
-     * @testdox Check that order validation will throw an exception if column name is missing
-     *
-     * @covers  \Mautic\CoreBundle\Entity\CommonRepository::validateOrderByClause
-     */
-    public function testValidateOrderByClauseWithMissingCol()
+    #[\PHPUnit\Framework\Attributes\TestDox('Check that order validation will throw an exception if column name is missing')]
+    public function testValidateOrderByClauseWithMissingCol(): void
     {
         $this->expectException(\InvalidArgumentException::class);
         $this->callProtectedMethod('validateOrderByClause', [[]]);
     }
 
     /**
+     * Copy of.
+     *
+     * @see \Mautic\LeadBundle\Tests\Segment\RandomParameterNameTest::testGenerateRandomParameterName
+     */
+    public function testGenerateRandomParameterName(): void
+    {
+        $expectedValues = [
+            'par0',
+            'par1',
+            'par2',
+            'par3',
+            'par4',
+            'par5',
+            'par6',
+            'par7',
+            'par8',
+            'par9',
+            'para',
+            'parb',
+            'parc',
+            'pard',
+            'pare',
+            'parf',
+            'parg',
+            'parh',
+            'pari',
+            'parj',
+            'park',
+            'parl',
+            'parm',
+            'parn',
+            'paro',
+            'parp',
+            'parq',
+            'parr',
+            'pars',
+            'part',
+            'paru',
+            'parv',
+            'parw',
+            'parx',
+            'pary',
+            'parz',
+            'par10',
+            'par11',
+        ];
+
+        foreach ($expectedValues as $expectedValue) {
+            self::assertSame($expectedValue, $this->repo->generateRandomParameterName());
+        }
+    }
+
+    /**
      * Calls a protected method from CommonRepository with provided argumetns.
      *
-     * @param string $method name
-     * @param array  $args   added to the method
+     * @param array<int, mixed> $args
      *
-     * @return mixed result of the method
+     * @throws \ReflectionException
      */
-    private function callProtectedMethod($method, $args)
+    private function callProtectedMethod(string $method, array $args): mixed
     {
         $reflection = new \ReflectionClass(CommonRepository::class);
-        $method     = $reflection->getMethod($method);
-        $method->setAccessible(true);
+        $methodRef  = $reflection->getMethod($method);
 
-        return $method->invokeArgs($this->repo, $args);
+        return $methodRef->invokeArgs($this->repo, $args);
+    }
+
+    public function testArgumentCSVArray(): void
+    {
+        $qb   = new \Doctrine\DBAL\Query\QueryBuilder($this->connectionMock);
+        $args = [
+            [
+                'col'   => 'l.user_id',
+                'expr'  => 'in',
+                'val'   => '"1","2","3","4"',
+            ],
+        ];
+        $matchArgs = explode(',', $args[0]['val']);
+        array_walk($matchArgs, function (&$element): void { $element = trim($element, '"'); });
+
+        $this->callBuildWhereClauseFromArray($qb, $args);
+
+        $this->assertStringStartsWith('l.user_id IN (', (string) $qb->getQueryPart('where'));
+        $parameters = $qb->getParameters();
+        $this->assertEquals($matchArgs, array_shift($parameters));
+
+        $qb   = new \Doctrine\DBAL\Query\QueryBuilder($this->connectionMock);
+        $args = [
+            [
+                'col'   => 'l.user_id',
+                'expr'  => 'notIn',
+                'val'   => '"1","2","3","4"',
+            ],
+        ];
+        $matchArgs = explode(',', $args[0]['val']);
+        array_walk($matchArgs, function (&$element): void { $element = trim($element, '"'); });
+
+        $this->callBuildWhereClauseFromArray($qb, $args);
+
+        $this->assertStringStartsWith('l.user_id NOT IN (', (string) $qb->getQueryPart('where'));
+        $parameters = $qb->getParameters();
+        $this->assertEquals($matchArgs, array_shift($parameters));
+    }
+
+    public function testNoEnquotedArgumentCSVArray(): void
+    {
+        $qb   = new \Doctrine\DBAL\Query\QueryBuilder($this->connectionMock);
+        $args = [
+            [
+                'col'   => 'l.user_id',
+                'expr'  => 'in',
+                'val'   => '1,2,3,4',
+            ],
+        ];
+        $matchArgs = explode(',', $args[0]['val']);
+        array_walk($matchArgs, function (&$element): void { $element = trim($element, '"'); });
+
+        $this->callBuildWhereClauseFromArray($qb, $args);
+
+        $this->assertStringStartsWith('l.user_id IN (', (string) $qb->getQueryPart('where'));
+
+        $parameters = $qb->getParameters();
+        $this->assertEquals($matchArgs, array_shift($parameters));
+
+        $qb   = new \Doctrine\DBAL\Query\QueryBuilder($this->connectionMock);
+        $args = [
+            [
+                'col'   => 'l.user_id',
+                'expr'  => 'notIn',
+                'val'   => '1,2,3,4',
+            ],
+        ];
+        $matchArgs = explode(',', $args[0]['val']);
+        array_walk($matchArgs, function (&$element): void { $element = trim($element, '"'); });
+
+        $this->callBuildWhereClauseFromArray($qb, $args);
+
+        $this->assertStringStartsWith('l.user_id NOT IN (', (string) $qb->getQueryPart('where'));
+
+        $parameters = $qb->getParameters();
+        $this->assertEquals($matchArgs, array_shift($parameters));
+    }
+
+    public function testNoEnquotedStringArgumentCSVArray(): void
+    {
+        $qb   = new \Doctrine\DBAL\Query\QueryBuilder($this->connectionMock);
+        $args = [
+            [
+                'col'   => 'l.firstname',
+                'expr'  => 'in',
+                'val'   => 'jan,alan,don,john',
+            ],
+        ];
+        $matchArgs = explode(',', $args[0]['val']);
+        array_walk($matchArgs, function (&$element): void { $element = trim($element, '"'); });
+
+        $this->callBuildWhereClauseFromArray($qb, $args);
+
+        $this->assertStringStartsWith($args[0]['col'].' IN (', (string) $qb->getQueryPart('where'));
+
+        $parameters = $qb->getParameters();
+        $this->assertEquals($matchArgs, array_shift($parameters));
+
+        $qb   = new \Doctrine\DBAL\Query\QueryBuilder($this->connectionMock);
+        $args = [
+            [
+                'col'   => 'l.firstname',
+                'expr'  => 'notIn',
+                'val'   => 'jan,alan,don,john',
+            ],
+        ];
+        $matchArgs = explode(',', $args[0]['val']);
+        array_walk($matchArgs, function (&$element): void { $element = trim($element, '"'); });
+
+        $this->callBuildWhereClauseFromArray($qb, $args);
+
+        $this->assertStringStartsWith($args[0]['col'].' NOT IN (', (string) $qb->getQueryPart('where'));
+
+        $parameters = $qb->getParameters();
+        $this->assertEquals($matchArgs, array_shift($parameters));
+    }
+
+    public function testStringArgumentInterpretedAsSingleValueEnquoted(): void
+    {
+        $qb   = new \Doctrine\DBAL\Query\QueryBuilder($this->connectionMock);
+        $args = [
+            [
+                'col'   => 'l.firstname',
+                'expr'  => 'in',
+                'val'   => '"jan,alan,don,john"',
+            ],
+        ];
+
+        $this->callBuildWhereClauseFromArray($qb, $args);
+
+        $this->assertStringStartsWith($args[0]['col'].' = ', (string) $qb->getQueryPart('where'));
+        $parameters = $qb->getParameters();
+        $this->assertEquals(trim($args[0]['val'], '"'), array_shift($parameters));
+
+        $qb   = new \Doctrine\DBAL\Query\QueryBuilder($this->connectionMock);
+        $args = [
+            [
+                'col'   => 'l.firstname',
+                'expr'  => 'notIn',
+                'val'   => '"jan,alan,don,john"',
+            ],
+        ];
+
+        $this->callBuildWhereClauseFromArray($qb, $args);
+
+        $this->assertStringStartsWith($args[0]['col'].' <> ', (string) $qb->getQueryPart('where'));
+        $parameters = $qb->getParameters();
+        $this->assertEquals(trim($args[0]['val'], '"'), array_shift($parameters));
+    }
+
+    /** @param array<int, mixed> $args */
+    private function callBuildWhereClauseFromArray(\Doctrine\DBAL\Query\QueryBuilder $qb, array $args): mixed
+    {
+        $reflection = new \ReflectionClass(CommonRepository::class);
+        $method     = $reflection->getMethod('buildWhereClauseFromArray');
+
+        return $method->invokeArgs($this->repo, [$qb, $args]);
     }
 }

@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Model;
 
 use Mautic\CoreBundle\Translation\Translator;
@@ -16,37 +7,28 @@ use Mautic\FormBundle\Entity\Field;
 use Mautic\LeadBundle\Model\CompanyReportData;
 use Mautic\LeadBundle\Model\FieldModel;
 use Mautic\ReportBundle\Event\ReportGeneratorEvent;
-use Symfony\Component\Translation\TranslatorInterface;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(CompanyReportData::class)]
 class CompanyReportDataTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var TranslatorInterface
+     * @var \PHPUnit\Framework\MockObject\MockObject&Translator
      */
-    private $translator;
+    private \PHPUnit\Framework\MockObject\MockObject $translator;
 
     protected function setUp(): void
     {
-        $this->translator = $this->getMockBuilder(Translator::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $this->translator = $this->createMock(Translator::class);
 
         $this->translator->method('trans')
             ->willReturnCallback(
-                function ($key) {
-                    return $key;
-                }
+                fn ($key) => $key
             );
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Model\CompanyReportData::getCompanyData
-     */
-    public function testGetCompanyData()
+    public function testGetCompanyData(): void
     {
-        $fieldModelMock = $this->getMockBuilder(FieldModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $fieldModelMock = $this->createMock(FieldModel::class);
 
         $field1 = new Field();
         $field1->setType('boolean');
@@ -99,18 +81,11 @@ class CompanyReportDataTest extends \PHPUnit\Framework\TestCase
         $this->assertSame($expected, $result);
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Model\CompanyReportData::eventHasCompanyColumns
-     */
-    public function testEventHasCompanyColumns()
+    public function testEventHasCompanyColumns(): void
     {
-        $fieldModelMock = $this->getMockBuilder(FieldModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $fieldModelMock = $this->createMock(FieldModel::class);
 
-        $eventMock = $this->getMockBuilder(ReportGeneratorEvent::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $eventMock = $this->createMock(ReportGeneratorEvent::class);
 
         $field = new Field();
         $field->setType('email');
@@ -133,18 +108,11 @@ class CompanyReportDataTest extends \PHPUnit\Framework\TestCase
         $this->assertTrue($result);
     }
 
-    /**
-     * @covers \Mautic\LeadBundle\Model\CompanyReportData::eventHasCompanyColumns
-     */
-    public function testEventDoesNotHaveCompanyColumns()
+    public function testEventDoesNotHaveCompanyColumns(): void
     {
-        $fieldModelMock = $this->getMockBuilder(FieldModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $fieldModelMock = $this->createMock(FieldModel::class);
 
-        $eventMock = $this->getMockBuilder(ReportGeneratorEvent::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $eventMock = $this->createMock(ReportGeneratorEvent::class);
 
         $field = new Field();
         $field->setType('email');

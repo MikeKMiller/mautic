@@ -1,68 +1,49 @@
 <?php
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\CoreBundle\Tests\Unit\Factory;
 
-use Mautic\CoreBundle\Exception\BadConfigurationException;
 use Mautic\CoreBundle\Factory\TransifexFactory;
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\Transifex\Connector\Resources;
+use Mautic\Transifex\Exception\MissingCredentialsException;
+use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Http\Client\ClientInterface;
 
 class TransifexFactoryTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var ClientInterface|MockObject
+     * @var MockObject&CoreParametersHelper
      */
-    private $client;
+    private MockObject $coreParametersHelper;
 
-    /**
-     * @var CoreParametersHelper|MockObject
-     */
-    private $coreParametersHelper;
-
-    /**
-     * @var TransifexFactory
-     */
-    private $transifexFactory;
+    private TransifexFactory $transifexFactory;
 
     protected function setUp(): void
     {
-        $this->client               = $this->createMock(ClientInterface::class);
+        $client                     = $this->createMock(ClientInterface::class);
         $this->coreParametersHelper = $this->createMock(CoreParametersHelper::class);
-        $this->transifexFactory     = new TransifexFactory($this->client, $this->coreParametersHelper);
+        $this->transifexFactory     = new TransifexFactory($client, $this->coreParametersHelper);
     }
 
-    public function testCreatingTransifexWithoutCredentials()
+    public function testCreatingTransifexWithoutCredentials(): void
     {
-        $this->expectException(BadConfigurationException::class);
+        $this->expectException(MissingCredentialsException::class);
         $this->transifexFactory->getTransifex();
     }
 
-    public function testCreatingTransifexWithCredentials()
+    public function testCreatingTransifexWithCredentials(): void
     {
-        $this->coreParametersHelper->expects($this->exactly(2))
+        $this->coreParametersHelper->expects($this->once())
             ->method('get')
-            ->withConsecutive(
-                ['transifex_username'],
-                ['transifex_password']
-            )
-            ->willReturnOnConsecutiveCalls(
-                'the_username',
-                'the_password'
-            );
+            ->with('transifex_api_token')
+            ->willReturn('the_api_key');
 
         $transifex = $this->transifexFactory->getTransifex();
 
-        $this->assertSame('the_username', $transifex->getOption('api.username'));
-        $this->assertSame('the_password', $transifex->getOption('api.password'));
+        // Getting a connector validates the config, so this should throw an exception.
+        Assert::assertTrue($transifex->getConnector(Resources::class) instanceof Resources);
     }
 }

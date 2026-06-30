@@ -1,20 +1,13 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\AssetBundle\EventListener;
 
 use Mautic\AssetBundle\Entity\DownloadRepository;
 use Mautic\CoreBundle\Helper\Chart\LineChart;
 use Mautic\LeadBundle\Model\CompanyReportData;
+use Mautic\LeadBundle\Report\DncReportService;
 use Mautic\ReportBundle\Event\ReportBuilderEvent;
+use Mautic\ReportBundle\Event\ReportDataEvent;
 use Mautic\ReportBundle\Event\ReportGeneratorEvent;
 use Mautic\ReportBundle\Event\ReportGraphEvent;
 use Mautic\ReportBundle\ReportEvents;
@@ -22,41 +15,31 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class ReportSubscriber implements EventSubscriberInterface
 {
-    const CONTEXT_ASSET          = 'assets';
-    const CONTEXT_ASSET_DOWNLOAD = 'asset.downloads';
+    public const CONTEXT_ASSET          = 'assets';
 
-    /**
-     * @var CompanyReportData
-     */
-    private $companyReportData;
+    public const CONTEXT_ASSET_DOWNLOAD = 'asset.downloads';
 
-    /**
-     * @var DownloadRepository
-     */
-    private $downloadRepository;
-
-    public function __construct(CompanyReportData $companyReportData, DownloadRepository $downloadRepository)
-    {
-        $this->companyReportData  = $companyReportData;
-        $this->downloadRepository = $downloadRepository;
+    public function __construct(
+        private readonly CompanyReportData $companyReportData,
+        private readonly DownloadRepository $downloadRepository,
+        private readonly DncReportService $dncReportService,
+    ) {
     }
 
-    /**
-     * @return array
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             ReportEvents::REPORT_ON_BUILD          => ['onReportBuilder', 0],
             ReportEvents::REPORT_ON_GENERATE       => ['onReportGenerate', 0],
             ReportEvents::REPORT_ON_GRAPH_GENERATE => ['onReportGraphGenerate', 0],
+            ReportEvents::REPORT_ON_DISPLAY        => ['onReportDisplay', 0],
         ];
     }
 
     /**
      * Add available tables and columns to the report builder lookup.
      */
-    public function onReportBuilder(ReportBuilderEvent $event)
+    public function onReportBuilder(ReportBuilderEvent $event): void
     {
         if (!$event->checkContext([self::CONTEXT_ASSET, self::CONTEXT_ASSET_DOWNLOAD])) {
             return;
@@ -66,10 +49,12 @@ class ReportSubscriber implements EventSubscriberInterface
         $prefix  = 'a.';
         $columns = [
             $prefix.'download_count' => [
+                'alias' => 'download_count',
                 'label' => 'mautic.asset.report.download_count',
                 'type'  => 'int',
             ],
             $prefix.'unique_download_count' => [
+                'alias' => 'unique_download_count',
                 'label' => 'mautic.asset.report.unique_download_count',
                 'type'  => 'int',
             ],
@@ -102,6 +87,10 @@ class ReportSubscriber implements EventSubscriberInterface
         );
 
         if ($event->checkContext([self::CONTEXT_ASSET_DOWNLOAD])) {
+            // asset downloads calculate this columns
+            $columns[$prefix.'download_count']['formula']        = 'COUNT(ad.id)';
+            $columns[$prefix.'unique_download_count']['formula'] = 'COUNT(DISTINCT ad.lead_id)';
+
             // Downloads
             $downloadPrefix  = 'ad.';
             $downloadColumns = [
@@ -126,22 +115,47 @@ class ReportSubscriber implements EventSubscriberInterface
                     'label' => 'mautic.report.field.source_id',
                     'type'  => 'int',
                 ],
+                $downloadPrefix.'utm_campaign' => [
+                    'label' => 'mautic.report.field.utm_campaign',
+                    'type'  => 'string',
+                ],
+                $downloadPrefix.'utm_content' => [
+                    'label' => 'mautic.report.field.utm_content',
+                    'type'  => 'string',
+                ],
+                $downloadPrefix.'utm_medium' => [
+                    'label' => 'mautic.report.field.utm_medium',
+                    'type'  => 'string',
+                ],
+                $downloadPrefix.'utm_source' => [
+                    'label' => 'mautic.report.field.utm_source',
+                    'type'  => 'string',
+                ],
+                $downloadPrefix.'utm_term' => [
+                    'label' => 'mautic.report.field.utm_term',
+                    'type'  => 'string',
+                ],
             ];
 
-            $companyColumns = $this->companyReportData->getCompanyData();
+            $companyColumns          = $this->companyReportData->getCompanyData();
+            $commonColumnsAndFilters = array_merge(
+                $columns,
+                $downloadColumns,
+                $event->getCampaignByChannelColumns(),
+                $event->getLeadColumns(),
+                $event->getIpColumn(),
+                $companyColumns
+            );
+
+            $assetDownloadColumns = array_merge($commonColumnsAndFilters, $this->dncReportService->getDncColumns());
+            $assetDownloadFilters = array_merge($commonColumnsAndFilters, $this->dncReportService->getDncFilters());
 
             $event->addTable(
                 self::CONTEXT_ASSET_DOWNLOAD,
                 [
                     'display_name' => 'mautic.asset.report.downloads.table',
-                    'columns'      => array_merge(
-                        $columns,
-                        $downloadColumns,
-                        $event->getCampaignByChannelColumns(),
-                        $event->getLeadColumns(),
-                        $event->getIpColumn(),
-                        $companyColumns
-                    ),
+                    'columns'      => $assetDownloadColumns,
+                    'filters'      => $assetDownloadFilters,
                 ],
                 self::CONTEXT_ASSET
             );
@@ -158,7 +172,7 @@ class ReportSubscriber implements EventSubscriberInterface
     /**
      * Initialize the QueryBuilder object to generate reports from.
      */
-    public function onReportGenerate(ReportGeneratorEvent $event)
+    public function onReportGenerate(ReportGeneratorEvent $event): void
     {
         if (!$event->checkContext([self::CONTEXT_ASSET, self::CONTEXT_ASSET_DOWNLOAD])) {
             return;
@@ -182,6 +196,10 @@ class ReportSubscriber implements EventSubscriberInterface
             if ($this->companyReportData->eventHasCompanyColumns($event)) {
                 $event->addCompanyLeftJoin($queryBuilder);
             }
+
+            if (!$event->hasGroupBy()) {
+                $queryBuilder->groupBy('ad.id');
+            }
         }
 
         $event->setQueryBuilder($queryBuilder);
@@ -190,7 +208,7 @@ class ReportSubscriber implements EventSubscriberInterface
     /**
      * Initialize the QueryBuilder object to generate reports from.
      */
-    public function onReportGraphGenerate(ReportGraphEvent $event)
+    public function onReportGraphGenerate(ReportGraphEvent $event): void
     {
         // Context check, we only want to fire for Lead reports
         if (!$event->checkContext(self::CONTEXT_ASSET_DOWNLOAD)) {
@@ -224,7 +242,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-download';
+                    $graphData['iconClass'] = 'ri-download-line';
                     $graphData['link']      = 'mautic_asset_action';
                     $event->setGraph($g, $graphData);
                     break;
@@ -235,7 +253,7 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-download';
+                    $graphData['iconClass'] = 'ri-download-line';
                     $graphData['link']      = 'mautic_asset_action';
                     $event->setGraph($g, $graphData);
                     break;
@@ -244,12 +262,24 @@ class ReportSubscriber implements EventSubscriberInterface
                     $graphData              = [];
                     $graphData['data']      = $items;
                     $graphData['name']      = $g;
-                    $graphData['iconClass'] = 'fa-globe';
+                    $graphData['iconClass'] = 'ri-earth-line';
                     $event->setGraph($g, $graphData);
                     break;
             }
 
             unset($queryBuilder);
         }
+    }
+
+    public function onReportDisplay(ReportDataEvent $event): void
+    {
+        $data = $event->getData();
+
+        if ($event->checkContext([self::CONTEXT_ASSET_DOWNLOAD])) {
+            $data = $this->dncReportService->processDncStatusDisplay($data);
+        }
+
+        $event->setData($data);
+        unset($data);
     }
 }

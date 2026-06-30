@@ -1,47 +1,39 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PluginBundle\Command;
 
 use Mautic\PluginBundle\Helper\IntegrationHelper;
-use Mautic\PluginBundle\Integration\AbstractIntegration;
-use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-/**
- * Class PushLeadActivityCommand.
- */
-class PushLeadActivityCommand extends ContainerAwareCommand
+#[AsCommand(
+    name: 'mautic:integration:pushleadactivity',
+    description: 'Push lead activity to integration.',
+    aliases: [
+        'mautic:integration:pushactivity',
+    ]
+)]
+class PushLeadActivityCommand extends Command
 {
-    /**
-     * {@inheritdoc}
-     */
+    public function __construct(
+        private readonly TranslatorInterface $translator,
+        private readonly IntegrationHelper $integrationHelper,
+    ) {
+        parent::__construct();
+    }
+
     protected function configure()
     {
         $this
-            ->setName('mautic:integration:pushleadactivity')
-            ->setAliases(
-                [
-                    'mautic:integration:pushactivity',
-                ]
-            )
-            ->setDescription('Push lead activity to integration.')
             ->addOption(
                 '--integration',
                 '-i',
                 InputOption::VALUE_REQUIRED,
-                'Integration name. Integration must be enabled and authorised.',
-                null
+                'Integration name. Integration must be enabled and authorised.'
             )
             ->addOption('--start-date', '-d', InputOption::VALUE_REQUIRED, 'Set start date for updated values.')
             ->addOption(
@@ -61,14 +53,8 @@ class PushLeadActivityCommand extends ContainerAwareCommand
         parent::configure();
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $container = $this->getContainer();
-
-        $translator  = $container->get('translator');
         $integration = $input->getOption('integration');
         $startDate   = $input->getOption('start-date');
         $endDate     = $input->getOption('end-date');
@@ -85,25 +71,21 @@ class PushLeadActivityCommand extends ContainerAwareCommand
             $endDate = date('c');
         }
 
-        if ($integration && $startDate && $endDate) {
-            /** @var IntegrationHelper $integrationHelper */
-            $integrationHelper = $container->get('mautic.helper.integration');
-
-            /** @var AbstractIntegration $integrationObject */
-            $integrationObject = $integrationHelper->getIntegrationObject($integration);
+        if ($integration) {
+            $integrationObject = $this->integrationHelper->getIntegrationObject($integration);
 
             if (null !== $integrationObject && method_exists($integrationObject, 'pushLeadActivity')) {
-                $output->writeln('<info>'.$translator->trans('mautic.plugin.command.push.leads.activity', ['%integration%' => $integration]).'</info>');
+                $output->writeln('<info>'.$this->translator->trans('mautic.plugin.command.push.leads.activity', ['%integration%' => $integration]).'</info>');
 
                 $params['start'] = $startDate;
                 $params['end']   = $endDate;
 
                 $processed = intval($integrationObject->pushLeadActivity($params));
 
-                $output->writeln('<comment>'.$translator->trans('mautic.plugin.command.push.leads.events_executed', ['%events%' => $processed]).'</comment>'."\n");
+                $output->writeln('<comment>'.$this->translator->trans('mautic.plugin.command.push.leads.events_executed', ['%events%' => $processed]).'</comment>'."\n");
             }
         }
 
-        return 0;
+        return Command::SUCCESS;
     }
 }

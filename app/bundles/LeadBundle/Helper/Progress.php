@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2015 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Helper;
 
 use Mautic\CoreBundle\Helper\ProgressBarHelper;
@@ -32,18 +23,13 @@ class Progress
     protected $done = 0;
 
     /**
-     * @var OutputInterface|null
-     */
-    protected $output;
-
-    /**
      * @var ProgressBar|null
      */
     protected $bar;
 
-    public function __construct(OutputInterface $output = null)
-    {
-        $this->output = $output;
+    public function __construct(
+        protected ?OutputInterface $output = null,
+    ) {
     }
 
     /**
@@ -60,10 +46,8 @@ class Progress
      * Set total value.
      *
      * @param int $total
-     *
-     * @return Progress
      */
-    public function setTotal($total)
+    public function setTotal($total): static
     {
         $this->total = (int) $total;
 
@@ -87,10 +71,8 @@ class Progress
 
     /**
      * Set total value.
-     *
-     * @return Progress
      */
-    public function setDone($done)
+    public function setDone($done): static
     {
         $this->done = (int) $done;
 
@@ -108,10 +90,8 @@ class Progress
 
     /**
      * Increase done count by 1.
-     *
-     * @return Progress
      */
-    public function increase()
+    public function increase(): static
     {
         $this->setDone($this->done + 1);
 
@@ -120,20 +100,16 @@ class Progress
 
     /**
      * Checked if the progress is 100 or more %.
-     *
-     * @return bool
      */
-    public function isFinished()
+    public function isFinished(): bool
     {
         return $this->done >= $this->total;
     }
 
     /**
      * Bind Progress from simple array.
-     *
-     * @return Progress
      */
-    public function bindArray(array $progress)
+    public function bindArray(array $progress): static
     {
         if (isset($progress[0])) {
             $this->setDone($progress[0]);
@@ -148,10 +124,8 @@ class Progress
 
     /**
      * Convert this object to a simple array.
-     *
-     * @return array
      */
-    public function toArray()
+    public function toArray(): array
     {
         return [
             $this->done,

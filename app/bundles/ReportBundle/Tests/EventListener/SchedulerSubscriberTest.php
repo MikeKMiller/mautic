@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ReportBundle\Tests\EventListener;
 
 use Mautic\ReportBundle\Entity\Report;
@@ -19,11 +10,9 @@ use Mautic\ReportBundle\Scheduler\Model\SendSchedule;
 
 class SchedulerSubscriberTest extends \PHPUnit\Framework\TestCase
 {
-    public function testNoEmailsProvided()
+    public function testNoEmailsProvided(): void
     {
-        $sendScheduleMock = $this->getMockBuilder(SendSchedule::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $sendScheduleMock = $this->createMock(SendSchedule::class);
 
         $schedulerSubscriber = new SchedulerSubscriber($sendScheduleMock);
 

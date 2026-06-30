@@ -1,52 +1,42 @@
 <?php
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+
+declare(strict_types=1);
 
 namespace Mautic\SmsBundle\Tests\Sms;
 
-use Exception;
 use Mautic\CoreBundle\Test\MauticMysqlTestCase;
 use Mautic\LeadBundle\Entity\Lead;
+use Mautic\SmsBundle\Collection\RecipientCollection;
+use Mautic\SmsBundle\Entity\Sms;
+use Mautic\SmsBundle\Helper\DTO\SmsRecipientDTO;
 use Mautic\SmsBundle\Integration\Twilio\TwilioTransport;
+use Mautic\SmsBundle\Sms\BulkTransportInterface;
+use Mautic\SmsBundle\Sms\MMSTransportInterface;
 use Mautic\SmsBundle\Sms\TransportChain;
 use Mautic\SmsBundle\Sms\TransportInterface;
 use PHPUnit\Framework\MockObject\MockObject;
-use ReflectionClass;
 
-class TransportChainTest extends MauticMysqlTestCase
+final class TransportChainTest extends MauticMysqlTestCase
 {
-    /**
-     * @var TransportChain|MockObject
-     */
-    private $transportChain;
+    private TransportChain $transportChain;
 
-    /**
-     * @var TransportInterface|MockObject
-     */
-    private $twilioTransport;
+    private MockObject&TransportInterface $twilioTransport;
 
     /**
      * Call protected/private method of a class.
      *
-     * @param object &$object    Instantiated object that we will run method on
-     * @param string $methodName Method name to call
-     * @param array  $parameters array of parameters to pass into method
-     *
-     * @throws \ReflectionException
+     * @param object            $object     Instantiated object that we will run method on
+     * @param string            $methodName Method name to call
+     * @param array<int, mixed> $parameters array of parameters to pass into method
      *
      * @return mixed method return
+     *
+     * @throws \ReflectionException
      */
-    public function invokeMethod(&$object, $methodName, array $parameters = [])
+    public function invokeMethod(object $object, string $methodName, array $parameters = []): mixed
     {
-        $reflection = new ReflectionClass(get_class($object));
+        $reflection = new \ReflectionClass($object::class);
         $method     = $reflection->getMethod($methodName);
-        $method->setAccessible(true);
 
         return $method->invokeArgs($object, $parameters);
     }
@@ -57,26 +47,26 @@ class TransportChainTest extends MauticMysqlTestCase
 
         $this->transportChain = new TransportChain(
             'mautic.test.twilio.mock',
-            $this->container->get('mautic.helper.integration')
+            static::getContainer()->get('mautic.helper.integration')
         );
 
         $this->twilioTransport = $this->createMock(TwilioTransport::class);
 
         $this->twilioTransport
             ->method('sendSMS')
-            ->will($this->returnValue('lol'));
+            ->willReturn('lol');
     }
 
-    public function testAddTransport()
+    public function testAddTransport(): void
     {
         $count = count($this->transportChain->getTransports());
 
-        $this->transportChain->addTransport('mautic.transport.test', $this->container->get('mautic.sms.twilio.transport'), 'mautic.transport.test', 'Twilio');
+        $this->transportChain->addTransport('mautic.transport.test', static::getContainer()->get('mautic.sms.twilio.transport'), 'mautic.transport.test', 'Twilio');
 
         $this->assertCount($count + 1, $this->transportChain->getTransports());
     }
 
-    public function testSendSms()
+    public function testSendSms(): void
     {
         $this->testAddTransport();
 
@@ -87,9 +77,86 @@ class TransportChainTest extends MauticMysqlTestCase
 
         try {
             $this->transportChain->sendSms($lead, 'Yeah');
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             $message = $e->getMessage();
-            $this->assertEquals('Primary SMS transport is not enabled', $message);
+            $this->assertSame('Primary SMS transport is not enabled', $message);
         }
+    }
+
+    public function testSendBatchSms(): void
+    {
+        $bulkSmsTransport = new class implements BulkTransportInterface {
+            public function sendBatchSms(RecipientCollection $collection, string $content): RecipientCollection
+            {
+                foreach ($collection as &$recipient) {
+                    $recipient->setResult(true);
+                }
+
+                return $collection;
+            }
+
+            public function sendSms(Lead $lead, $content): bool
+            {
+                return true;
+            }
+        };
+        $this->createDataAndAssertSendMessage($bulkSmsTransport);
+    }
+
+    public function testSendMessage(): void
+    {
+        $mmsTransport = new class implements TransportInterface, MMSTransportInterface {
+            public function sendMms(Lead $lead, string $content, array $media): bool
+            {
+                return true;
+            }
+
+            public function sendSms(Lead $lead, $content): bool
+            {
+                return true;
+            }
+        };
+        $this->createDataAndAssertSendMessage($mmsTransport);
+    }
+
+    private function createDataAndAssertSendMessage(TransportInterface $transport): void
+    {
+        $transportChain = new class('mautic.test.bulktwilio.mock', self::getContainer()->get('mautic.helper.integration')) extends TransportChain {
+            public function getEnabledTransports(): array
+            {
+                $transports = $this->getTransports();
+
+                return array_map(fn ($v): TransportInterface => $v['service'], $transports);
+            }
+        };
+
+        $transportChain->addTransport('mautic.test.bulktwilio.mock', $transport, 'mautic.test.bulktwilio.mock', 'BulkTwilio');
+
+        $lead1 = new Lead();
+        $lead1->setMobile('+123456789');
+        $lead1->setId(1);
+
+        $lead2 = new Lead();
+        $lead2->setMobile('+123456790');
+        $lead2->setId(2);
+
+        $recipientCollection = new RecipientCollection(new Sms());
+        $recipientCollection->append(new SmsRecipientDTO($lead1, [], 'Yeah'));
+        $recipientCollection->append(new SmsRecipientDTO($lead2, [], 'Yeah'));
+
+        if ($transport instanceof MMSTransportInterface) {
+            $recipientCollection = $transportChain->sendMMS($recipientCollection, ['test.png']);
+        } elseif ($transport instanceof BulkTransportInterface) {
+            $recipientCollection = $transportChain->sendBatchSms($recipientCollection, 'Yeah');
+        }
+
+        $sentCount = 0;
+        foreach ($recipientCollection as $recipient) {
+            if ($recipient->getResult()) {
+                ++$sentCount;
+            }
+        }
+
+        self::assertSame(2, $sentCount);
     }
 }

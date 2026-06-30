@@ -1,81 +1,62 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Event;
 
 use Mautic\LeadBundle\Entity\Company;
 use Mautic\LeadBundle\Entity\Lead;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
-/**
- * Class LeadCompanyChangeEvent.
- */
 class LeadChangeCompanyEvent extends Event
 {
-    private $lead;
-    private $leads;
-    private $company;
-    private $added;
+    private ?Lead $lead = null;
 
-    public function __construct($leads, Company $company, $added = true)
-    {
+    /**
+     * @var Lead[]|null
+     */
+    private ?array $leads = null;
+
+    /**
+     * @param Lead|Lead[] $leads
+     */
+    public function __construct(
+        Lead|array $leads,
+        private readonly Company $company,
+        private readonly bool $added = true,
+    ) {
         if (is_array($leads)) {
             $this->leads = $leads;
         } else {
             $this->lead = $leads;
         }
-        $this->company = $company;
-        $this->added   = $added;
     }
 
     /**
      * Returns the Lead entity.
-     *
-     * @return Lead
      */
-    public function getLead()
+    public function getLead(): ?Lead
     {
         return $this->lead;
     }
 
     /**
      * Returns batch array of leads.
-     *
-     * @return array
      */
-    public function getLeads()
+    public function getLeads(): ?array
     {
         return $this->leads;
     }
 
-    /**
-     * @return Company/Company
-     */
-    public function getCompany()
+    public function getCompany(): Company
     {
         return $this->company;
     }
 
-    /**
-     * @return bool
-     */
-    public function wasAdded()
+    public function wasAdded(): bool
     {
         return $this->added;
     }
 
-    /**
-     * @return bool
-     */
-    public function wasRemoved()
+    public function wasRemoved(): bool
     {
         return !$this->added;
     }

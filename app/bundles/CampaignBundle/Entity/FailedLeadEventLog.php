@@ -1,23 +1,11 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * Class LeadEventLog.
- */
 class FailedLeadEventLog
 {
     /**
@@ -26,16 +14,16 @@ class FailedLeadEventLog
     private $log;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $reason;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
@@ -56,19 +44,17 @@ class FailedLeadEventLog
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('campaignEventFailedLog')
-                 ->addProperties(
-                     [
-                         'dateAdded',
-                         'reason',
-                     ]
-                 )
-                 ->build();
+            ->addProperties(
+                [
+                    'dateAdded',
+                    'reason',
+                ]
+            )
+            ->build();
     }
 
     /**
@@ -79,12 +65,7 @@ class FailedLeadEventLog
         return $this->log;
     }
 
-    /**
-     * @param LeadEventLog $log
-     *
-     * @return FailedLeadEventLog
-     */
-    public function setLog(LeadEventLog $log = null)
+    public function setLog(?LeadEventLog $log = null): static
     {
         $this->log = $log;
 
@@ -96,19 +77,14 @@ class FailedLeadEventLog
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateAdded()
     {
         return $this->dateAdded;
     }
 
-    /**
-     * @param \DateTime $dateAdded
-     *
-     * @return FailedLeadEventLog
-     */
-    public function setDateAdded(\DateTime $dateAdded = null)
+    public function setDateAdded(?\DateTime $dateAdded = null): static
     {
         if (null === $dateAdded) {
             $dateAdded = new \DateTime();
@@ -120,7 +96,7 @@ class FailedLeadEventLog
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getReason()
     {
@@ -129,10 +105,8 @@ class FailedLeadEventLog
 
     /**
      * @param string $reason
-     *
-     * @return FailedLeadEventLog
      */
-    public function setReason($reason)
+    public function setReason($reason): static
     {
         $this->reason = $reason;
 

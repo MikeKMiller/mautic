@@ -1,138 +1,202 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\FormBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
+use Mautic\CategoryBundle\Entity\Category;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\CoreBundle\Entity\FormEntity;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
 use Mautic\CoreBundle\Helper\InputHelper;
+use Mautic\FormBundle\Validator\Constraint\IsPostActionRedirectUrl;
+use Mautic\ProjectBundle\Entity\ProjectTrait;
+use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 
-/**
- * Class Form.
- */
-class Form extends FormEntity
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('form:forms:viewown')"),
+        new Post(security: "is_granted('form:forms:create')"),
+        new Get(security: "is_granted('form:forms:viewown', object)"),
+        new Put(security: "is_granted('form:forms:editown', object)"),
+        new Patch(security: "is_granted('form:forms:editother', object)"),
+        new Delete(security: "is_granted('form:forms:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['form:read'],
+        'swagger_definition_name' => 'Read',
+        'api_included'            => ['category', 'fields', 'actions'],
+    ],
+    denormalizationContext: [
+        'groups'                  => ['form:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Form extends FormEntity implements UuidInterface
 {
+    use UuidTrait;
+
+    use ProjectTrait;
+
+    public const ENTITY_NAME = 'forms';
+
+    public const TABLE_NAME  = 'forms';
+
     /**
      * @var int
      */
+    #[Groups(['form:read', 'download:read', 'campaign:read', 'email:read'])]
     private $id;
+
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
+    private ?string $language = null;
 
     /**
      * @var string
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $name;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $formAttributes;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $description;
 
     /**
      * @var string
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $alias;
 
     /**
-     * @var \Mautic\CategoryBundle\Entity\Category
+     * @var Category|null
      **/
+    #[Groups(['form:read', 'form:write', 'campaign:read', 'email:read'])]
     private $category;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['form:read', 'download:read', 'campaign:read', 'email:read'])]
     private $cachedHtml;
 
     /**
      * @var string
      */
-    private $postAction = 'return';
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
+    private $postAction = 'message';
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $postActionProperty;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $publishUp;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $publishDown;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int, Field>
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $fields;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<string, Action>
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $actions;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $template;
 
     /**
-     * @var bool
+     * @var bool|null
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $inKioskMode = false;
 
     /**
-     * @var bool
+     * @var bool|null
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $renderStyle = false;
 
     /**
-     * @ORM\OneToMany(targetEntity="Submission", mappedBy="form", fetch="EXTRA_LAZY")
-     * @ORM\OrderBy({"dateSubmitted" = "DESC"})
+     * @var Collection<int, Submission>
+     */
+    #[Groups(['form:read', 'download:read', 'campaign:read', 'email:read'])]
+    private Collection $submissions;
+
+    #[Groups(['form:read', 'download:read', 'campaign:read', 'email:read'])]
+    public int $submission_count = 0;
+
+    /**
+     * @var string|null
      *
-     * @var ArrayCollection
+     * @deprecated since Mautic 7.1, will be removed in 8.0. Form types are no longer used.
      */
-    private $submissions;
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
+    private $formType = 'standalone';
 
     /**
-     * @var int
+     * @var bool|null
      */
-    public $submissionCount;
-
-    /**
-     * @var string
-     */
-    private $formType;
-
-    /**
-     * @var bool
-     */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
     private $noIndex;
+
+    /**
+     * @var int|null
+     */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
+    private $progressiveProfilingLimit;
+
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
+    private ?int $submissionLimit = null;
+
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read', 'email:read'])]
+    private ?string $submissionLimitMessage = null;
+
+    private int $submissionCount = 0;
 
     /**
      * This var is used to cache the result once gained from the loop.
      *
      * @var bool
      */
+    #[Groups(['form:read', 'form:write', 'download:read', 'campaign:read'])]
     private $usesProgressiveProfiling;
 
     public function __clone()
@@ -142,26 +206,30 @@ class Form extends FormEntity
         parent::__clone();
     }
 
-    /**
-     * Construct.
-     */
     public function __construct()
     {
         $this->fields      = new ArrayCollection();
         $this->actions     = new ArrayCollection();
         $this->submissions = new ArrayCollection();
+        $this->noIndex     = true;
+        $this->initializeProjects();
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('forms')
-            ->setCustomRepositoryClass('Mautic\FormBundle\Entity\FormRepository');
+            ->setCustomRepositoryClass(FormRepository::class);
 
         $builder->addIdColumns();
 
         $builder->addField('alias', 'string');
+
+        $builder->createField('language', 'string')
+            ->columnName('lang')
+            ->nullable()
+            ->build();
 
         $builder->addNullableField('formAttributes', 'string', 'form_attr');
 
@@ -176,7 +244,7 @@ class Form extends FormEntity
             ->columnName('post_action')
             ->build();
 
-        $builder->createField('postActionProperty', 'string')
+        $builder->createField('postActionProperty', Types::TEXT)
             ->columnName('post_action_property')
             ->nullable()
             ->build();
@@ -185,7 +253,7 @@ class Form extends FormEntity
 
         $builder->createOneToMany('fields', 'Field')
             ->setIndexBy('id')
-            ->setOrderBy(['order' => 'ASC'])
+            ->setOrderBy(['order' => 'ASC', 'id' => 'ASC'])
             ->mappedBy('form')
             ->cascadeAll()
             ->fetchExtraLazy()
@@ -219,15 +287,29 @@ class Form extends FormEntity
             ->fetchExtraLazy()
             ->build();
 
+        $builder->addNullableField('submissionLimit', Types::INTEGER, 'submission_limit');
+        $builder->createField('submissionLimitMessage', Types::TEXT)
+            ->columnName('submission_limit_message')
+            ->nullable()
+            ->build();
+        $builder->createField('submissionCount', Types::INTEGER)
+            ->columnName('submission_count')
+            ->build();
+
         $builder->addNullableField('formType', 'string', 'form_type');
 
         $builder->createField('noIndex', 'boolean')
             ->columnName('no_index')
             ->nullable()
             ->build();
+
+        $builder->addNullableField('progressiveProfilingLimit', Types::INTEGER, 'progressive_profiling_limit');
+
+        static::addUuidField($builder);
+        self::addProjectsField($builder, 'form_projects_xref', 'form_id');
     }
 
-    public static function loadValidatorMetadata(ClassMetadata $metadata)
+    public static function loadValidatorMetadata(ClassMetadata $metadata): void
     {
         $metadata->addPropertyConstraint('name', new Assert\NotBlank([
             'message' => 'mautic.core.name.required',
@@ -244,20 +326,21 @@ class Form extends FormEntity
             'groups'  => ['urlRequired'],
         ]));
 
-        $metadata->addPropertyConstraint('postActionProperty', new Assert\Url([
-            'message' => 'mautic.form.form.postactionproperty_redirect.notblank',
-            'groups'  => ['urlRequiredPassTwo'],
+        $metadata->addPropertyConstraint('postActionProperty', new IsPostActionRedirectUrl(groups: ['urlRequired']));
+
+        $metadata->addPropertyConstraint('postActionProperty', new Assert\NotBlank([
+            'message' => 'mautic.form.form.postactionproperty_hideform.notblank',
+            'groups'  => ['hideformRequired'],
         ]));
 
-        $metadata->addPropertyConstraint('formType', new Assert\Choice([
-            'choices' => ['standalone', 'campaign'],
+        $metadata->addPropertyConstraint('progressiveProfilingLimit', new Assert\GreaterThan([
+            'value'   => 0,
+            'message' => 'mautic.form.form.progressive_profiling_limit.error',
+            'groups'  => ['progressiveProfilingLimit'],
         ]));
     }
 
-    /**
-     * @return array
-     */
-    public static function determineValidationGroups(\Symfony\Component\Form\Form $form)
+    public static function determineValidationGroups(\Symfony\Component\Form\Form $form): array
     {
         $data   = $form->getData();
         $groups = ['form'];
@@ -268,6 +351,12 @@ class Form extends FormEntity
             $groups[] = 'messageRequired';
         } elseif ('redirect' == $postAction) {
             $groups[] = 'urlRequired';
+        } elseif ('hideform' == $postAction) {
+            $groups[] = 'hideformRequired';
+        }
+
+        if ('' != $data->getProgressiveProfilingLimit()) {
+            $groups[] = 'progressiveProfilingLimit';
         }
 
         return $groups;
@@ -275,10 +364,8 @@ class Form extends FormEntity
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('form')
             ->addListProperties(
@@ -287,7 +374,7 @@ class Form extends FormEntity
                     'name',
                     'alias',
                     'category',
-                ]
+                ],
             )
             ->addProperties(
                 [
@@ -305,29 +392,26 @@ class Form extends FormEntity
                     'postActionProperty',
                     'noIndex',
                     'formAttributes',
-                ]
+                    'language',
+                ],
             )
             ->build();
+
+        self::addProjectsInLoadApiMetadata($metadata, 'form');
     }
 
-    /**
-     * @param $prop
-     * @param $val
-     */
     protected function isChanged($prop, $val)
     {
         if ('actions' == $prop || 'fields' == $prop) {
-            //changes are already computed so just add them
-            $this->changes[$prop][$val[0]] = $val[1];
+            // changes are already computed so just add them
+            $this->changes[$prop][$val[0] ?? ''] = $val[1];
         } else {
             parent::isChanged($prop, $val);
         }
     }
 
     /**
-     * Get id.
-     *
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
@@ -335,13 +419,9 @@ class Form extends FormEntity
     }
 
     /**
-     * Set name.
-     *
      * @param string $name
-     *
-     * @return Form
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->isChanged('name', $name);
         $this->name = $name;
@@ -350,9 +430,7 @@ class Form extends FormEntity
     }
 
     /**
-     * Get name.
-     *
-     * @return string
+     * @return string|null
      */
     public function getName()
     {
@@ -360,13 +438,9 @@ class Form extends FormEntity
     }
 
     /**
-     * Set description.
-     *
      * @param string $description
-     *
-     * @return Form
      */
-    public function setDescription($description)
+    public function setDescription($description): static
     {
         $this->isChanged('description', $description);
         $this->description = $description;
@@ -375,9 +449,7 @@ class Form extends FormEntity
     }
 
     /**
-     * Get description.
-     *
-     * @return string
+     * @return string|null
      */
     public function getDescription($truncate = false, $length = 45)
     {
@@ -391,13 +463,9 @@ class Form extends FormEntity
     }
 
     /**
-     * Set cachedHtml.
-     *
      * @param string $cachedHtml
-     *
-     * @return Form
      */
-    public function setCachedHtml($cachedHtml)
+    public function setCachedHtml($cachedHtml): static
     {
         $this->cachedHtml = $cachedHtml;
 
@@ -405,9 +473,7 @@ class Form extends FormEntity
     }
 
     /**
-     * Get cachedHtml.
-     *
-     * @return string
+     * @return string|null
      */
     public function getCachedHtml()
     {
@@ -415,9 +481,7 @@ class Form extends FormEntity
     }
 
     /**
-     * Get render style.
-     *
-     * @return string
+     * @return bool|null
      */
     public function getRenderStyle()
     {
@@ -425,13 +489,9 @@ class Form extends FormEntity
     }
 
     /**
-     * Set postAction.
-     *
      * @param string $postAction
-     *
-     * @return Form
      */
-    public function setPostAction($postAction)
+    public function setPostAction($postAction): static
     {
         $this->isChanged('postAction', $postAction);
         $this->postAction = $postAction;
@@ -440,8 +500,6 @@ class Form extends FormEntity
     }
 
     /**
-     * Get postAction.
-     *
      * @return string
      */
     public function getPostAction()
@@ -450,13 +508,9 @@ class Form extends FormEntity
     }
 
     /**
-     * Set postActionProperty.
-     *
      * @param string $postActionProperty
-     *
-     * @return Form
      */
-    public function setPostActionProperty($postActionProperty)
+    public function setPostActionProperty($postActionProperty): static
     {
         $this->isChanged('postActionProperty', $postActionProperty);
         $this->postActionProperty = $postActionProperty;
@@ -464,32 +518,24 @@ class Form extends FormEntity
         return $this;
     }
 
-    /**
-     * Get postActionProperty.
-     *
-     * @return string
-     */
-    public function getPostActionProperty()
+    public function getPostActionProperty(): ?string
     {
+        if ('return' === $this->getPostAction()) {
+            return null;
+        }
+
         return $this->postActionProperty;
     }
 
-    /**
-     * Get result count.
-     */
-    public function getResultCount()
+    public function getResultCount(): int
     {
         return count($this->submissions);
     }
 
     /**
-     * Set publishUp.
-     *
      * @param \DateTime $publishUp
-     *
-     * @return Form
      */
-    public function setPublishUp($publishUp)
+    public function setPublishUp($publishUp): static
     {
         $this->isChanged('publishUp', $publishUp);
         $this->publishUp = $publishUp;
@@ -498,9 +544,7 @@ class Form extends FormEntity
     }
 
     /**
-     * Get publishUp.
-     *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getPublishUp()
     {
@@ -508,13 +552,9 @@ class Form extends FormEntity
     }
 
     /**
-     * Set publishDown.
-     *
      * @param \DateTime $publishDown
-     *
-     * @return Form
      */
-    public function setPublishDown($publishDown)
+    public function setPublishDown($publishDown): static
     {
         $this->isChanged('publishDown', $publishDown);
         $this->publishDown = $publishDown;
@@ -523,9 +563,7 @@ class Form extends FormEntity
     }
 
     /**
-     * Get publishDown.
-     *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getPublishDown()
     {
@@ -533,13 +571,9 @@ class Form extends FormEntity
     }
 
     /**
-     * Add a field.
-     *
-     * @param $key
-     *
-     * @return Form
+     * @param int|string $key
      */
-    public function addField($key, Field $field)
+    public function addField($key, Field $field): static
     {
         if ($changes = $field->getChanges()) {
             $this->isChanged('fields', [$key, $changes]);
@@ -550,11 +584,9 @@ class Form extends FormEntity
     }
 
     /**
-     * Remove a field.
-     *
-     * @param $key
+     * @param int|string $key
      */
-    public function removeField($key, Field $field)
+    public function removeField($key, Field $field): void
     {
         if ($changes = $field->getChanges()) {
             $this->isChanged('fields', [$key, $changes]);
@@ -563,21 +595,14 @@ class Form extends FormEntity
     }
 
     /**
-     * Get fields.
-     *
-     * @return \Doctrine\Common\Collections\Collection|Field[]
+     * @return ArrayCollection<int, Field>
      */
     public function getFields()
     {
         return $this->fields;
     }
 
-    /**
-     * Get array of field aliases.
-     *
-     * @return array
-     */
-    public function getFieldAliases()
+    public function getFieldAliases(): array
     {
         $aliases = [];
         $fields  = $this->getFields();
@@ -592,13 +617,47 @@ class Form extends FormEntity
     }
 
     /**
-     * Set alias.
+     * Loops through the form fields and returns an array of fields with mapped data.
      *
-     * @param string $alias
-     *
-     * @return Form
+     * @return array<int, array<string, int|string>>
      */
-    public function setAlias($alias)
+    public function getMappedFieldValues(): array
+    {
+        return array_filter(
+            array_map(
+                fn (Field $field): array => [
+                    'formFieldId'  => $field->getId(),
+                    'mappedObject' => $field->getMappedObject(),
+                    'mappedField'  => $field->getMappedField(),
+                ],
+                $this->getFields()->getValues(),
+            ),
+            fn (array $elem): bool => isset($elem['mappedObject']) && isset($elem['mappedField']),
+        );
+    }
+
+    /**
+     * Loops trough the form fields and returns a simple array of mapped object keys if any.
+     *
+     * @return string[]
+     */
+    public function getMappedFieldObjects(): array
+    {
+        return array_values(
+            array_filter(
+                array_unique(
+                    $this->getFields()->map(
+                        fn (Field $field): ?string => $field->getMappedObject(),
+                    )->toArray(),
+                ),
+            ),
+        );
+    }
+
+    /**
+     * @param string $alias
+     */
+    public function setAlias($alias): static
     {
         $this->isChanged('alias', $alias);
         $this->alias = $alias;
@@ -607,53 +666,37 @@ class Form extends FormEntity
     }
 
     /**
-     * Get alias.
-     *
-     * @return string
+     * @return string|null
      */
     public function getAlias()
     {
         return $this->alias;
     }
 
-    /**
-     * Add submissions.
-     *
-     * @return Form
-     */
-    public function addSubmission(Submission $submissions)
+    public function addSubmission(Submission $submissions): static
     {
         $this->submissions[] = $submissions;
 
         return $this;
     }
 
-    /**
-     * Remove submissions.
-     */
-    public function removeSubmission(Submission $submissions)
+    public function removeSubmission(Submission $submissions): void
     {
         $this->submissions->removeElement($submissions);
     }
 
     /**
-     * Get submissions.
-     *
-     * @return \Doctrine\Common\Collections\Collection|Submission[]
+     * @return Collection|Submission[]
      */
-    public function getSubmissions()
+    public function getSubmissions(): Collection
     {
         return $this->submissions;
     }
 
     /**
-     * Add actions.
-     *
-     * @param $key
-     *
-     * @return Form
+     * @param int|string $key
      */
-    public function addAction($key, Action $action)
+    public function addAction($key, Action $action): static
     {
         if ($changes = $action->getChanges()) {
             $this->isChanged('actions', [$key, $changes]);
@@ -663,10 +706,7 @@ class Form extends FormEntity
         return $this;
     }
 
-    /**
-     * Remove action.
-     */
-    public function removeAction(Action $action)
+    public function removeAction(Action $action): void
     {
         $this->actions->removeElement($action);
     }
@@ -674,15 +714,13 @@ class Form extends FormEntity
     /**
      * Removes all actions.
      */
-    public function clearActions()
+    public function clearActions(): void
     {
         $this->actions = new ArrayCollection();
     }
 
     /**
-     * Get actions.
-     *
-     * @return \Doctrine\Common\Collections\Collection|Action[]
+     * @return ArrayCollection<string, Action>
      */
     public function getActions()
     {
@@ -690,7 +728,7 @@ class Form extends FormEntity
     }
 
     /**
-     * @return mixed
+     * @return Category|null
      */
     public function getCategory()
     {
@@ -700,13 +738,13 @@ class Form extends FormEntity
     /**
      * @param mixed $category
      */
-    public function setCategory($category)
+    public function setCategory($category): void
     {
         $this->category = $category;
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getTemplate()
     {
@@ -716,13 +754,13 @@ class Form extends FormEntity
     /**
      * @param mixed $template
      */
-    public function setTemplate($template)
+    public function setTemplate($template): void
     {
         $this->template = $template;
     }
 
     /**
-     * @return mixed
+     * @return bool
      */
     public function getInKioskMode()
     {
@@ -732,7 +770,7 @@ class Form extends FormEntity
     /**
      * @param mixed $inKioskMode
      */
-    public function setInKioskMode($inKioskMode)
+    public function setInKioskMode($inKioskMode): void
     {
         $this->inKioskMode = $inKioskMode;
     }
@@ -740,13 +778,13 @@ class Form extends FormEntity
     /**
      * @param mixed $renderStyle
      */
-    public function setRenderStyle($renderStyle)
+    public function setRenderStyle($renderStyle): void
     {
         $this->renderStyle = $renderStyle;
     }
 
     /**
-     * @return mixed
+     * @return bool
      */
     public function isInKioskMode()
     {
@@ -754,40 +792,42 @@ class Form extends FormEntity
     }
 
     /**
-     * @return mixed
+     * @deprecated since Mautic 7.1, will be removed in 8.0. Form types are no longer used.
+     *
+     * @return string|null
      */
     public function getFormType()
     {
+        trigger_deprecation('mautic/mautic', '7.1', 'Form::getFormType() is deprecated and will be removed in 8.0.');
+
         return $this->formType;
     }
 
     /**
-     * @param mixed $formType
+     * @deprecated since Mautic 7.1, will be removed in 8.0. Form types are no longer used.
      *
-     * @return Form
+     * @param mixed $formType
      */
-    public function setFormType($formType)
+    public function setFormType($formType): static
     {
+        trigger_deprecation('mautic/mautic', '7.1', 'Form::setFormType() is deprecated and will be removed in 8.0.');
         $this->formType = $formType;
 
         return $this;
     }
 
     /**
-     * Set noIndex.
-     *
-     * @param bool $noIndex
+     * @param bool|null $noIndex
      */
-    public function setNoIndex($noIndex)
+    public function setNoIndex($noIndex): void
     {
-        $this->isChanged('noIndex', $noIndex);
-        $this->noIndex = $noIndex;
+        $sanitizedNoIndex = null === $noIndex ? null : (bool) $noIndex;
+        $this->isChanged('noIndex', $sanitizedNoIndex);
+        $this->noIndex = $sanitizedNoIndex;
     }
 
     /**
-     * Get noIndex.
-     *
-     * @return bool
+     * @return bool|null
      */
     public function getNoIndex()
     {
@@ -796,10 +836,8 @@ class Form extends FormEntity
 
     /**
      * @param string $formAttributes
-     *
-     * @return Form
      */
-    public function setFormAttributes($formAttributes)
+    public function setFormAttributes($formAttributes): static
     {
         $this->isChanged('formAttributes', $formAttributes);
         $this->formAttributes = $formAttributes;
@@ -808,31 +846,51 @@ class Form extends FormEntity
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getFormAttributes()
     {
         return $this->formAttributes;
     }
 
-    /**
-     * @return bool
-     */
-    public function isStandalone()
+    public function setLanguage(?string $language): self
     {
+        $this->isChanged('language', $language);
+        $this->language = $language;
+
+        return $this;
+    }
+
+    public function getLanguage(): ?string
+    {
+        return $this->language;
+    }
+
+    /**
+     * @deprecated since Mautic 7.1, will be removed in 8.0. All forms can now be used in campaigns.
+     */
+    public function isStandalone(): bool
+    {
+        trigger_deprecation('mautic/mautic', '7.1', 'Form::isStandalone() is deprecated and will be removed in 8.0.');
+
         return 'campaign' != $this->formType;
     }
 
     /**
      * Generate a form name for HTML attributes.
+     *
+     * @param string[] $allowedCharacters
      */
-    public function generateFormName()
+    public function generateFormName(?string $name = null, array $allowedCharacters = []): string
     {
         $name = strtolower(
             InputHelper::alphanum(
                 InputHelper::transliterate(
-                    $this->name
-                )
+                    $name ?? $this->name
+                ),
+                false,
+                null,
+                $allowedCharacters
             )
         );
 
@@ -852,6 +910,12 @@ class Form extends FormEntity
 
         // Progressive profiling must be turned off in the kiosk mode
         if (false === $this->getInKioskMode()) {
+            if ('' != $this->getProgressiveProfilingLimit()) {
+                $this->usesProgressiveProfiling = true;
+
+                return $this->usesProgressiveProfiling;
+            }
+
             // Search for a field with a progressive profiling setting on
             foreach ($this->fields->toArray() as $field) {
                 if (false === $field->getShowWhenValueExists() || $field->getShowAfterXSubmissions() > 0) {
@@ -865,5 +929,67 @@ class Form extends FormEntity
         $this->usesProgressiveProfiling = false;
 
         return $this->usesProgressiveProfiling;
+    }
+
+    /**
+     * @param int $progressiveProfilingLimit
+     */
+    public function setProgressiveProfilingLimit($progressiveProfilingLimit): static
+    {
+        $this->isChanged('progressiveProfilingLimit', $progressiveProfilingLimit);
+        $this->progressiveProfilingLimit = $progressiveProfilingLimit;
+
+        return $this;
+    }
+
+    /**
+     * @return int|null
+     */
+    public function getProgressiveProfilingLimit()
+    {
+        return $this->progressiveProfilingLimit;
+    }
+
+    public function setSubmissionLimit(?int $submissionLimit): self
+    {
+        $this->isChanged('submissionLimit', $submissionLimit);
+        $this->submissionLimit = $submissionLimit;
+
+        return $this;
+    }
+
+    public function getSubmissionLimit(): ?int
+    {
+        return $this->submissionLimit;
+    }
+
+    public function setSubmissionLimitMessage(?string $message): self
+    {
+        $this->isChanged('submissionLimitMessage', $message);
+        $this->submissionLimitMessage = $message;
+
+        return $this;
+    }
+
+    public function getSubmissionLimitMessage(): ?string
+    {
+        return $this->submissionLimitMessage;
+    }
+
+    public function getSubmissionCount(): int
+    {
+        return $this->submissionCount;
+    }
+
+    public function setSubmissionCount(int $count): self
+    {
+        $this->submissionCount = $count;
+
+        return $this;
+    }
+
+    public function isSubmissionLimitReached(): bool
+    {
+        return null !== $this->submissionLimit && $this->submissionLimit > 0 && $this->submissionCount >= $this->submissionLimit;
     }
 }

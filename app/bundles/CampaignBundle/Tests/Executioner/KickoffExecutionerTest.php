@@ -1,76 +1,63 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\CampaignBundle\Tests\Executioner;
 
 use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\ORM\EntityManagerInterface;
 use Mautic\CampaignBundle\Entity\Campaign;
 use Mautic\CampaignBundle\Entity\Event;
 use Mautic\CampaignBundle\Executioner\ContactFinder\KickoffContactFinder;
 use Mautic\CampaignBundle\Executioner\ContactFinder\Limiter\ContactLimiter;
 use Mautic\CampaignBundle\Executioner\EventExecutioner;
+use Mautic\CampaignBundle\Executioner\Helper\EventRedirectionHelper;
 use Mautic\CampaignBundle\Executioner\KickoffExecutioner;
 use Mautic\CampaignBundle\Executioner\Result\Counter;
 use Mautic\CampaignBundle\Executioner\Scheduler\EventScheduler;
 use Mautic\CampaignBundle\Executioner\Scheduler\Exception\NotSchedulableException;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\ProcessSignal\ProcessSignalService;
 use Mautic\CoreBundle\Translation\Translator;
 use Mautic\LeadBundle\Entity\Lead;
+use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\NullLogger;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class KickoffExecutionerTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|KickoffContactFinder
-     */
-    private $kickoffContactFinder;
+    private MockObject&KickoffContactFinder $kickoffContactFinder;
 
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|Translator
-     */
-    private $translator;
+    private \PHPUnit\Framework\MockObject\Stub&Translator $translator;
 
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|EventExecutioner
-     */
-    private $executioner;
+    private MockObject&EventExecutioner $executioner;
 
-    /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|EventScheduler
-     */
-    private $scheduler;
+    private MockObject&EventScheduler $scheduler;
+
+    private \PHPUnit\Framework\MockObject\Stub&CoreParametersHelper $coreParametersHelper;
+
+    private \PHPUnit\Framework\MockObject\Stub&EventRedirectionHelper $redirectionHelper;
+
+    private \PHPUnit\Framework\MockObject\Stub&EntityManagerInterface $entityManager;
+
+    private \PHPUnit\Framework\MockObject\Stub&EventDispatcherInterface $eventDispatcher;
 
     protected function setUp(): void
     {
-        $this->kickoffContactFinder = $this->getMockBuilder(KickoffContactFinder::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $this->translator = $this->getMockBuilder(Translator::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $this->executioner = $this->getMockBuilder(EventExecutioner::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $this->scheduler = $this->getMockBuilder(EventScheduler::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $this->kickoffContactFinder = $this->createMock(KickoffContactFinder::class);
+        $this->translator           = $this->createStub(Translator::class);
+        $this->executioner          = $this->createMock(EventExecutioner::class);
+        $this->scheduler            = $this->createMock(EventScheduler::class);
+        $this->coreParametersHelper = $this->createStub(CoreParametersHelper::class);
+        $this->redirectionHelper    = $this->createStub(EventRedirectionHelper::class);
+        $this->entityManager        = $this->createStub(EntityManagerInterface::class);
+        $this->eventDispatcher      = $this->createStub(EventDispatcherInterface::class);
     }
 
-    public function testNoContactsResultInEmptyResults()
+    public function testNoContactsResultInEmptyResults(): void
     {
-        $campaign = $this->getMockBuilder(Campaign::class)
-            ->getMock();
+        $campaign = $this->createMock(Campaign::class);
         $campaign->expects($this->once())
             ->method('getRootEvents')
             ->willReturn(new ArrayCollection());
@@ -82,7 +69,7 @@ class KickoffExecutionerTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(0, $counter->getTotalEvaluated());
     }
 
-    public function testEventsAreScheduledAndExecuted()
+    public function testEventsAreScheduledAndExecuted(): void
     {
         $this->kickoffContactFinder->expects($this->once())
             ->method('getContactCount')
@@ -98,66 +85,46 @@ class KickoffExecutionerTest extends \PHPUnit\Framework\TestCase
 
         $event    = new Event();
         $event2   = new Event();
-        $campaign = $this->getMockBuilder(Campaign::class)
-            ->getMock();
-        $campaign->expects($this->once())
-            ->method('getRootEvents')
-            ->willReturn(new ArrayCollection([$event, $event2]));
+        $campaign = new class extends Campaign {
+            /**
+             * @var ArrayCollection<int,Event>
+             */
+            public ArrayCollection $rootEvents;
+
+            /**
+             * @return ArrayCollection<int,Event>
+             */
+            public function getRootEvents(): ArrayCollection
+            {
+                return $this->rootEvents;
+            }
+        };
+        $campaign->rootEvents = new ArrayCollection([$event, $event2]);
         $event->setCampaign($campaign);
         $event2->setCampaign($campaign);
 
         $limiter = new ContactLimiter(0, 0, 0, 0);
 
-        $this->scheduler->expects($this->at(0))
+        $this->scheduler->expects($this->exactly(4))
             ->method('getExecutionDateTime')
             ->willReturn(new \DateTime());
 
-        $this->scheduler->expects($this->at(1))
+        $callbackCounter = 0;
+        $this->scheduler->expects($this->exactly(4))
             ->method('validateAndScheduleEventForContacts')
-            ->willReturn(null);
-
-        $this->scheduler->expects($this->at(2))
-            ->method('getExecutionDateTime')
-            ->willReturn(new \DateTime());
-
-        $this->scheduler->expects($this->at(3))
-            ->method('validateAndScheduleEventForContacts')
-            ->willReturn(null);
-
-        $this->scheduler->expects($this->at(4))
-            ->method('getExecutionDateTime')
-            ->willReturn(new \DateTime());
-
-        $this->scheduler->expects($this->at(5))
-            ->method('validateAndScheduleEventForContacts')
-            ->willReturnCallback(function () {
-                throw new NotSchedulableException();
-            });
-
-        $this->scheduler->expects($this->at(6))
-            ->method('getExecutionDateTime')
-            ->willReturn(new \DateTime());
-
-        $this->scheduler->expects($this->at(7))
-            ->method('validateAndScheduleEventForContacts')
-            ->willReturnCallback(function () {
-                throw new NotSchedulableException();
+            ->willReturnCallback(function () use (&$callbackCounter): void {
+                ++$callbackCounter;
+                if (in_array($callbackCounter, [3, 4])) {
+                    throw new NotSchedulableException();
+                }
             });
 
         $this->executioner->expects($this->exactly(1))
-            ->method('executeEventsForContacts')
-            ->withConsecutive(
-                [
-                    $this->countOf(2),
-                    $this->isInstanceOf(ArrayCollection::class),
-                    $this->isInstanceOf(Counter::class),
-                ],
-                [
-                    $this->countOf(1),
-                        $this->isInstanceOf(ArrayCollection::class),
-                        $this->isInstanceOf(Counter::class),
-                ]
-            );
+            ->method('executeEventsForContacts')->willReturnCallback(function (...$parameters): void {
+                $this->assertCount(2, $parameters[0]);
+                $this->assertInstanceOf(ArrayCollection::class, $parameters[1]);
+                $this->assertInstanceOf(Counter::class, $parameters[2]);
+            });
 
         $counter = $this->getExecutioner()->execute($campaign, $limiter, new BufferedOutput());
 
@@ -165,17 +132,19 @@ class KickoffExecutionerTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(2, $counter->getTotalScheduled());
     }
 
-    /**
-     * @return KickoffExecutioner
-     */
-    private function getExecutioner()
+    private function getExecutioner(): KickoffExecutioner
     {
         return new KickoffExecutioner(
             new NullLogger(),
             $this->kickoffContactFinder,
             $this->translator,
             $this->executioner,
-            $this->scheduler
+            $this->scheduler,
+            $this->createStub(ProcessSignalService::class),
+            $this->coreParametersHelper,
+            $this->eventDispatcher,
+            $this->redirectionHelper,
+            $this->entityManager,
         );
     }
 }

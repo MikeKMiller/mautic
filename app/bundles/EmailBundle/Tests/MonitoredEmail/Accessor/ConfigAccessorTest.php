@@ -1,37 +1,21 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Tests\MonitoredEmail\Accessor;
 
 use Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor;
 
 class ConfigAccessorTest extends \PHPUnit\Framework\TestCase
 {
-    protected $config = [
+    /** @var array<string, string> */
+    protected array $config = [
         'imap_path' => 'path',
         'user'      => 'user',
         'host'      => 'host',
         'folder'    => 'folder',
     ];
 
-    /**
-     * @testdox All getters return appropriate values
-     *
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getPath()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getUser()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getHost()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getFolder()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getProperty()
-     */
-    public function testGetters()
+    #[\PHPUnit\Framework\Attributes\TestDox('All getters return appropriate values')]
+    public function testGetters(): void
     {
         $configAccessor = new ConfigAccessor($this->config);
 
@@ -41,45 +25,24 @@ class ConfigAccessorTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals($this->config['folder'], $configAccessor->getFolder());
     }
 
-    /**
-     * @testdox Key is formatted appropriately
-     *
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getKey()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getHost()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getFolder()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getProperty()
-     */
-    public function testKeyIsPathAndUser()
+    #[\PHPUnit\Framework\Attributes\TestDox('Key is formatted appropriately')]
+    public function testKeyIsPathAndUser(): void
     {
         $configAccessor = new ConfigAccessor($this->config);
 
-        $this->assertEquals('path_user', $configAccessor->getKey());
+        $this->assertSame('path_user', $configAccessor->getKey());
     }
 
-    /**
-     * @testdox Test its considered configured if we have a host and a folder
-     *
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::isConfigured()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getHost()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getFolder()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getProperty()
-     */
-    public function testIsConfigured()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test its considered configured if we have a host and a folder')]
+    public function testIsConfigured(): void
     {
         $configAccessor = new ConfigAccessor($this->config);
 
         $this->assertTrue($configAccessor->isConfigured());
     }
 
-    /**
-     * @testdox Test its considered not configured if folder is missing
-     *
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::isConfigured()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getHost()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getFolder()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getProperty()
-     */
-    public function testIsNotConfiguredIfFolderIsMissing()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test its considered not configured if folder is missing')]
+    public function testIsNotConfiguredIfFolderIsMissing(): void
     {
         $config = $this->config;
         unset($config['folder']);
@@ -87,15 +50,8 @@ class ConfigAccessorTest extends \PHPUnit\Framework\TestCase
         $this->assertFalse($configAccessor->isConfigured());
     }
 
-    /**
-     * @testdox Test its considered not configured if host is missing
-     *
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::isConfigured()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getHost()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getFolder()
-     * @covers \Mautic\EmailBundle\MonitoredEmail\Accessor\ConfigAccessor::getProperty()
-     */
-    public function testIsNotConfiguredIfHostIsMissing()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test its considered not configured if host is missing')]
+    public function testIsNotConfiguredIfHostIsMissing(): void
     {
         $config = $this->config;
         unset($config['host']);

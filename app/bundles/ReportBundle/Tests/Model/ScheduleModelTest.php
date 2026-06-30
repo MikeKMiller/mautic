@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ReportBundle\Tests\Model;
 
 use Doctrine\ORM\EntityManager;
@@ -23,36 +14,33 @@ use PHPUnit\Framework\MockObject\MockObject;
 class ScheduleModelTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var MockObject|SchedulerRepository
+     * @var MockObject&SchedulerRepository
      */
-    private $schedulerRepository;
+    private MockObject $schedulerRepository;
 
     /**
-     * @var MockObject|EntityManager
+     * @var MockObject&EntityManager
      */
-    private $entityManager;
+    private MockObject $entityManager;
 
     /**
-     * @var MockObject|SchedulerPlanner
+     * @var MockObject&SchedulerPlanner
      */
-    private $schedulerPlanner;
+    private MockObject $schedulerPlanner;
 
     /**
-     * @var MockObject|ExportOption
+     * @var \PHPUnit\Framework\MockObject\Stub|ExportOption
      */
-    private $exportOption;
+    private \PHPUnit\Framework\MockObject\Stub $exportOption;
 
-    /**
-     * @var ScheduleModel
-     */
-    private $scheduleModel;
+    private ScheduleModel $scheduleModel;
 
     protected function setUp(): void
     {
         $this->schedulerRepository = $this->createMock(SchedulerRepository::class);
         $this->entityManager       = $this->createMock(EntityManager::class);
         $this->schedulerPlanner    = $this->createMock(SchedulerPlanner::class);
-        $this->exportOption        = $this->createMock(ExportOption::class);
+        $this->exportOption        = $this->createStub(ExportOption::class);
 
         $this->entityManager->expects($this->once())
             ->method('getRepository')
@@ -62,7 +50,7 @@ class ScheduleModelTest extends \PHPUnit\Framework\TestCase
         $this->scheduleModel = new ScheduleModel($this->entityManager, $this->schedulerPlanner);
     }
 
-    public function testGetScheduledReportsForExport()
+    public function testGetScheduledReportsForExport(): void
     {
         $this->schedulerRepository->expects($this->once())
             ->method('getScheduledReportsForExport')
@@ -71,7 +59,7 @@ class ScheduleModelTest extends \PHPUnit\Framework\TestCase
         $this->scheduleModel->getScheduledReportsForExport($this->exportOption);
     }
 
-    public function testReportWasScheduled()
+    public function testReportWasScheduled(): void
     {
         $report = new Report();
 
@@ -82,7 +70,7 @@ class ScheduleModelTest extends \PHPUnit\Framework\TestCase
         $this->scheduleModel->reportWasScheduled($report);
     }
 
-    public function testTurnOffScheduler()
+    public function testTurnOffScheduler(): void
     {
         $report = new Report();
 

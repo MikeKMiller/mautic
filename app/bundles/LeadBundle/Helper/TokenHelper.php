@@ -1,24 +1,17 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Helper;
 
 use Mautic\CoreBundle\Helper\DateTimeHelper;
 use Mautic\CoreBundle\Helper\ParamsLoaderHelper;
+use Mautic\LeadBundle\Entity\LeadRepository;
 
-/**
- * Class TokenHelper.
- */
 class TokenHelper
 {
+    public const REGEX = '/({|%7B)contactfield=(.*?)(}|%7D)/';
+
+    private const DATETIME_REGEX = '/({|%7B)datetime=(.*?)(}|%7D)/';
+
     /**
      * @var array
      */
@@ -39,10 +32,11 @@ class TokenHelper
         }
 
         // Search for bracket or bracket encoded
-        $tokenList    = [];
-        $foundMatches = preg_match_all('/({|%7B)contactfield=(.*?)(}|%7D)/', $content, $matches);
+        $tokenList        = [];
+        $foundMatches     = preg_match_all(self::REGEX, $content, $matches);
+        $foundDateMatches = preg_match_all(self::DATETIME_REGEX, $content, $dateMatches);
 
-        if ($foundMatches) {
+        if ($foundMatches || $foundDateMatches) {
             foreach ($matches[2] as $key => $match) {
                 $token = $matches[0][$key];
 
@@ -55,12 +49,35 @@ class TokenHelper
                 $tokenList[$token] = self::getTokenValue($lead, $alias, $defaultValue);
             }
 
+            foreach ($dateMatches[2] as $key => $match) {
+                $token = $dateMatches[0][$key];
+
+                if (isset($tokenList[$token])) {
+                    continue;
+                }
+
+                $dt                = new DateTimeHelper($match);
+                $tokenList[$token] = $dt->toLocalString(DateTimeHelper::FORMAT_DB);
+            }
+
             if ($replace) {
                 $content = str_replace(array_keys($tokenList), $tokenList, $content);
             }
         }
 
         return $replace ? $content : $tokenList;
+    }
+
+    public static function validToken(string $content): bool
+    {
+        return (bool) preg_match(self::REGEX, $content);
+    }
+
+    public static function getTokenFieldAlias(string $content): string
+    {
+        $foundMatches = preg_match(self::REGEX, $content, $matches);
+
+        return $foundMatches ? self::getFieldAlias($matches[2]) : '';
     }
 
     /**
@@ -81,22 +98,26 @@ class TokenHelper
     }
 
     /**
-     * @param $alias
-     * @param $defaultValue
-     *
      * @return mixed
      */
-    private static function getTokenValue(array $lead, $alias, $defaultValue)
+    private static function getTokenValue(array $lead, string $alias, string $defaultValue)
     {
         $value = '';
         if (isset($lead[$alias])) {
             $value = $lead[$alias];
-        } elseif (isset($lead['companies'][0][$alias])) {
-            $value = $lead['companies'][0][$alias];
+        } elseif (!empty($lead['companies'])) {
+            foreach ($lead['companies'] as $company) {
+                if (isset($company['is_primary'], $company[$alias]) && 1 === (int) $company['is_primary']) {
+                    $value = $company[$alias];
+                    break;
+                }
+            }
         }
-
         if ('' !== $value) {
             switch ($defaultValue) {
+                case 'label':
+                    $value = self::getNormalizeValue($alias, $value);
+                    break;
                 case 'true':
                     $value = urlencode($value);
                     break;
@@ -124,19 +145,14 @@ class TokenHelper
                     break;
             }
         }
-        if (in_array($defaultValue, ['true', 'date', 'time', 'datetime'])) {
+        if (in_array($defaultValue, ['true', 'date', 'time', 'datetime', 'label'])) {
             return $value;
-        } else {
-            return '' !== $value ? $value : $defaultValue;
         }
+
+        return '' !== $value ? $value : $defaultValue;
     }
 
-    /**
-     * @param $match
-     *
-     * @return string
-     */
-    private static function getTokenDefaultValue($match)
+    private static function getTokenDefaultValue(string $match): string
     {
         $fallbackCheck = explode('|', $match);
         if (!isset($fallbackCheck[1])) {
@@ -146,12 +162,7 @@ class TokenHelper
         return $fallbackCheck[1];
     }
 
-    /**
-     * @param $match
-     *
-     * @return mixed
-     */
-    private static function getFieldAlias($match)
+    private static function getFieldAlias(string $match): string
     {
         $fallbackCheck = explode('|', $match);
 
@@ -159,16 +170,26 @@ class TokenHelper
     }
 
     /**
-     * @param string $parameter
-     *
      * @return mixed
      */
-    private static function getParameter($parameter)
+    private static function getParameter(string $parameter)
     {
         if (null === self::$parameters) {
             self::$parameters = (new ParamsLoaderHelper())->getParameters();
         }
 
         return self::$parameters[$parameter];
+    }
+
+    /**
+     * @param mixed $value
+     *
+     * @return mixed|string
+     */
+    private static function getNormalizeValue(string $alias, $value)
+    {
+        $field = array_merge(LeadRepository::getLeadFieldRepository()->getFields()[$alias], ['value' => $value]);
+
+        return CustomFieldValueHelper::normalizeValue($field);
     }
 }

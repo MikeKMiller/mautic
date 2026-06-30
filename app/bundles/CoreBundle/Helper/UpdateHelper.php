@@ -1,24 +1,17 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Helper;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
-use Joomla\Http\Http;
 use Mautic\CoreBundle\Helper\Update\Exception\CouldNotFetchLatestVersionException;
 use Mautic\CoreBundle\Helper\Update\Exception\LatestVersionSupportedException;
 use Mautic\CoreBundle\Helper\Update\Exception\UpdateCacheDataNeedsToBeRefreshedException;
 use Mautic\CoreBundle\Helper\Update\Github\Release;
 use Mautic\CoreBundle\Helper\Update\Github\ReleaseParser;
+use Mautic\CoreBundle\Helper\Update\PreUpdateChecks\PreUpdateCheckError;
+use Mautic\CoreBundle\Helper\Update\PreUpdateChecks\PreUpdateCheckResult;
+use Mautic\CoreBundle\Release\Metadata;
 use Monolog\Logger;
 
 /**
@@ -26,35 +19,7 @@ use Monolog\Logger;
  */
 class UpdateHelper
 {
-    /**
-     * @var PathsHelper
-     */
-    private $pathsHelper;
-
-    /**
-     * @var Logger
-     */
-    private $logger;
-
-    /**
-     * @var CoreParametersHelper
-     */
-    private $coreParametersHelper;
-
-    /**
-     * @var Client
-     */
-    private $client;
-
-    /**
-     * @var ReleaseParser
-     */
-    private $releaseParser;
-
-    /**
-     * @var string
-     */
-    private $phpVersion;
+    private readonly string $phpVersion;
 
     /**
      * @var string
@@ -62,18 +27,13 @@ class UpdateHelper
     private $mauticVersion;
 
     public function __construct(
-        PathsHelper $pathsHelper,
-        Logger $logger,
-        CoreParametersHelper $coreParametersHelper,
-        Client $client,
-        ReleaseParser $releaseParser
+        private readonly PathsHelper $pathsHelper,
+        private readonly Logger $logger,
+        private readonly CoreParametersHelper $coreParametersHelper,
+        private readonly Client $client,
+        private readonly ReleaseParser $releaseParser,
+        private readonly PreUpdateCheckHelper $preUpdateCheckHelper,
     ) {
-        $this->pathsHelper          = $pathsHelper;
-        $this->logger               = $logger;
-        $this->coreParametersHelper = $coreParametersHelper;
-        $this->client               = $client;
-        $this->releaseParser        = $releaseParser;
-
         $this->mauticVersion = defined('MAUTIC_VERSION') ? MAUTIC_VERSION : 'unknown';
         $this->phpVersion    = defined('PHP_VERSION') ? PHP_VERSION : 'unknown';
     }
@@ -82,10 +42,8 @@ class UpdateHelper
      * Fetches a download package from the remote server.
      *
      * @param string $package
-     *
-     * @return array
      */
-    public function fetchPackage($package)
+    public function fetchPackage($package): array
     {
         // GET the update data
         try {
@@ -96,7 +54,7 @@ class UpdateHelper
 
             $data = $response->getBody()->getContents();
         } catch (\Exception $exception) {
-            $this->logger->addError('An error occurred while attempting to fetch the package: '.$exception->getMessage());
+            $this->logger->error('An error occurred while attempting to fetch the package: '.$exception->getMessage());
 
             return [
                 'error'   => true,
@@ -120,10 +78,8 @@ class UpdateHelper
      * Retrieves the update data from our home server.
      *
      * @param bool $overrideCache
-     *
-     * @return array
      */
-    public function fetchData($overrideCache = false)
+    public function fetchData($overrideCache = false): array
     {
         $cacheFile       = $this->pathsHelper->getSystemPath('cache').'/lastUpdateCheck.txt';
         $updateStability = $this->coreParametersHelper->get('update_stability');
@@ -142,18 +98,18 @@ class UpdateHelper
         // Fetch the latest version
         try {
             $release = $this->fetchLatestCompatibleVersion($updateStability);
-        } catch (LatestVersionSupportedException $exception) {
+        } catch (LatestVersionSupportedException) {
             return [
                 'error'   => false,
                 'message' => 'mautic.core.updater.running.latest.version',
             ];
-        } catch (CouldNotFetchLatestVersionException $exception) {
+        } catch (CouldNotFetchLatestVersionException) {
             return [
                 'error'   => true,
                 'message' => 'mautic.core.updater.error.fetching.updates',
             ];
         } catch (RequestException $exception) {
-            if (!empty($exception->getResponse())) {
+            if ($exception->getResponse() instanceof \Psr\Http\Message\ResponseInterface) {
                 $this->logger->error(
                     sprintf(
                         'UPDATE CHECK: Could not fetch a release list: %s (%s)',
@@ -192,6 +148,7 @@ class UpdateHelper
             'package'      => $release->getDownloadUrl(),
             'stability'    => $release->getStability(),
             'checkedTime'  => time(),
+            'metadata'     => $release->getMetadata(),
         ];
 
         file_put_contents($cacheFile, json_encode($data));
@@ -199,7 +156,46 @@ class UpdateHelper
         return $data;
     }
 
-    private function sendStats()
+    /**
+     * Runs all pre-update checks. This returns an array of PreUpdateCheckResult objects,
+     * which you can loop through to see if all checks passed.
+     *
+     * @return PreUpdateCheckResult[]
+     */
+    public function runPreUpdateChecks(): array
+    {
+        $checkResults = [];
+        $checks       = $this->preUpdateCheckHelper->getChecks();
+        $updateData   = $this->fetchData();
+
+        if (true === $updateData['error']) {
+            $checkResults[] = new PreUpdateCheckResult(false, null, [new PreUpdateCheckError($updateData['message'])]);
+        } elseif (false === $updateData['error'] && 'mautic.core.updater.running.latest.version' === $updateData['message']) {
+            // If we're already running the latest version, let's consider that an error so that the updater doesn't accidentally continue.
+            $checkResults[] = new PreUpdateCheckResult(false, null, [new PreUpdateCheckError('mautic.core.updater.running.latest.version')]);
+        } elseif (empty($updateData['metadata'])) {
+            $checkResults[] = new PreUpdateCheckResult(false, null, [new PreUpdateCheckError('mautic.core.update.check.error.release_data')]);
+        }
+
+        if (!empty($checkResults)) {
+            return $checkResults;
+        }
+
+        foreach ($checks as $check) {
+            $check->setUpdateCandidateMetadata($updateData['metadata']);
+
+            try {
+                $checkResults[] = $check->runCheck();
+            } catch (\Exception $e) {
+                // Checks are supposed to catch errors themselves and return them in their PreUpdateCheckResult, but we catch here just in case.
+                $checkResults[] = new PreUpdateCheckResult(false, $check, [new PreUpdateCheckError('Unknown error while running '.$check::class.': '.$e->getMessage())]);
+            }
+        }
+
+        return $checkResults;
+    }
+
+    private function sendStats(): void
     {
         if (!$statUrl = $this->coreParametersHelper->get('stats_update_url')) {
             // Stat collection disabled
@@ -216,7 +212,7 @@ class UpdateHelper
             $instanceId = hash('sha1', $key.$installSource.$dbDriver);
 
             $data = array_map(
-                'trim',
+                trim(...),
                 [
                     'application'   => 'Mautic',
                     'version'       => $this->mauticVersion,
@@ -238,7 +234,7 @@ class UpdateHelper
 
             $this->client->request('POST', $statUrl, $options);
         } catch (RequestException $exception) {
-            if (!empty($exception->getResponse())) {
+            if ($exception->getResponse() instanceof \Psr\Http\Message\ResponseInterface) {
                 $this->logger->error(
                     sprintf(
                         'STAT UPDATE: Error communicating with the stat server: %s (%s)',
@@ -266,7 +262,11 @@ class UpdateHelper
     private function checkCachedUpdateData(string $cacheFile, string $updateStability): array
     {
         // Check if we have a cache file and try to return cached data if so
-        $update = (array) json_decode(file_get_contents($cacheFile));
+        $update = json_decode(file_get_contents($cacheFile), true);
+
+        if (!empty($update['metadata'])) {
+            $update['metadata'] = new Metadata($update['metadata']);
+        }
 
         // Check if the user has changed the update channel, if so the cache is invalidated
         $expiredAt = strtotime('-3 hours');
@@ -311,15 +311,13 @@ class UpdateHelper
             throw new CouldNotFetchLatestVersionException();
         }
 
-        return $this->releaseParser->getLatestSupportedRelease($releases, $this->phpVersion, $this->mauticVersion, $updateStability);
+        return $this->releaseParser->getLatestSupportedRelease($releases, $this->mauticVersion, $updateStability);
     }
 
     /**
      * Tries to get server OS.
-     *
-     * @return string
      */
-    private function getServerOs()
+    private function getServerOs(): string
     {
         if (function_exists('php_uname')) {
             return php_uname('s').' '.php_uname('r');

@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Tests\EventCollector\Accessor;
 
 use Mautic\CampaignBundle\Entity\Event;
@@ -22,10 +13,8 @@ use Mautic\LeadBundle\Form\Type\CompanyChangeScoreActionType;
 
 class EventAccessorTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @var array
-     */
-    private $events = [
+    /** @var array<string, array<string, array<string, mixed>>> */
+    private array $events = [
         Event::TYPE_ACTION    => [
             'lead.scorecontactscompanies' => [
                 'label'          => 'Add to company\'s score',
@@ -46,7 +35,7 @@ class EventAccessorTest extends \PHPUnit\Framework\TestCase
         Event::TYPE_DECISION  => [
             'email.click' => [
                 'label'                  => 'Clicks email',
-                'description'            => 'Trigger actions when an email is clicked. Connect a &quot;Send Email&quot; action to the top of this decision.',
+                'description'            => 'Trigger actions when an email is clicked. Connect a Send Email action to the top of this decision.',
                 'eventName'              => 'mautic.email.on_campaign_trigger_decision',
                 'formType'               => EmailClickDecisionType::class,
                 'connectionRestrictions' => [
@@ -60,7 +49,7 @@ class EventAccessorTest extends \PHPUnit\Framework\TestCase
         ],
     ];
 
-    public function testEventsArrayIsBuiltWithAccessors()
+    public function testEventsArrayIsBuiltWithAccessors(): void
     {
         $eventAccessor = new EventAccessor($this->events);
 

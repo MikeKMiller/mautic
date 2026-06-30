@@ -1,57 +1,34 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Event;
 
 use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Mautic\CampaignBundle\Entity\Event;
 use Mautic\CampaignBundle\Entity\LeadEventLog;
 use Mautic\CampaignBundle\EventCollector\Accessor\Event\AbstractEventAccessor;
 use Mautic\CampaignBundle\Executioner\Exception\NoContactsFoundException;
 use Mautic\LeadBundle\Entity\Lead;
 
-abstract class AbstractLogCollectionEvent extends \Symfony\Component\EventDispatcher\Event
+abstract class AbstractLogCollectionEvent extends \Symfony\Contracts\EventDispatcher\Event
 {
-    /**
-     * @var AbstractEventAccessor
-     */
-    protected $config;
-
-    /**
-     * @var Event
-     */
-    protected $event;
-
     /**
      * @var ArrayCollection
      */
     protected $logs;
 
     /**
-     * @var ArrayCollection|Lead[]
+     * @var Collection<int, Lead>
      */
-    private $contacts;
+    private readonly Collection $contacts;
 
-    /**
-     * @var array
-     */
-    private $logContactXref = [];
+    private array $logContactXref = [];
 
-    /**
-     * PendingEvent constructor.
-     */
-    public function __construct(AbstractEventAccessor $config, Event $event, ArrayCollection $logs)
-    {
-        $this->config   = $config;
-        $this->event    = $event;
+    public function __construct(
+        protected AbstractEventAccessor $config,
+        protected Event $event,
+        ArrayCollection $logs,
+    ) {
         $this->logs     = $logs;
         $this->contacts = new ArrayCollection();
 
@@ -91,7 +68,6 @@ abstract class AbstractLogCollectionEvent extends \Symfony\Component\EventDispat
     {
         $contacts = new ArrayCollection();
 
-        /** @var Lead $contact */
         foreach ($this->contacts as $contact) {
             $contacts->set($contact->getId(), $contact);
         }
@@ -131,7 +107,7 @@ abstract class AbstractLogCollectionEvent extends \Symfony\Component\EventDispat
         return $this->logs->get($this->logContactXref[$id]);
     }
 
-    private function extractContacts()
+    private function extractContacts(): void
     {
         /** @var LeadEventLog $log */
         foreach ($this->logs as $log) {

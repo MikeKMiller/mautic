@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2019 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Tests\Unit\Sync\DAO;
 
 use Mautic\IntegrationsBundle\Sync\DAO\Sync\RelationsDAO;
@@ -39,9 +30,9 @@ class RelationsDAOTest extends TestCase
         $relationsDAO->addRelations($relations);
 
         $this->assertEquals($relationsDAO->current(), $relationObject);
-        $this->assertEquals($relationsDAO->current()->getObjectName(), $objectName);
-        $this->assertEquals($relationsDAO->current()->getRelObjectName(), $relObjectName);
-        $this->assertEquals($relationsDAO->current()->getObjectIntegrationId(), $integrationObjectId);
-        $this->assertEquals($relationsDAO->current()->getRelObjectIntegrationId(), $integrationRelObjectId);
+        $this->assertSame($relationsDAO->current()->getObjectName(), $objectName);
+        $this->assertSame($relationsDAO->current()->getRelObjectName(), $relObjectName);
+        $this->assertSame($relationsDAO->current()->getObjectIntegrationId(), $integrationObjectId);
+        $this->assertSame($relationsDAO->current()->getRelObjectIntegrationId(), $integrationRelObjectId);
     }
 }

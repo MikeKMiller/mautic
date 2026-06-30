@@ -1,33 +1,19 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://www.mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\SmsBundle\Tests\Integration\Twilio;
 
 use Mautic\PluginBundle\Entity\Integration;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
 use Mautic\PluginBundle\Integration\AbstractIntegration;
 use Mautic\SmsBundle\Integration\Twilio\Configuration;
+use PHPUnit\Framework\MockObject\MockObject;
 use Twilio\Exceptions\ConfigurationException;
 
 class ConfigurationTest extends \PHPUnit\Framework\TestCase
 {
-    /**
-     * @var IntegrationHelper|\PHPUnit\Framework\MockObject\MockObject
-     */
-    private $integrationHelper;
+    private MockObject&IntegrationHelper $integrationHelper;
 
-    /**
-     * @var AbstractIntegration|\PHPUnit\Framework\MockObject\MockObject
-     */
-    private $integrationObject;
+    private MockObject&AbstractIntegration $integrationObject;
 
     protected function setUp(): void
     {
@@ -35,7 +21,8 @@ class ConfigurationTest extends \PHPUnit\Framework\TestCase
 
         $integrationSettings = new Integration();
         $integrationSettings->setIsPublished(true);
-        $integrationSettings->setFeatureSettings(['sending_phone_number' => '123']);
+        $integrationSettings->setFeatureSettings(['messaging_service_sid' => '123']);
+        /** @phpstan-ignore classConstant.deprecatedClass */
         $this->integrationObject = $this->createMock(AbstractIntegration::class);
         $this->integrationObject->method('getIntegrationSettings')
             ->willReturn($integrationSettings);
@@ -45,7 +32,7 @@ class ConfigurationTest extends \PHPUnit\Framework\TestCase
             ->willReturn($this->integrationObject);
     }
 
-    public function testGetSendingNumber()
+    public function testGetMessagingServiceSid(): void
     {
         $this->integrationObject->method('getDecryptedApiKeys')
             ->willReturn(
@@ -54,10 +41,10 @@ class ConfigurationTest extends \PHPUnit\Framework\TestCase
                     'password' => 'password',
                 ]
             );
-        $this->assertEquals('123', $this->getConfiguration()->getSendingNumber());
+        $this->assertEquals('123', $this->getConfiguration()->getMessagingServiceSid());
     }
 
-    public function testGetAccountSid()
+    public function testGetAccountSid(): void
     {
         $this->integrationObject->method('getDecryptedApiKeys')
             ->willReturn(
@@ -69,7 +56,7 @@ class ConfigurationTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals('username', $this->getConfiguration()->getAccountSid());
     }
 
-    public function testGetAuthToken()
+    public function testGetAuthToken(): void
     {
         $this->integrationObject->method('getDecryptedApiKeys')
             ->willReturn(
@@ -81,16 +68,30 @@ class ConfigurationTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals('password', $this->getConfiguration()->getAuthToken());
     }
 
-    public function testConfigurationExceptionThrownWithoutSendingNumber()
+    public function testConfigurationExceptionThrownIfNotPublished(): void
     {
         $this->expectException(ConfigurationException::class);
 
-        $this->integrationObject->getIntegrationSettings()->setFeatureSettings(['sending_phone_number' => '']);
+        $integrationSettings = new Integration();
+        $integrationSettings->setIsPublished(false);
+        $integrationSettings->setFeatureSettings(['messaging_service_sid' => '123']);
 
-        $this->getConfiguration()->getSendingNumber();
+        $this->integrationObject->method('getIntegrationSettings')
+            ->willReturn($integrationSettings);
+
+        $this->getConfiguration()->getMessagingServiceSid();
     }
 
-    public function testConfigurationExceptionThrownWithoutUsername()
+    public function testConfigurationExceptionThrownWithoutMessagingServiceSId(): void
+    {
+        $this->expectException(ConfigurationException::class);
+
+        $this->integrationObject->getIntegrationSettings()->setFeatureSettings(['messaging_service_sid' => '']);
+
+        $this->getConfiguration()->getMessagingServiceSid();
+    }
+
+    public function testConfigurationExceptionThrownWithoutUsername(): void
     {
         $this->expectException(ConfigurationException::class);
         $this->integrationObject->method('getDecryptedApiKeys')
@@ -100,10 +101,10 @@ class ConfigurationTest extends \PHPUnit\Framework\TestCase
                     'password' => 'password',
                 ]
             );
-        $this->getConfiguration()->getSendingNumber();
+        $this->getConfiguration()->getMessagingServiceSid();
     }
 
-    public function testConfigurationExceptionThrownWithoutPassword()
+    public function testConfigurationExceptionThrownWithoutPassword(): void
     {
         $this->expectException(ConfigurationException::class);
         $this->integrationObject->method('getDecryptedApiKeys')
@@ -113,13 +114,10 @@ class ConfigurationTest extends \PHPUnit\Framework\TestCase
                     'password' => '',
                 ]
             );
-        $this->getConfiguration()->getSendingNumber();
+        $this->getConfiguration()->getMessagingServiceSid();
     }
 
-    /**
-     * @return Configuration
-     */
-    private function getConfiguration()
+    private function getConfiguration(): Configuration
     {
         return new Configuration($this->integrationHelper);
     }

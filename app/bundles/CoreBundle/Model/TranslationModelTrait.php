@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Model;
 
 use Mautic\CoreBundle\Entity\TranslationEntityInterface;
@@ -17,21 +8,19 @@ use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Provides helper methods for determine the requested language from contact's profile and/or request.
- *
- * Class TranslationModelTrait
  */
 trait TranslationModelTrait
 {
     /**
      * Get the entity based on requested translation.
      *
-     * @param Lead|array|null $lead
+     * @param Lead|array{preferred_locale?: string} $lead
      *
-     * @return array[$parentEntity, TranslationEntityInterface $entity]
+     * @return array{TranslationEntityInterface, TranslationEntityInterface}
      */
-    public function getTranslatedEntity(TranslationEntityInterface $entity, $lead = null, Request $request = null)
+    public function getTranslatedEntity(TranslationEntityInterface $entity, Lead|array|null $lead = null, ?Request $request = null): array
     {
-        list($translationParent, $translationChildren) = $entity->getTranslations();
+        [$translationParent, $translationChildren] = $entity->getTranslations();
 
         $leadPreference = $chosenLanguage = null;
 
@@ -52,7 +41,7 @@ trait TranslationModelTrait
             $translationList = [];
             foreach ($translations as $id => $language) {
                 $core = $this->getTranslationLocaleCore($language);
-                if (!isset($languageList[$core])) {
+                if (!isset($translationList[$core])) {
                     $translationList[$core] = [];
                 }
                 $translationList[$core][$language] = $id;
@@ -63,9 +52,11 @@ trait TranslationModelTrait
             $leadPreference = null;
             if ($lead) {
                 if ($lead instanceof Lead) {
-                    $languageList[$leadPreference] = $lead->getPreferredLocale();
+                    $leadPreference                = $lead->getPreferredLocale();
+                    $languageList[$leadPreference] = $leadPreference;
                 } elseif (is_array($lead) && isset($lead['preferred_locale'])) {
-                    $languageList[$leadPreference] = $lead['preferred_locale'];
+                    $leadPreference                = $lead['preferred_locale'];
+                    $languageList[$leadPreference] = $leadPreference;
                 }
             }
 
@@ -74,18 +65,16 @@ trait TranslationModelTrait
                 $browserLanguages = $request->server->get('HTTP_ACCEPT_LANGUAGE');
                 if (!empty($browserLanguages)) {
                     $browserLanguages = explode(',', $browserLanguages);
-                    if (!empty($browserLanguages)) {
-                        foreach ($browserLanguages as $language) {
-                            if ($pos = false !== strpos($language, ';q=')) {
-                                //remove weights
-                                $language = substr($language, 0, ($pos + 1));
-                            }
-                            //change - to _
-                            $language = str_replace('-', '_', $language);
+                    foreach ($browserLanguages as $language) {
+                        if (($pos = strpos($language, ';q=')) !== false) {
+                            // remove weights
+                            $language = substr($language, 0, $pos + 1);
+                        }
+                        // change - to _
+                        $language = str_replace('-', '_', $language);
 
-                            if (!isset($languageList[$language])) {
-                                $languageList[$language] = $language;
-                            }
+                        if (!isset($languageList[$language])) {
+                            $languageList[$language] = $language;
                         }
                     }
                 }
@@ -132,7 +121,7 @@ trait TranslationModelTrait
     /**
      * Run post saving a translation aware entity.
      */
-    public function postTranslationEntitySave(TranslationEntityInterface $entity)
+    public function postTranslationEntitySave(TranslationEntityInterface $entity): void
     {
         // If parent, add this entity as a child of the parent so that it populates the list in the tab (due to Doctrine hanging on to entities in memory)
         if ($translationParent = $entity->getTranslationParent()) {
@@ -140,14 +129,9 @@ trait TranslationModelTrait
         }
     }
 
-    /**
-     * @param $locale
-     *
-     * @return string
-     */
-    protected function getTranslationLocaleCore($locale)
+    protected function getTranslationLocaleCore(string $locale): string
     {
-        if (false !== strpos($locale, '_')) {
+        if (str_contains($locale, '_')) {
             $locale = substr($locale, 0, 2);
         }
 

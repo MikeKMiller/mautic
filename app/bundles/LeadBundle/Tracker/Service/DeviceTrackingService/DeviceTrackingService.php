@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tracker\Service\DeviceTrackingService;
 
 use Doctrine\ORM\EntityManagerInterface;
@@ -17,78 +8,36 @@ use Mautic\CoreBundle\Helper\RandomHelper\RandomHelperInterface;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\LeadBundle\Entity\LeadDevice;
 use Mautic\LeadBundle\Entity\LeadDeviceRepository;
-use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 final class DeviceTrackingService implements DeviceTrackingServiceInterface
 {
-    /**
-     * @var CookieHelper
-     */
-    private $cookieHelper;
-
-    /**
-     * @var EntityManagerInterface
-     */
-    private $entityManager;
-
-    /**
-     * @var LeadDeviceRepository
-     */
-    private $leadDeviceRepository;
-
-    /**
-     * @var RandomHelperInterface
-     */
-    private $randomHelper;
-
-    /**
-     * @var Request|null
-     */
-    private $request;
-
-    /**
-     * @var LeadDevice
-     */
-    private $trackedDevice;
-
-    /**
-     * @var CorePermissions
-     */
-    private $security;
+    private ?LeadDevice $trackedDevice = null;
 
     public function __construct(
-        CookieHelper $cookieHelper,
-        EntityManagerInterface $entityManager,
-        LeadDeviceRepository $leadDeviceRepository,
-        RandomHelperInterface $randomHelper,
-        RequestStack $requestStack,
-        CorePermissions $security
+        private readonly CookieHelper $cookieHelper,
+        private readonly EntityManagerInterface $entityManager,
+        private readonly LeadDeviceRepository $leadDeviceRepository,
+        private readonly RandomHelperInterface $randomHelper,
+        private readonly RequestStack $requestStack,
+        private readonly CorePermissions $security,
     ) {
-        $this->cookieHelper         = $cookieHelper;
-        $this->entityManager        = $entityManager;
-        $this->randomHelper         = $randomHelper;
-        $this->leadDeviceRepository = $leadDeviceRepository;
-        $this->request              = $requestStack->getCurrentRequest();
-        $this->security             = $security;
     }
 
-    /**
-     * @return bool
-     */
-    public function isTracked()
+    public function isTracked(): bool
     {
         return null !== $this->getTrackedDevice();
     }
 
     /**
-     * @return LeadDevice
+     * @return ?LeadDevice
      */
     public function getTrackedDevice()
     {
         if (!$this->security->isAnonymous()) {
             // Do not track Mautic users
-            return;
+            return null;
         }
 
         if ($this->trackedDevice) {
@@ -115,21 +64,11 @@ final class DeviceTrackingService implements DeviceTrackingServiceInterface
             return $trackedDevice;
         }
 
-        // Check for an existing device for this contact to prevent blowing up the devices table
-        $existingDevice = $this->leadDeviceRepository->findOneBy(
-            [
-                'lead'        => $device->getLead(),
-                'device'      => $device->getDevice(),
-                'deviceBrand' => $device->getDeviceBrand(),
-                'deviceModel' => $device->getDeviceModel(),
-            ]
-        );
-
-        if (null !== $existingDevice) {
+        if (null !== $existingDevice = $this->leadDeviceRepository->findExistingDevice($device)) {
             $device = $existingDevice;
         }
 
-        if (null === $device->getTrackingId()) {
+        if (empty($device->getTrackingId())) {
             // Ensure all devices have a tracking ID (new devices will not and pre 2.13.0 devices may not)
             $device->setTrackingId($this->getUniqueTrackingIdentifier());
 
@@ -145,19 +84,22 @@ final class DeviceTrackingService implements DeviceTrackingServiceInterface
         return $device;
     }
 
-    public function clearTrackingCookies()
+    public function clearTrackingCookies(): void
     {
         $this->cookieHelper->deleteCookie('mautic_device_id');
         $this->cookieHelper->deleteCookie('mtc_id');
-        $this->cookieHelper->deleteCookie('mtc_sid');
     }
 
-    /**
-     * @return string|null
-     */
-    private function getTrackedIdentifier()
+    public function reset(): void
     {
-        if (null === $this->request) {
+        $this->trackedDevice = null;
+    }
+
+    private function getTrackedIdentifier(): ?string
+    {
+        $request = $this->requestStack->getCurrentRequest();
+
+        if (null === $request) {
             return null;
         }
 
@@ -166,18 +108,15 @@ final class DeviceTrackingService implements DeviceTrackingServiceInterface
             return $this->trackedDevice->getTrackingId();
         }
 
-        $deviceTrackingId = $this->cookieHelper->getCookie('mautic_device_id', null);
+        $deviceTrackingId = $this->cookieHelper->getCookie('mautic_device_id');
         if (null === $deviceTrackingId) {
-            $deviceTrackingId = $this->request->get('mautic_device_id', null);
+            $deviceTrackingId = $request->get('mautic_device_id');
         }
 
         return $deviceTrackingId;
     }
 
-    /**
-     * @return string
-     */
-    private function getUniqueTrackingIdentifier()
+    private function getUniqueTrackingIdentifier(): string
     {
         do {
             $generatedIdentifier = $this->randomHelper->generate(23);
@@ -187,13 +126,12 @@ final class DeviceTrackingService implements DeviceTrackingServiceInterface
         return $generatedIdentifier;
     }
 
-    private function createTrackingCookies(LeadDevice $device)
+    private function createTrackingCookies(LeadDevice $device): void
     {
         // Device cookie
-        $this->cookieHelper->setCookie('mautic_device_id', $device->getTrackingId(), 31536000);
+        $this->cookieHelper->setCookie('mautic_device_id', $device->getTrackingId(), 31_536_000, sameSite: Cookie::SAMESITE_NONE);
 
         // Mainly for landing pages so that JS has the same access as 3rd party tracking code
-        $this->cookieHelper->setCookie('mtc_id', $device->getLead()->getId(), null);
-        $this->cookieHelper->setCookie('mtc_sid', $device->getTrackingId(), null);
+        $this->cookieHelper->setCookie('mtc_id', $device->getLead()->getId(), null, sameSite: Cookie::SAMESITE_NONE);
     }
 }

@@ -1,60 +1,88 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PointBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
+use Symfony\Component\Serializer\Attribute\Groups;
 
-class TriggerEvent
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('point:triggers:viewown')"),
+        new Post(security: "is_granted('point:triggers:create')"),
+        new Get(security: "is_granted('point:triggers:viewown', object)"),
+        new Put(security: "is_granted('point:triggers:editown', object)"),
+        new Patch(security: "is_granted('point:triggers:editother', object)"),
+        new Delete(security: "is_granted('point:triggers:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['trigger_event:read'],
+        'swagger_definition_name' => 'Read',
+    ],
+    denormalizationContext: [
+        'groups'                  => ['trigger_event:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class TriggerEvent implements UuidInterface
 {
+    use UuidTrait;
+
     /**
-     * @var int
+     * @var int|null
      */
+    #[Groups(['trigger_event:read'])]
     private $id;
 
     /**
      * @var string
      */
+    #[Groups(['trigger_event:read', 'trigger_event:write'])]
     private $name;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['trigger_event:read', 'trigger_event:write'])]
     private $description;
 
     /**
      * @var string
      */
+    #[Groups(['trigger_event:read', 'trigger_event:write'])]
     private $type;
 
     /**
      * @var int
      */
+    #[Groups(['trigger_event:read', 'trigger_event:write'])]
     private $order = 0;
 
     /**
      * @var array
      */
+    #[Groups(['trigger_event:read', 'trigger_event:write'])]
     private $properties = [];
 
     /**
      * @var Trigger
      */
+    #[Groups(['trigger_event:read', 'trigger_event:write'])]
     private $trigger;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int,LeadTriggerLog>
      */
     private $log;
 
@@ -63,17 +91,22 @@ class TriggerEvent
      */
     private $changes;
 
+    public function __clone(): void
+    {
+        $this->id = null;
+    }
+
     public function __construct()
     {
         $this->log = new ArrayCollection();
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('point_trigger_events')
-            ->setCustomRepositoryClass('Mautic\PointBundle\Entity\TriggerEventRepository')
+            ->setCustomRepositoryClass(TriggerEventRepository::class)
             ->addIndex(['type'], 'trigger_type_search');
 
         $builder->addIdColumns();
@@ -91,6 +124,7 @@ class TriggerEvent
         $builder->createManyToOne('trigger', 'Trigger')
             ->inversedBy('events')
             ->addJoinColumn('trigger_id', 'id', false, false, 'CASCADE')
+            ->isOwnershipParent()
             ->build();
 
         $builder->createOneToMany('log', 'LeadTriggerLog')
@@ -99,14 +133,14 @@ class TriggerEvent
             ->cascadeRemove()
             ->fetchExtraLazy()
             ->build();
+
+        static::addUuidField($builder);
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('trigger')
             ->addProperties(
@@ -122,11 +156,7 @@ class TriggerEvent
             ->build();
     }
 
-    /**
-     * @param $prop
-     * @param $val
-     */
-    private function isChanged($prop, $val)
+    private function isChanged(string $prop, $val): void
     {
         if ($this->$prop != $val) {
             $this->changes[$prop] = [$this->$prop, $val];
@@ -134,7 +164,7 @@ class TriggerEvent
     }
 
     /**
-     * @return array
+     * @return array|null
      */
     public function getChanges()
     {
@@ -142,7 +172,7 @@ class TriggerEvent
     }
 
     /**
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
@@ -151,10 +181,8 @@ class TriggerEvent
 
     /**
      * @param int $order
-     *
-     * @return TriggerEvent
      */
-    public function setOrder($order)
+    public function setOrder($order): static
     {
         $this->isChanged('order', $order);
 
@@ -173,10 +201,8 @@ class TriggerEvent
 
     /**
      * @param array $properties
-     *
-     * @return TriggerEvent
      */
-    public function setProperties($properties)
+    public function setProperties($properties): static
     {
         $this->isChanged('properties', $properties);
 
@@ -193,10 +219,7 @@ class TriggerEvent
         return $this->properties;
     }
 
-    /**
-     * @return self
-     */
-    public function setTrigger(Trigger $trigger)
+    public function setTrigger(Trigger $trigger): static
     {
         $this->trigger = $trigger;
 
@@ -204,7 +227,7 @@ class TriggerEvent
     }
 
     /**
-     * @return Trigger
+     * @return Trigger|null
      */
     public function getTrigger()
     {
@@ -213,10 +236,8 @@ class TriggerEvent
 
     /**
      * @param string $type
-     *
-     * @return TriggerEvent
      */
-    public function setType($type)
+    public function setType($type): static
     {
         $this->isChanged('type', $type);
         $this->type = $type;
@@ -225,27 +246,22 @@ class TriggerEvent
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getType()
     {
         return $this->type;
     }
 
-    /**
-     * @return array
-     */
-    public function convertToArray()
+    public function convertToArray(): array
     {
         return get_object_vars($this);
     }
 
     /**
      * @param string $description
-     *
-     * @return TriggerEvent
      */
-    public function setDescription($description)
+    public function setDescription($description): static
     {
         $this->isChanged('description', $description);
         $this->description = $description;
@@ -254,7 +270,7 @@ class TriggerEvent
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getDescription()
     {
@@ -263,10 +279,8 @@ class TriggerEvent
 
     /**
      * @param string $name
-     *
-     * @return TriggerEvent
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->isChanged('name', $name);
         $this->name = $name;
@@ -275,24 +289,21 @@ class TriggerEvent
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getName()
     {
         return $this->name;
     }
 
-    /**
-     * @return self
-     */
-    public function addLog(LeadTriggerLog $log)
+    public function addLog(LeadTriggerLog $log): static
     {
         $this->log[] = $log;
 
         return $this;
     }
 
-    public function removeLog(LeadTriggerLog $log)
+    public function removeLog(LeadTriggerLog $log): void
     {
         $this->log->removeElement($log);
     }
@@ -303,5 +314,10 @@ class TriggerEvent
     public function getLog()
     {
         return $this->log;
+    }
+
+    public function getPermissionUser(): mixed
+    {
+        return $this->getTrigger()->getCreatedBy();
     }
 }

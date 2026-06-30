@@ -2,52 +2,106 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Tests\Functional\Entity;
 
+use Mautic\CampaignBundle\Entity\Campaign;
+use Mautic\CampaignBundle\Entity\Event;
+use Mautic\CampaignBundle\Entity\LeadEventLog;
 use Mautic\CampaignBundle\Entity\LeadEventLogRepository;
 use Mautic\CoreBundle\Test\MauticMysqlTestCase;
+use Mautic\LeadBundle\Entity\Lead;
 use PHPUnit\Framework\Assert;
 
 class LeadEventLogRepositoryTest extends MauticMysqlTestCase
 {
-    public function testThatRemoveEventLogsMethodRemovesLogs()
+    private LeadEventLogRepository $repository;
+
+    protected function setUp(): void
     {
-        $eventId    = random_int(200, 2000);
-        $connection = $this->em->getConnection();
+        parent::setUp();
 
-        /** @var LeadEventLogRepository $leadEventLogRepository */
-        $leadEventLogRepository = $this->em->getRepository('MauticCampaignBundle:LeadEventLog');
-
-        $insertStatement = $connection->prepare('INSERT INTO `campaign_lead_event_log` (`event_id`, `lead_id`, `rotation`, `is_scheduled`, `system_triggered`) VALUES (?, ?, ?, ?, ?);');
-
-        $connection->query('SET FOREIGN_KEY_CHECKS=0;');
-        foreach ($this->getLeadCampaignEventData($eventId) as $row) {
-            $insertStatement->execute($row);
-        }
-        $connection->query('SET FOREIGN_KEY_CHECKS=1;');
-
-        Assert::assertCount(3, $leadEventLogRepository->findAll());
-
-        $leadEventLogRepository->removeEventLogs($eventId);
-
-        Assert::assertCount(0, $leadEventLogRepository->findAll());
+        $this->repository = $this->em->getRepository(LeadEventLog::class);
     }
 
-    private function getLeadCampaignEventData(int $eventId): array
+    public function testThatRemoveEventLogsByCampaignIdMethodRemovesLogs(): void
     {
-        return [
-            [$eventId, 100, 200, 1, 1],
-            [$eventId, 101, 201, 1, 1],
-            [$eventId, 102, 202, 1, 1],
-        ];
+        $campaign = $this->createCampaign();
+        $event    = $this->createEvent($campaign);
+        $this->createEventLog($campaign, $event);
+        $this->createEventLog($campaign, $event);
+        $this->createEventLog($campaign, $event);
+        $this->em->flush();
+
+        Assert::assertCount(3, $this->repository->findAll());
+        $this->repository->removeEventLogsByCampaignId($campaign->getId());
+        Assert::assertCount(0, $this->repository->findAll());
+    }
+
+    public function testMarkEventLogsQueued(): void
+    {
+        $campaign = $this->createCampaign();
+        $event    = $this->createEvent($campaign);
+        $log1     = $this->createEventLog($campaign, $event);
+        $log2     = $this->createEventLog($campaign, $event);
+        $log3     = $this->createEventLog($campaign, $event);
+        $this->em->flush();
+
+        Assert::assertCount(3, $this->repository->findAll());
+        Assert::assertEmpty($log1->getDateQueued());
+        Assert::assertEmpty($log2->getDateQueued());
+        Assert::assertEmpty($log3->getDateQueued());
+
+        $this->repository->markEventLogsQueued([(string) $log1->getId(), (string) $log3->getId()]);
+        $this->em->refresh($log1);
+        $this->em->refresh($log2);
+        $this->em->refresh($log3);
+
+        Assert::assertNotEmpty($log1->getDateQueued());
+        Assert::assertEmpty($log2->getDateQueued());
+        Assert::assertNotEmpty($log3->getDateQueued());
+    }
+
+    private function createLead(): Lead
+    {
+        $lead = new Lead();
+        $lead->setFirstname('Test');
+        $this->em->persist($lead);
+
+        return $lead;
+    }
+
+    private function createCampaign(): Campaign
+    {
+        $campaign = new Campaign();
+        $campaign->setName('Campaign');
+        $this->em->persist($campaign);
+
+        return $campaign;
+    }
+
+    private function createEvent(Campaign $campaign): Event
+    {
+        $event = new Event();
+        $event->setName('Event');
+        $event->setCampaign($campaign);
+        $event->setType('page.devicehit');
+        $event->setEventType(Event::TYPE_DECISION);
+        $this->em->persist($event);
+
+        return $event;
+    }
+
+    private function createEventLog(Campaign $campaign, ?Event $event = null): LeadEventLog
+    {
+        $event        = $event ?: $this->createEvent($campaign);
+        $lead         = $this->createLead();
+        $leadEventLog = new LeadEventLog();
+        $leadEventLog->setLead($lead);
+        $leadEventLog->setEvent($event);
+        $leadEventLog->setTriggerDate(new \DateTime());
+        $leadEventLog->setIsScheduled(true);
+        $this->em->persist($leadEventLog);
+
+        return $leadEventLog;
     }
 }

@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
@@ -18,27 +9,11 @@ use Ramsey\Uuid\Uuid;
 
 class EmailReply
 {
-    /**
-     * @var string
-     */
-    private $id;
+    private readonly string $id;
 
-    /**
-     * @var Stat
-     */
-    private $stat;
+    private readonly \DateTimeInterface $dateReplied;
 
-    /**
-     * @var \DateTime
-     */
-    private $dateReplied;
-
-    /**
-     * @var string
-     */
-    private $messageId;
-
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
@@ -65,10 +40,8 @@ class EmailReply
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('emailReply')
             ->addProperties(
@@ -84,34 +57,26 @@ class EmailReply
     /**
      * @param string $messageId
      */
-    public function __construct(Stat $stat, $messageId, \DateTime $dateReplied = null)
-    {
+    public function __construct(
+        private readonly Stat $stat,
+        private $messageId,
+        ?\DateTime $dateReplied = null,
+    ) {
         $this->id          = Uuid::uuid4()->toString();
-        $this->stat        = $stat;
-        $this->messageId   = $messageId;
-        $this->dateReplied = (null === $dateReplied) ? new \DateTime() : $dateReplied;
+        $this->dateReplied = $dateReplied ?? new \DateTime();
     }
 
-    /**
-     * @return int
-     */
-    public function getId()
+    public function getId(): string
     {
         return $this->id;
     }
 
-    /**
-     * @return Stat
-     */
-    public function getStat()
+    public function getStat(): Stat
     {
         return $this->stat;
     }
 
-    /**
-     * @return \DateTime
-     */
-    public function getDateReplied()
+    public function getDateReplied(): \DateTimeInterface
     {
         return $this->dateReplied;
     }

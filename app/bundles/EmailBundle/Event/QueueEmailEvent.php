@@ -1,42 +1,20 @@
 <?php
 
-/*
- * @copyright   2015 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Event;
 
-use Symfony\Component\EventDispatcher\Event;
+use Mautic\EmailBundle\Mailer\Message\MauticMessage;
+use Symfony\Contracts\EventDispatcher\Event;
 
-/**
- * Class QueueEmailEvent.
- */
 class QueueEmailEvent extends Event
 {
-    /**
-     * @var \Swift_Message
-     */
-    private $message;
+    private bool $retry = false;
 
-    /**
-     * @var bool
-     */
-    private $retry = false;
-
-    public function __construct(\Swift_Message $message)
-    {
-        $this->message = $message;
+    public function __construct(
+        private readonly MauticMessage $message,
+    ) {
     }
 
-    /**
-     * @return \Swift_Message
-     */
-    public function getMessage()
+    public function getMessage(): MauticMessage
     {
         return $this->message;
     }
@@ -44,15 +22,12 @@ class QueueEmailEvent extends Event
     /**
      * Sets whether the sending of the message should be tried again.
      */
-    public function tryAgain()
+    public function tryAgain(): void
     {
         $this->retry = true;
     }
 
-    /**
-     * @return bool
-     */
-    public function shouldTryAgain()
+    public function shouldTryAgain(): bool
     {
         return $this->retry;
     }

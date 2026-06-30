@@ -1,25 +1,17 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Executioner;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Mautic\CampaignBundle\Entity\Event;
 use Mautic\CampaignBundle\Entity\EventRepository;
-use Mautic\CampaignBundle\Entity\LeadRepository;
 use Mautic\CampaignBundle\EventCollector\Accessor\Event\DecisionAccessor;
 use Mautic\CampaignBundle\EventCollector\EventCollector;
 use Mautic\CampaignBundle\Executioner\Event\DecisionExecutioner as Executioner;
 use Mautic\CampaignBundle\Executioner\Exception\CampaignNotExecutableException;
 use Mautic\CampaignBundle\Executioner\Exception\DecisionNotApplicableException;
+use Mautic\CampaignBundle\Executioner\Helper\DecisionHelper;
+use Mautic\CampaignBundle\Executioner\Helper\EventRedirectionHelper;
 use Mautic\CampaignBundle\Executioner\Result\Responses;
 use Mautic\CampaignBundle\Executioner\Scheduler\EventScheduler;
 use Mautic\CampaignBundle\Helper\ChannelExtractor;
@@ -30,89 +22,27 @@ use Psr\Log\LoggerInterface;
 
 class RealTimeExecutioner
 {
-    /**
-     * @var LoggerInterface
-     */
-    private $logger;
-
-    /**
-     * @var LeadModel
-     */
-    private $leadModel;
-
-    /**
-     * @var Lead
-     */
-    private $contact;
+    private ?Lead $contact = null;
 
     /**
      * @var array
      */
     private $events;
 
-    /**
-     * @var EventRepository
-     */
-    private $eventRepository;
+    private ?Responses $responses = null;
 
-    /**
-     * @var EventExecutioner
-     */
-    private $executioner;
-
-    /**
-     * @var Executioner
-     */
-    private $decisionExecutioner;
-
-    /**
-     * @var EventCollector
-     */
-    private $collector;
-
-    /**
-     * @var EventScheduler
-     */
-    private $scheduler;
-
-    /**
-     * @var ContactTracker
-     */
-    private $contactTracker;
-
-    /**
-     * @var Responses
-     */
-    private $responses;
-
-    /**
-     * @var LeadRepository
-     */
-    private $leadRepository;
-
-    /**
-     * RealTimeExecutioner constructor.
-     */
     public function __construct(
-        LoggerInterface $logger,
-        LeadModel $leadModel,
-        EventRepository $eventRepository,
-        EventExecutioner $executioner,
-        Executioner $decisionExecutioner,
-        EventCollector $collector,
-        EventScheduler $scheduler,
-        ContactTracker $contactTracker,
-        LeadRepository $leadRepository
+        private readonly LoggerInterface $logger,
+        private readonly LeadModel $leadModel,
+        private readonly EventRepository $eventRepository,
+        private readonly EventExecutioner $executioner,
+        private readonly Executioner $decisionExecutioner,
+        private readonly EventCollector $collector,
+        private readonly EventScheduler $scheduler,
+        private readonly ContactTracker $contactTracker,
+        private readonly DecisionHelper $decisionHelper,
+        private readonly EventRedirectionHelper $redirectionHelper,
     ) {
-        $this->logger              = $logger;
-        $this->leadModel           = $leadModel;
-        $this->eventRepository     = $eventRepository;
-        $this->executioner         = $executioner;
-        $this->decisionExecutioner = $decisionExecutioner;
-        $this->collector           = $collector;
-        $this->scheduler           = $scheduler;
-        $this->contactTracker      = $contactTracker;
-        $this->leadRepository      = $leadRepository;
     }
 
     /**
@@ -121,14 +51,12 @@ class RealTimeExecutioner
      * @param string|null $channel
      * @param int|null    $channelId
      *
-     * @return Responses
-     *
      * @throws Dispatcher\Exception\LogNotProcessedException
      * @throws Dispatcher\Exception\LogPassedAndFailedException
      * @throws Exception\CannotProcessEventException
      * @throws Scheduler\Exception\NotSchedulableException
      */
-    public function execute($type, $passthrough = null, $channel = null, $channelId = null)
+    public function execute($type, $passthrough = null, $channel = null, $channelId = null): ?Responses
     {
         $this->responses = new Responses();
         $now             = new \DateTime();
@@ -156,6 +84,8 @@ class RealTimeExecutioner
 
         /** @var Event $event */
         foreach ($this->events as $event) {
+            $event = $this->redirectionHelper->handleEventRedirection($event, null, null);
+
             try {
                 $this->evaluateDecisionForContact($event, $passthrough, $channel, $channelId);
             } catch (DecisionNotApplicableException $exception) {
@@ -188,12 +118,14 @@ class RealTimeExecutioner
      * @throws Exception\CannotProcessEventException
      * @throws Scheduler\Exception\NotSchedulableException
      */
-    private function executeAssociatedEvents(ArrayCollection $children, \DateTime $now)
+    private function executeAssociatedEvents(ArrayCollection $children, \DateTime $now): void
     {
         $children = clone $children;
 
         /** @var Event $child */
         foreach ($children as $key => $child) {
+            $child = $this->redirectionHelper->handleEventRedirection($child, $children, $key);
+
             $executionDate = $this->scheduler->getExecutionDateTime($child, $now);
             $this->logger->debug(
                 'CAMPAIGN: Event ID# '.$child->getId().
@@ -220,47 +152,11 @@ class RealTimeExecutioner
      * @throws DecisionNotApplicableException
      * @throws Exception\CannotProcessEventException
      */
-    private function evaluateDecisionForContact(Event $event, $passthrough = null, $channel = null, $channelId = null)
+    private function evaluateDecisionForContact(Event $event, $passthrough = null, $channel = null, $channelId = null): void
     {
         $this->logger->debug('CAMPAIGN: Executing '.$event->getType().' ID '.$event->getId().' for contact ID '.$this->contact->getId());
 
-        if (Event::TYPE_DECISION !== $event->getEventType()) {
-            @trigger_error(
-                "{$event->getType()} is not assigned to a decision and no longer supported. ".
-                'Check that you are executing RealTimeExecutioner::execute for an event registered as a decision.',
-                E_USER_DEPRECATED
-            );
-
-            throw new DecisionNotApplicableException("Event {$event->getId()} is not a decision.");
-        }
-
-        // If channels do not match up at all (not even fuzzy logic i.e. page vs page.redirect), there's no need to go further
-        if ($channel && $event->getChannel() && false === strpos($channel, $event->getChannel())) {
-            throw new DecisionNotApplicableException("Channels, $channel and {$event->getChannel()}, do not match.");
-        }
-
-        if ($channel && $channelId && $event->getChannelId() && $channelId !== $event->getChannelId()) {
-            throw new DecisionNotApplicableException("Channel IDs, $channelId and {$event->getChannelId()}, do not match for $channel.");
-        }
-
-        // Check if parent taken path is the path of this event, otherwise exit
-        $parentEvent = $event->getParent();
-        if (null !== $parentEvent && null !== $event->getDecisionPath()) {
-            $rotation    = $this->leadRepository->getContactRotations([$this->contact->getId()], $event->getCampaign()->getId());
-            $log         = $parentEvent->getLogByContactAndRotation($this->contact, $rotation);
-
-            if (null === $log) {
-                throw new DecisionNotApplicableException("Parent {$parentEvent->getId()} has not been fired, event {$event->getId()} should not be fired.");
-            }
-
-            $pathTaken   = (int) $log->getNonActionPathTaken();
-
-            if (1 === $pathTaken && !$parentEvent->getNegativeChildren()->contains($event)) {
-                throw new DecisionNotApplicableException("Parent {$parentEvent->getId()} take negative path, event {$event->getId()} is on positive path.");
-            } elseif (0 === $pathTaken && !$parentEvent->getPositiveChildren()->contains($event)) {
-                throw new DecisionNotApplicableException("Parent {$parentEvent->getId()} take positive path, event {$event->getId()} is on negative path.");
-            }
-        }
+        $this->decisionHelper->checkIsDecisionApplicableForContact($event, $this->contact, $channel, $channelId);
 
         /** @var DecisionAccessor $config */
         $config = $this->collector->getEventConfig($event);
@@ -270,7 +166,7 @@ class RealTimeExecutioner
     /**
      * @throws CampaignNotExecutableException
      */
-    private function fetchCurrentContact()
+    private function fetchCurrentContact(): void
     {
         $this->contact = $this->contactTracker->getContact();
         if (!$this->contact instanceof Lead || !$this->contact->getId()) {
@@ -281,11 +177,9 @@ class RealTimeExecutioner
     }
 
     /**
-     * @param $type
-     *
      * @throws CampaignNotExecutableException
      */
-    private function fetchCampaignData($type)
+    private function fetchCampaignData($type): void
     {
         if (!$this->events = $this->eventRepository->getContactPendingEvents($this->contact->getId(), $type)) {
             throw new CampaignNotExecutableException('Contact does not have any applicable '.$type.' associations.');
@@ -296,7 +190,7 @@ class RealTimeExecutioner
         // to fail resulting in the decision never being evaluated. Therefore we are going to self heal these decisions.
         /** @var Event $event */
         foreach ($this->events as $event) {
-            if (1 === $event->getChannelId()) {
+            if ('1' === $event->getChannelId()) {
                 ChannelExtractor::setChannel($event, $event, $this->collector->getEventConfig($event));
 
                 $this->eventRepository->saveEntity($event);

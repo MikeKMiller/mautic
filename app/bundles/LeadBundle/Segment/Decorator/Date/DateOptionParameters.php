@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Segment\Decorator\Date;
 
 use Mautic\CoreBundle\Helper\DateTimeHelper;
@@ -16,35 +7,23 @@ use Mautic\LeadBundle\Segment\ContactSegmentFilterCrate;
 
 class DateOptionParameters
 {
-    /**
-     * @var bool
-     */
-    private $hasTimePart;
+    private readonly bool $hasTimePart;
 
     /**
-     * @var string
+     * @var mixed
      */
     private $timeframe;
 
-    /**
-     * @var bool
-     */
-    private $requiresBetween;
+    private readonly bool $requiresBetween;
 
-    /**
-     * @var bool
-     */
-    private $shouldUseLastDayOfRange;
+    private readonly bool $shouldUseLastDayOfRange;
 
-    /**
-     * @var DateTimeHelper
-     */
-    private $dateTimeHelper;
+    private DateTimeHelper $dateTimeHelper;
 
     public function __construct(
         ContactSegmentFilterCrate $leadSegmentFilterCrate,
         array $relativeDateStrings,
-        TimezoneResolver $timezoneResolver
+        TimezoneResolver $timezoneResolver,
     ) {
         $this->hasTimePart             = $leadSegmentFilterCrate->hasTimeParts();
         $this->timeframe               = $this->parseTimeFrame($leadSegmentFilterCrate, $relativeDateStrings);
@@ -54,10 +33,7 @@ class DateOptionParameters
         $this->setDateTimeHelper($timezoneResolver);
     }
 
-    /**
-     * @return bool
-     */
-    public function hasTimePart()
+    public function hasTimePart(): bool
     {
         return $this->hasTimePart;
     }
@@ -70,10 +46,7 @@ class DateOptionParameters
         return $this->timeframe;
     }
 
-    /**
-     * @return bool
-     */
-    public function isBetweenRequired()
+    public function isBetweenRequired(): bool
     {
         return $this->requiresBetween;
     }
@@ -82,24 +55,19 @@ class DateOptionParameters
      * This function indicates that we need to modify date to the last date of range.
      * "Less than or equal" operator means that we need to include whole week / month / year > last day from range
      * "Grater than" needs same logic.
-     *
-     * @return bool
      */
-    public function shouldUseLastDayOfRange()
+    public function shouldUseLastDayOfRange(): bool
     {
         return $this->shouldUseLastDayOfRange;
     }
 
-    /**
-     * @return DateTimeHelper
-     */
-    public function getDefaultDate()
+    public function getDefaultDate(): DateTimeHelper
     {
         return $this->dateTimeHelper;
     }
 
     /**
-     * @return string
+     * @return string|mixed
      */
     private function parseTimeFrame(ContactSegmentFilterCrate $leadSegmentFilterCrate, array $relativeDateStrings)
     {
@@ -113,7 +81,7 @@ class DateOptionParameters
         return str_replace('mautic.lead.list.', '', $key);
     }
 
-    private function setDateTimeHelper(TimezoneResolver $timezoneResolver)
+    private function setDateTimeHelper(TimezoneResolver $timezoneResolver): void
     {
         $this->dateTimeHelper = $timezoneResolver->getDefaultDate($this->hasTimePart());
     }

@@ -1,38 +1,39 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\NotificationBundle\Form\Type;
 
+use Doctrine\ORM\EntityManager;
 use Mautic\CategoryBundle\Form\Type\CategoryListType;
+use Mautic\CoreBundle\Form\DataTransformer\IdToEntityModelTransformer;
 use Mautic\CoreBundle\Form\EventListener\CleanFormSubscriber;
 use Mautic\CoreBundle\Form\EventListener\FormExitSubscriber;
 use Mautic\CoreBundle\Form\Type\FormButtonsType;
+use Mautic\CoreBundle\Form\Type\PublishDownDateType;
+use Mautic\CoreBundle\Form\Type\PublishUpDateType;
 use Mautic\CoreBundle\Form\Type\YesNoButtonGroupType;
 use Mautic\EmailBundle\Form\Type\EmailUtmTagsType;
+use Mautic\NotificationBundle\Entity\Notification;
 use Symfony\Component\Form\AbstractType;
-use Symfony\Component\Form\Extension\Core\Type\DateTimeType;
 use Symfony\Component\Form\Extension\Core\Type\HiddenType;
 use Symfony\Component\Form\Extension\Core\Type\LocaleType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\Extension\Core\Type\UrlType;
 use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\Form\FormEvent;
+use Symfony\Component\Form\FormEvents;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 
 /**
- * Class NotificationType.
+ * @extends AbstractType<Notification>
  */
 class MobileNotificationType extends AbstractType
 {
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function __construct(private readonly EntityManager $entityManager)
+    {
+    }
+
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         $builder->addEventSubscriber(new CleanFormSubscriber(['content' => 'html', 'customHtml' => 'html']));
         $builder->addEventSubscriber(new FormExitSubscriber('notification.notification', $options));
@@ -110,40 +111,10 @@ class MobileNotificationType extends AbstractType
         );
 
         $builder->add('isPublished', YesNoButtonGroupType::class);
+        $builder->add('publishUp', PublishUpDateType::class);
+        $builder->add('publishDown', PublishDownDateType::class);
 
-        $builder->add(
-            'publishUp',
-            DateTimeType::class,
-            [
-                'widget'     => 'single_text',
-                'label'      => 'mautic.core.form.publishup',
-                'label_attr' => ['class' => 'control-label'],
-                'attr'       => [
-                    'class'       => 'form-control',
-                    'data-toggle' => 'datetime',
-                ],
-                'format'   => 'yyyy-MM-dd HH:mm',
-                'required' => false,
-            ]
-        );
-
-        $builder->add(
-            'publishDown',
-            DateTimeType::class,
-            [
-                'widget'     => 'single_text',
-                'label'      => 'mautic.core.form.publishdown',
-                'label_attr' => ['class' => 'control-label'],
-                'attr'       => [
-                    'class'       => 'form-control',
-                    'data-toggle' => 'datetime',
-                ],
-                'format'   => 'yyyy-MM-dd HH:mm',
-                'required' => false,
-            ]
-        );
-
-        //add category
+        // add category
         $builder->add(
             'category',
             CategoryListType::class,
@@ -163,6 +134,45 @@ class MobileNotificationType extends AbstractType
                 ],
                 'required' => false,
             ]
+        );
+
+        $transformer = new IdToEntityModelTransformer($this->entityManager, Notification::class);
+        $builder->add(
+            $builder->create(
+                'translationParent',
+                HiddenType::class
+            )->addModelTransformer($transformer)
+        );
+
+        $builder->add(
+            'translationParentSelector', // This is a non-mapped field
+            MobileNotificationListType::class,
+            [
+                'label'      => 'mautic.core.form.translation_parent',
+                'label_attr' => ['class' => 'control-label'],
+                'attr'       => [
+                    'class'   => 'form-control',
+                    'tooltip' => 'mautic.core.form.translation_parent.help',
+                ],
+                'required'       => false,
+                'multiple'       => false,
+                'placeholder'    => 'mautic.core.form.translation_parent.empty',
+                'top_level'      => 'translation',
+                'ignore_ids'     => [(int) $options['data']->getId()],
+                'mapped'         => false,
+                'data'           => ($options['data']->getTranslationParent()) ? $options['data']->getTranslationParent()->getId() : null,
+            ]
+        );
+
+        $builder->addEventListener(
+            FormEvents::PRE_SUBMIT,
+            function (FormEvent $event): void {
+                $data = $event->getData();
+                if (isset($data['translationParentSelector'])) {
+                    $data['translationParent'] = $data['translationParentSelector'];
+                }
+                $event->setData($data);
+            }
         );
 
         $builder->add('buttons', FormButtonsType::class);
@@ -208,22 +218,14 @@ class MobileNotificationType extends AbstractType
         );
     }
 
-    public function configureOptions(OptionsResolver $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
         $resolver->setDefaults(
             [
-                'data_class' => 'Mautic\NotificationBundle\Entity\Notification',
+                'data_class' => Notification::class,
             ]
         );
 
         $resolver->setDefined(['update_select']);
-    }
-
-    /**
-     * @return string
-     */
-    public function getBlockPrefix()
-    {
-        return 'mobile_notification';
     }
 }

@@ -5,24 +5,26 @@ namespace Mautic\LeadBundle\Tests\Model;
 use Mautic\CoreBundle\Helper\Serializer;
 use Mautic\LeadBundle\Entity\LeadList;
 use Mautic\LeadBundle\Model\ListModel;
+use PHPUnit\Framework\MockObject\MockObject;
 
 class LeadListModelTest extends \PHPUnit\Framework\TestCase
 {
-    protected $fixture;
+    /** @var ListModel&MockObject */
+    protected MockObject $fixture;
 
     protected function setUp(): void
     {
         $mockListModel = $this->getMockBuilder(ListModel::class)
             ->disableOriginalConstructor()
-            ->setMethods(['getEntities', 'getEntity'])
+            ->onlyMethods(['getEntities', 'getEntity'])
             ->getMock();
 
         $mockListModel->expects($this->any())
             ->method('getEntity')
-            ->willReturnCallback(function ($id) {
+            ->willReturnCallback(function ($id): MockObject {
                 $mockEntity = $this->getMockBuilder(LeadList::class)
                     ->disableOriginalConstructor()
-                    ->setMethods(['getName'])
+                    ->onlyMethods(['getName'])
                     ->getMock();
 
                 $mockEntity->expects($this->once())
@@ -36,9 +38,7 @@ class LeadListModelTest extends \PHPUnit\Framework\TestCase
 
         $filters4 = 'a:1:{i:0;a:7:{s:4:"glue";s:3:"and";s:5:"field";s:8:"leadlist";s:6:"object";s:4:"lead";s:4:"type";s:8:"leadlist";s:6:"filter";a:1:{i:0;i:3;}s:7:"display";N;s:8:"operator";s:2:"in";}}';
 
-        $mockEntity = $this->getMockBuilder(LeadList::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $mockEntity = $this->createMock(LeadList::class);
 
         $mockEntity1 = clone $mockEntity;
         $mockEntity1->expects($this->once())
@@ -85,16 +85,19 @@ class LeadListModelTest extends \PHPUnit\Framework\TestCase
     }
 
     /**
-     * @dataProvider segmentTestDataProvider
+     * @param array<int, mixed> $arg
+     * @param array<int, mixed> $expected
      */
-    public function testSegmentsCanBeDeletedCorrecty(array $arg, array $expected, $message)
+    #[\PHPUnit\Framework\Attributes\DataProvider('segmentTestDataProvider')]
+    public function testSegmentsCanBeDeletedCorrecty(array $arg, array $expected, string $message): void
     {
         $result = $this->fixture->canNotBeDeleted($arg);
 
         $this->assertEquals($expected, $result, $message);
     }
 
-    public function segmentTestDataProvider()
+    /** @return array<int, array{0: array<int, mixed>, 1: array<int, mixed>, 2: string}> */
+    public static function segmentTestDataProvider(): array
     {
         return [
             [

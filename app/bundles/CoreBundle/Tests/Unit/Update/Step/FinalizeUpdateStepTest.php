@@ -1,80 +1,82 @@
 <?php
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        https://www.mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\Update\Step;
 
 use Mautic\CoreBundle\Helper\AppVersion;
 use Mautic\CoreBundle\Helper\PathsHelper;
 use Mautic\CoreBundle\Update\Step\FinalizeUpdateStep;
 use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\Session;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-class FinalizeUpdateStepTest extends AbstractStepTest
+class FinalizeUpdateStepTest extends AbstractStepTestCase
 {
     /**
-     * @var MockObject|TranslatorInterface
+     * @var MockObject&TranslatorInterface
      */
-    private $translator;
+    private MockObject $translator;
 
     /**
-     * @var MockObject|PathsHelper
+     * @var MockObject&PathsHelper
      */
-    private $pathsHelper;
+    private MockObject $pathsHelper;
 
     /**
-     * @var MockObject|Session
+     * @var MockObject&Session
      */
-    private $session;
+    private MockObject $session;
 
     /**
-     * @var MockObject|AppVersion
+     * @var MockObject&AppVersion
      */
-    private $appVersion;
+    private MockObject $appVersion;
 
-    /**
-     * @var FinalizeUpdateStep
-     */
-    private $step;
+    private FinalizeUpdateStep $step;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->translator  = $this->createMock(TranslatorInterface::class);
-        $this->pathsHelper = $this->createMock(PathsHelper::class);
-        $this->session     = $this->createMock(Session::class);
-        $this->appVersion  = $this->createMock(AppVersion::class);
+        $this->translator   = $this->createMock(TranslatorInterface::class);
+        $this->pathsHelper  = $this->createMock(PathsHelper::class);
+        $this->session      = $this->createMock(Session::class);
+        $requestStack       = $this->createMock(RequestStack::class);
+        $this->appVersion   = $this->createMock(AppVersion::class);
+        $request            = $this->createMock(Request::class);
 
-        $this->step = new FinalizeUpdateStep($this->translator, $this->pathsHelper, $this->session, $this->appVersion);
+        $request->method('hasSession')->willReturn(true);
+        $request->method('getSession')->willReturn($this->session);
+        $requestStack->method('getSession')->willReturn($this->session);
+        $requestStack->method('getCurrentRequest')->willReturn($request);
+
+        $this->step = new FinalizeUpdateStep($this->translator, $this->pathsHelper, $requestStack, $this->appVersion);
     }
 
-    public function testFinalizationCleansUpFiles()
+    public function testFinalizationCleansUpFiles(): void
     {
         file_put_contents(__DIR__.'/resources/upgrade.php', '');
         file_put_contents(__DIR__.'/resources/lastUpdateCheck.txt', '');
 
-        $wrappingUpKey       = 'mautic.core.update.step.wrapping_up';
+        $wrappingUpKey       = 'mautic.core.command.update.step.wrapping_up';
         $updateSuccessfulKey = 'mautic.core.update.update_successful';
+        $matcher             = $this->exactly(2);
 
-        $this->translator->expects($this->exactly(2))
-            ->method('trans')
-            ->withConsecutive(
-                [$wrappingUpKey],
-                [$updateSuccessfulKey, ['%version%' => '10.0.0']]
-            )
-            ->willReturnOnConsecutiveCalls(
-                $wrappingUpKey,
-                $updateSuccessfulKey
-            );
+        $this->translator->expects($matcher)
+            ->method('trans')->willReturnCallback(function (...$parameters) use ($matcher, $wrappingUpKey, $updateSuccessfulKey) {
+                if (1 === $matcher->numberOfInvocations()) {
+                    $this->assertSame($wrappingUpKey, $parameters[0]);
+
+                    return $wrappingUpKey;
+                }
+                if (2 === $matcher->numberOfInvocations()) {
+                    $this->assertSame($updateSuccessfulKey, $parameters[0]);
+                    $this->assertSame(['%version%' => '10.0.0'], $parameters[1]);
+
+                    return $updateSuccessfulKey;
+                }
+            });
 
         $this->pathsHelper->expects($this->once())
             ->method('getRootPath')
@@ -90,13 +92,13 @@ class FinalizeUpdateStepTest extends AbstractStepTest
 
         $this->step->execute($this->progressBar, $this->input, $this->output);
 
-        $this->assertFileNotExists(__DIR__.'/resources/upgrade.php');
-        $this->assertFileNotExists(__DIR__.'/resources/lastUpdateCheck.txt');
+        $this->assertFileDoesNotExist(__DIR__.'/resources/upgrade.php');
+        $this->assertFileDoesNotExist(__DIR__.'/resources/lastUpdateCheck.txt');
 
-        $this->assertEquals($updateSuccessfulKey, trim($this->progressBar->getMessage()));
+        $this->assertSame($updateSuccessfulKey, trim($this->progressBar->getMessage()));
     }
 
-    public function testFinalizationWithPostUpgradeMessage()
+    public function testFinalizationWithPostUpgradeMessage(): void
     {
         file_put_contents(__DIR__.'/resources/upgrade.php', '');
         file_put_contents(__DIR__.'/resources/lastUpdateCheck.txt', '');
@@ -121,9 +123,13 @@ class FinalizeUpdateStepTest extends AbstractStepTest
             ->method('writeln')
             ->with("\n\n<info>This is an example message</info>");
 
+        $this->translator->expects($this->any())
+            ->method('trans')
+            ->willReturn('');
+
         $this->step->execute($this->progressBar, $this->input, $this->output);
 
-        $this->assertFileNotExists(__DIR__.'/resources/upgrade.php');
-        $this->assertFileNotExists(__DIR__.'/resources/lastUpdateCheck.txt');
+        $this->assertFileDoesNotExist(__DIR__.'/resources/upgrade.php');
+        $this->assertFileDoesNotExist(__DIR__.'/resources/lastUpdateCheck.txt');
     }
 }

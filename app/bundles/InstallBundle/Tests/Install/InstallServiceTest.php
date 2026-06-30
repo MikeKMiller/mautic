@@ -2,48 +2,60 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\InstallBundle\Tests\Install;
 
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityRepository;
 use Mautic\CoreBundle\Configurator\Configurator;
 use Mautic\CoreBundle\Configurator\Step\StepInterface;
+use Mautic\CoreBundle\Doctrine\Loader\FixturesLoaderInterface;
 use Mautic\CoreBundle\Helper\CacheHelper;
-use Mautic\CoreBundle\Helper\EncryptionHelper;
 use Mautic\CoreBundle\Helper\PathsHelper;
-use Mautic\InstallBundle\Configurator\Step\CheckStep;
-use Mautic\InstallBundle\Configurator\Step\DoctrineStep;
-use Mautic\InstallBundle\Configurator\Step\EmailStep;
-use Mautic\InstallBundle\Helper\SchemaHelper;
 use Mautic\InstallBundle\Install\InstallService;
+use Mautic\UserBundle\Entity\User;
+use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\HttpKernel\KernelInterface;
-use Symfony\Component\Security\Core\Encoder\EncoderFactory;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasher;
+use Symfony\Component\Validator\ConstraintViolationInterface;
+use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class InstallServiceTest extends \PHPUnit\Framework\TestCase
 {
-    private $configurator;
+    /**
+     * @var MockObject&Configurator
+     */
+    private MockObject $configurator;
 
-    private $cacheHelper;
-    private $pathsHelper;
-    private $entityManager;
-    private $translator;
-    private $kernel;
-    private $validator;
-    private $encoder;
+    /**
+     * @var MockObject&CacheHelper
+     */
+    private MockObject $cacheHelper;
 
-    private $installer;
+    /**
+     * @var MockObject&PathsHelper
+     */
+    private MockObject $pathsHelper;
 
-    public function setUp(): void
+    /**
+     * @var MockObject&EntityManager
+     */
+    private MockObject $entityManager;
+
+    /**
+     * @var MockObject&TranslatorInterface
+     */
+    private MockObject $translator;
+
+    /**
+     * @var MockObject&ValidatorInterface
+     */
+    private MockObject $validator;
+
+    private InstallService $installer;
+
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -52,9 +64,10 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
         $this->pathsHelper          = $this->createMock(PathsHelper::class);
         $this->entityManager        = $this->createMock(EntityManager::class);
         $this->translator           = $this->createMock(TranslatorInterface::class);
-        $this->kernel               = $this->createMock(KernelInterface::class);
+        $kernel                     = $this->createMock(KernelInterface::class);
         $this->validator            = $this->createMock(ValidatorInterface::class);
-        $this->encoder              = $this->createMock(EncoderFactory::class);
+        $hasher                     = $this->createMock(UserPasswordHasher::class);
+        $fixtureLoader              = $this->createMock(FixturesLoaderInterface::class);
 
         $this->installer = new InstallService(
             $this->configurator,
@@ -62,9 +75,10 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
             $this->pathsHelper,
             $this->entityManager,
             $this->translator,
-            $this->kernel,
+            $kernel,
             $this->validator,
-            $this->encoder
+            $hasher,
+            $fixtureLoader
         );
     }
 
@@ -72,9 +86,9 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
     {
         $this->pathsHelper->expects($this->once())
             ->method('getSystemPath')
-            ->with('local_config', false)
+            ->with('root', false)
             ->willReturn(
-                null
+                __DIR__.'/../../../../../',
             );
 
         $this->assertFalse($this->installer->checkIfInstalled());
@@ -84,19 +98,19 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
     {
         $this->pathsHelper->expects($this->once())
             ->method('getSystemPath')
-            ->with('local_config', false)
+            ->with('root', false)
             ->willReturn(
-                null
+                __DIR__.'/../../../../../',
             );
 
-        $this->configurator->expects($this->once())
+        $this->configurator->expects($this->exactly(2))
             ->method('getParameters')
             ->willReturn(
                 []
             );
 
         $index = 0;
-        $step  = $this->createMock(StepInterface::class);
+        $step  = $this->createStub(StepInterface::class);
 
         $this->configurator->expects($this->once())
             ->method('getStep')
@@ -110,19 +124,19 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
     {
         $this->pathsHelper->expects($this->once())
             ->method('getSystemPath')
-            ->with('local_config', false)
+            ->with('root', false)
             ->willReturn(
-                null
+                __DIR__.'/../../../../../',
             );
 
-        $this->configurator->expects($this->once())
+        $this->configurator->expects($this->exactly(2))
             ->method('getParameters')
             ->willReturn(
                 ['db_driver' => 'test']
             );
 
         $index = 0;
-        $step  = $this->createMock(StepInterface::class);
+        $step  = $this->createStub(StepInterface::class);
 
         $this->configurator->expects($this->once())
             ->method('getStep')
@@ -146,7 +160,7 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
             ->with('test', [], null, null)
             ->willReturn('test');
 
-        $this->assertEquals($messages, $this->installer->checkRequirements($step));
+        $this->assertSame($messages, $this->installer->checkRequirements($step));
     }
 
     public function testCheckOptionalSettings(): void
@@ -163,7 +177,7 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
             ->with('test', [], null, null)
             ->willReturn('test');
 
-        $this->assertEquals($messages, $this->installer->checkOptionalSettings($step));
+        $this->assertSame($messages, $this->installer->checkOptionalSettings($step));
     }
 
     public function testSaveConfigurationWhenNoCacheClear(): void
@@ -172,7 +186,7 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
         $step       = $this->createMock(StepInterface::class);
         $clearCache = false;
 
-        $messages = true;
+        $messages = [];
 
         $step->expects($this->once())
             ->method('update')
@@ -183,11 +197,9 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
             ->method('write');
 
         $this->configurator->expects($this->once())
-            ->method('mergeParameters')
-            ->with($params)
-            ->willReturn($messages);
+            ->method('mergeParameters');
 
-        $this->assertEquals($messages, $this->installer->saveConfiguration($params, $step, $clearCache));
+        $this->assertSame($messages, $this->installer->saveConfiguration($params, $step, $clearCache));
     }
 
     public function testSaveConfigurationWhenCacheClear(): void
@@ -196,7 +208,7 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
         $step       = $this->createMock(StepInterface::class);
         $clearCache = true;
 
-        $messages = true;
+        $messages = [];
 
         $step->expects($this->once())
             ->method('update')
@@ -204,9 +216,7 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
             ->willReturn($params);
 
         $this->configurator->expects($this->once())
-            ->method('mergeParameters')
-            ->with($params)
-            ->willReturn($messages);
+            ->method('mergeParameters');
 
         $this->configurator->expects($this->once())
             ->method('write');
@@ -214,7 +224,7 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
         $this->cacheHelper->expects($this->once())
             ->method('refreshConfig');
 
-        $this->assertEquals($messages, $this->installer->saveConfiguration($params, $step, $clearCache));
+        $this->assertSame($messages, $this->installer->saveConfiguration($params, $step, $clearCache));
     }
 
     public function testValidateDatabaseParamsWhenNoRequired(): void
@@ -234,7 +244,7 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
     public function testValidateDatabaseParamsWhenPortNotValid(): void
     {
         $dbParams = [
-            'driver' => 'mysql',
+            'driver' => 'pdo_mysql',
             'host'   => 'localhost',
             'port'   => '-1',
             'name'   => 'mautic',
@@ -250,13 +260,126 @@ class InstallServiceTest extends \PHPUnit\Framework\TestCase
     public function testValidateDatabaseParamsWhenAllValid(): void
     {
         $dbParams = [
-            'driver' => 'mysql',
+            'driver' => 'pdo_mysql',
             'host'   => 'localhost',
             'port'   => '3306',
             'name'   => 'mautic',
             'user'   => 'mautic',
         ];
 
-        $this->assertEquals(true, $this->installer->validateDatabaseParams($dbParams));
+        $this->assertSame([], $this->installer->validateDatabaseParams($dbParams));
+    }
+
+    public function testValidateDatabaseParamsWhenDriverNotValid(): void
+    {
+        $dbParams = [
+            'driver' => 'pdo_sqlite',
+            'host'   => 'localhost',
+            'port'   => '3306',
+            'name'   => 'mautic',
+            'user'   => 'mautic',
+        ];
+        $messages = [
+            'driver' => null,
+        ];
+
+        $this->assertEquals($messages, $this->installer->validateDatabaseParams($dbParams));
+    }
+
+    /**
+     * When an exception is raised while creating a database, there must be an array returned.
+     */
+    public function testCreateDatabaseStepWithErrors(): void
+    {
+        $dbParams = [
+            'driver'       => 'pdo_mysql',
+            'host'         => 'localhost',
+            'port'         => '3306',
+            'name'         => 'mautic',
+            'user'         => 'mautic',
+            'table_prefix' => 'mautic_',
+        ];
+
+        $step = $this->createStub(StepInterface::class);
+        $this->assertEquals(['error' => null], $this->installer->createDatabaseStep($step, $dbParams));
+    }
+
+    /**
+     * When an exception is raised while creating the schema, there must be an array returned.
+     */
+    public function testCreateSchemaStepWithErrors(): void
+    {
+        $dbParams = [
+            'driver'       => 'pdo_mysql',
+            'host'         => 'localhost',
+            'port'         => '3306',
+            'name'         => 'mautic',
+            'user'         => 'mautic',
+            'table_prefix' => 'mautic_',
+        ];
+
+        $this->assertEquals(['error' => null], $this->installer->createSchemaStep($dbParams));
+    }
+
+    public function testCreateAdminUserStepWhenPasswordIsMissing(): void
+    {
+        $mockRepo = $this->createMock(EntityRepository::class);
+        $mockRepo->expects($this->once())
+            ->method('find')
+            ->willReturn(0);
+
+        $this->entityManager->expects($this->once())
+            ->method('getRepository')
+            ->willReturn($mockRepo);
+
+        $data = [
+            'firstname' => 'Demo',
+            'lastname'  => 'User',
+            'username'  => 'admin',
+            'email'     => 'demo@demo.com',
+        ];
+
+        $this->assertEquals(['password' => null], $this->installer->createAdminUserStep($data));
+    }
+
+    public function testCreateAdminUserStepWhenPasswordIsNotLongEnough(): void
+    {
+        $mockRepo = $this->createMock(EntityRepository::class);
+        $mockRepo->expects($this->once())
+            ->method('find')
+            ->willReturn(new User());
+
+        $this->entityManager->expects($this->once())
+            ->method('getRepository')
+            ->willReturn($mockRepo);
+
+        $data = [
+            'firstname' => 'Demo',
+            'lastname'  => 'User',
+            'username'  => 'admin',
+            'password'  => '1',
+            'email'     => 'demo@demo.com',
+        ];
+
+        $mockValidation = $this->createMock(ConstraintViolationInterface::class);
+        $mockValidation->expects($this->once())
+            ->method('getMessage')
+            ->willReturn('password');
+        $matcher = $this->exactly(2);
+
+        $this->validator->expects($matcher)->method('validate')->willReturnCallback(function (...$parameters) use ($matcher, $data, $mockValidation) {
+            if (1 === $matcher->numberOfInvocations()) {
+                $this->assertSame($data['email'], $parameters[0]);
+
+                return new ConstraintViolationList([]);
+            }
+            if (2 === $matcher->numberOfInvocations()) {
+                $this->assertSame($data['password'], $parameters[0]);
+
+                return new ConstraintViolationList([$mockValidation]);
+            }
+        });
+
+        $this->assertSame([0 => 'password'], $this->installer->createAdminUserStep($data));
     }
 }

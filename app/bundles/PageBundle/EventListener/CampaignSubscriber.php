@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\EventListener;
 
 use Mautic\CampaignBundle\CampaignEvents;
@@ -17,6 +8,7 @@ use Mautic\CampaignBundle\Event\CampaignExecutionEvent;
 use Mautic\CampaignBundle\Executioner\RealTimeExecutioner;
 use Mautic\LeadBundle\Form\Type\CampaignEventLeadDeviceType;
 use Mautic\LeadBundle\Model\LeadModel;
+use Mautic\PageBundle\Entity\Hit;
 use Mautic\PageBundle\Entity\Page;
 use Mautic\PageBundle\Event\PageHitEvent;
 use Mautic\PageBundle\Form\Type\CampaignEventPageHitType;
@@ -27,35 +19,14 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class CampaignSubscriber implements EventSubscriberInterface
 {
-    /**
-     * @var LeadModel
-     */
-    private $leadModel;
-
-    /**
-     * @var TrackingHelper
-     */
-    private $trackingHelper;
-
-    /**
-     * @var RealTimeExecutioner
-     */
-    private $realTimeExecutioner;
-
     public function __construct(
-        LeadModel $leadModel,
-        TrackingHelper $trackingHelper,
-        RealTimeExecutioner $realTimeExecutioner
+        private readonly LeadModel $leadModel,
+        private readonly TrackingHelper $trackingHelper,
+        private readonly RealTimeExecutioner $realTimeExecutioner,
     ) {
-        $this->leadModel           = $leadModel;
-        $this->trackingHelper      = $trackingHelper;
-        $this->realTimeExecutioner = $realTimeExecutioner;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             CampaignEvents::CAMPAIGN_ON_BUILD        => ['onCampaignBuild', 0],
@@ -71,9 +42,9 @@ class CampaignSubscriber implements EventSubscriberInterface
     /**
      * Add event triggers and actions.
      */
-    public function onCampaignBuild(CampaignBuilderEvent $event)
+    public function onCampaignBuild(CampaignBuilderEvent $event): void
     {
-        //Add trigger
+        // Add trigger
         $pageHitTrigger = [
             'label'          => 'mautic.page.campaign.event.pagehit',
             'description'    => 'mautic.page.campaign.event.pagehit_descr',
@@ -84,7 +55,7 @@ class CampaignSubscriber implements EventSubscriberInterface
         ];
         $event->addDecision('page.pagehit', $pageHitTrigger);
 
-        //Add trigger
+        // Add trigger
         $deviceHitTrigger = [
             'label'          => 'mautic.page.campaign.event.devicehit',
             'description'    => 'mautic.page.campaign.event.devicehit_descr',
@@ -120,7 +91,7 @@ class CampaignSubscriber implements EventSubscriberInterface
     /**
      * Trigger actions for page hits.
      */
-    public function onPageHit(PageHitEvent $event)
+    public function onPageHit(PageHitEvent $event): void
     {
         $hit       = $event->getHit();
         $channel   = 'page';
@@ -143,6 +114,10 @@ class CampaignSubscriber implements EventSubscriberInterface
 
         if (!$event->checkContext('page.devicehit')) {
             return false;
+        }
+
+        if (!$eventDetails instanceof Hit) {
+            return $event->setResult(false);
         }
 
         $deviceRepo = $this->leadModel->getDeviceRepository();
@@ -189,18 +164,23 @@ class CampaignSubscriber implements EventSubscriberInterface
         if (null == $eventDetails) {
             return true;
         }
+
+        if (!$eventDetails instanceof Hit) {
+            return $event->setResult(false);
+        }
+
         $pageHit = $eventDetails->getPage();
 
         // Check Landing Pages
         if ($pageHit instanceof Page) {
-            list($parent, $children) = $pageHit->getVariants();
-            //use the parent (self or configured parent)
+            [$parent, $children] = $pageHit->getVariants();
+            // use the parent (self or configured parent)
             $pageHitId = $parent->getId();
         } else {
             $pageHitId = 0;
         }
 
-        $limitToPages = (isset($config['pages'])) ? $config['pages'] : [];
+        $limitToPages = $config['pages'] ?? [];
 
         $urlMatches = [];
 
@@ -248,19 +228,21 @@ class CampaignSubscriber implements EventSubscriberInterface
         return $event->setResult(false);
     }
 
-    public function onCampaignTriggerAction(CampaignExecutionEvent $event)
+    public function onCampaignTriggerAction(CampaignExecutionEvent $event): void
     {
         $config = $event->getConfig();
         if (empty($config['services'])) {
-            return $event->setResult(false);
+            $event->setResult(false);
+
+            return;
         }
 
         $values = [];
         foreach ($config['services'] as $service) {
             $values[$service][] = ['category' => $config['category'], 'action' => $config['action'], 'label' => $config['label']];
         }
-        $this->trackingHelper->updateSession($values);
+        $this->trackingHelper->updateCacheItem($values);
 
-        return $event->setResult(true);
+        $event->setResult(true);
     }
 }

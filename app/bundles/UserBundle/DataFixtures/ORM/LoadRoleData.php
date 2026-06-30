@@ -1,47 +1,27 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\UserBundle\DataFixtures\ORM;
 
 use Doctrine\Bundle\FixturesBundle\FixtureGroupInterface;
 use Doctrine\Common\DataFixtures\AbstractFixture;
 use Doctrine\Common\DataFixtures\OrderedFixtureInterface;
-use Doctrine\Common\Persistence\ObjectManager;
+use Doctrine\Persistence\ObjectManager;
 use Mautic\UserBundle\Entity\Role;
 use Mautic\UserBundle\Model\RoleModel;
 
 class LoadRoleData extends AbstractFixture implements OrderedFixtureInterface, FixtureGroupInterface
 {
-    /**
-     * {@inheritdoc}
-     */
     public static function getGroups(): array
     {
         return ['group_mautic_install_data'];
     }
 
-    /**
-     * @var RoleModel
-     */
-    private $roleModel;
-
-    /**
-     * {@inheritdoc}
-     */
-    public function __construct(RoleModel $roleModel)
-    {
-        $this->roleModel = $roleModel;
+    public function __construct(
+        private readonly RoleModel $roleModel,
+    ) {
     }
 
-    public function load(ObjectManager $manager)
+    public function load(ObjectManager $manager): void
     {
         if (!$this->hasReference('admin-role')) {
             $role = new Role();
@@ -71,9 +51,6 @@ class LoadRoleData extends AbstractFixture implements OrderedFixtureInterface, F
         $this->addReference('sales-role', $role);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getOrder()
     {
         return 1;

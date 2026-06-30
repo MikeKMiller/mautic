@@ -1,50 +1,27 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\FormBundle\EventListener;
 
 use libphonenumber\NumberParseException;
 use libphonenumber\PhoneNumberUtil;
-use Mautic\CoreBundle\Form\Type\TelType;
-use Mautic\CoreBundle\Helper\ArrayHelper;
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\FormBundle\Event as Events;
+use Mautic\FormBundle\Form\Type\FormFieldCheckboxGroupType;
 use Mautic\FormBundle\Form\Type\FormFieldEmailType;
 use Mautic\FormBundle\Form\Type\FormFieldTelType;
 use Mautic\FormBundle\FormEvents;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class FormValidationSubscriber implements EventSubscriberInterface
 {
-    /**
-     * @var TranslatorInterface
-     */
-    private $translator;
-
-    /**
-     * @var CoreParametersHelper
-     */
-    private $coreParametersHelper;
-
-    public function __construct(TranslatorInterface $translator, CoreParametersHelper $coreParametersHelper)
-    {
-        $this->translator           = $translator;
-        $this->coreParametersHelper = $coreParametersHelper;
+    public function __construct(
+        private readonly TranslatorInterface $translator,
+        private readonly CoreParametersHelper $coreParametersHelper,
+    ) {
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             FormEvents::FORM_ON_BUILD    => ['onFormBuilder', 0],
@@ -55,7 +32,7 @@ class FormValidationSubscriber implements EventSubscriberInterface
     /**
      * Add a simple email form.
      */
-    public function onFormBuilder(Events\FormBuilderEvent $event)
+    public function onFormBuilder(Events\FormBuilderEvent $event): void
     {
         $event->addValidator(
             'phone.validation',
@@ -66,7 +43,9 @@ class FormValidationSubscriber implements EventSubscriberInterface
             ]
         );
 
-        if (!empty($this->coreParametersHelper->get('do_not_submit_emails'))) {
+        if (!empty($this->coreParametersHelper->get('do_not_submit_emails'))
+            || !empty($this->coreParametersHelper->get('blocked_free_email_providers'))
+        ) {
             $event->addValidator(
                 'email.validation',
                 [
@@ -76,12 +55,21 @@ class FormValidationSubscriber implements EventSubscriberInterface
                 ]
             );
         }
+
+        $event->addValidator(
+            'checkboxgrp.validation',
+            [
+                'eventName' => FormEvents::ON_FORM_VALIDATE,
+                'fieldType' => 'checkboxgrp',
+                'formType'  => FormFieldCheckboxGroupType::class,
+            ]
+        );
     }
 
     /**
      * Custom validation.
      */
-    public function onFormValidate(Events\ValidationEvent $event)
+    public function onFormValidate(Events\ValidationEvent $event): void
     {
         $value = $event->getValue();
 
@@ -89,25 +77,40 @@ class FormValidationSubscriber implements EventSubscriberInterface
             $this->fieldTelValidation($event);
             $this->fieldEmailValidation($event);
         }
+
+        $this->fieldCheckboxGroupValidation($event);
     }
 
-    private function fieldEmailValidation(Events\ValidationEvent $event)
+    private function fieldEmailValidation(Events\ValidationEvent $event): void
     {
         $field = $event->getField();
         $value = $event->getValue();
-        if ('email' === $field->getType() && !empty($field->getValidation()['donotsubmit'])) {
+
+        if ('email' !== $field->getType()) {
+            return;
+        }
+
+        if (!empty($field->getValidation()['donotsubmit'])) {
             // Check the domains using shell wildcard patterns
-            $donotSubmitFilter = function ($doNotSubmitArray) use ($value) {
-                return fnmatch($doNotSubmitArray, $value, FNM_CASEFOLD);
-            };
+            $donotSubmitFilter  = fn ($doNotSubmitArray): bool => fnmatch($doNotSubmitArray, $value, FNM_CASEFOLD);
             $notNotSubmitEmails = $this->coreParametersHelper->get('do_not_submit_emails');
             if (array_filter($notNotSubmitEmails, $donotSubmitFilter)) {
-                $event->failedValidation(ArrayHelper::getValue('donotsubmit_validationmsg', $field->getValidation()));
+                $validationMsg = $field->getValidation()['donotsubmit_validationmsg'] ?? $this->translator->trans('mautic.form.submission.email.donotsubmit.invalid', [], 'validators');
+                $event->failedValidation($validationMsg);
+            }
+        }
+
+        if (!empty($field->getValidation()['blockfreeemail'])) {
+            $blockedProviders = $this->coreParametersHelper->get('blocked_free_email_providers') ?? [];
+            $domain           = strtolower((string) substr(strrchr($value, '@'), 1));
+            if ($domain && in_array($domain, $blockedProviders, true)) {
+                $validationMsg = $field->getValidation()['blockfreeemail_validationmsg'] ?? $this->translator->trans('mautic.form.submission.email.freeproviders.invalid', [], 'validators');
+                $event->failedValidation($validationMsg);
             }
         }
     }
 
-    private function fieldTelValidation(Events\ValidationEvent $event)
+    private function fieldTelValidation(Events\ValidationEvent $event): void
     {
         $field = $event->getField();
         $value = $event->getValue();
@@ -116,13 +119,62 @@ class FormValidationSubscriber implements EventSubscriberInterface
             $phoneUtil = PhoneNumberUtil::getInstance();
             try {
                 $phoneUtil->parse($value, PhoneNumberUtil::UNKNOWN_REGION);
-            } catch (NumberParseException $e) {
+            } catch (NumberParseException) {
                 if (!empty($field->getValidation()['international_validationmsg'])) {
                     $event->failedValidation($field->getValidation()['international_validationmsg']);
                 } else {
                     $event->failedValidation($this->translator->trans('mautic.form.submission.phone.invalid', [], 'validators'));
                 }
             }
+        }
+    }
+
+    private function fieldCheckboxGroupValidation(Events\ValidationEvent $event): void
+    {
+        $field = $event->getField();
+        if ('checkboxgrp' !== $field->getType()) {
+            return;
+        }
+
+        $value       = $event->getValue();
+        $selectedCnt = 0;
+
+        if (!is_array($value)) {
+            $value = [$value];
+        }
+
+        foreach ($value as $v) {
+            if ('' !== $v && null !== $v) {
+                ++$selectedCnt;
+            }
+        }
+
+        $validation = $field->getValidation();
+
+        if (!empty($validation['minimum']) && $selectedCnt < (int) $validation['minimum']) {
+            $message = !empty($validation['min_message'])
+                ? $validation['min_message']
+                : $this->translator->trans(
+                    'mautic.form.submission.checkboxgrp.minimum',
+                    ['%min%' => (int) $validation['minimum']],
+                    'validators'
+                );
+
+            $event->failedValidation($message);
+
+            return;
+        }
+
+        if (!empty($validation['maximum']) && $selectedCnt > (int) $validation['maximum']) {
+            $message = !empty($validation['max_message'])
+                ? $validation['max_message']
+                : $this->translator->trans(
+                    'mautic.form.submission.checkboxgrp.maximum',
+                    ['%max%' => (int) $validation['maximum']],
+                    'validators'
+                );
+
+            $event->failedValidation($message);
         }
     }
 }

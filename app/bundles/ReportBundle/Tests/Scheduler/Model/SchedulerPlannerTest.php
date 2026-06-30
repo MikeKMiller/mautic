@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ReportBundle\Tests\Scheduler\Model;
 
 use Doctrine\ORM\EntityManager;
@@ -21,19 +12,13 @@ use Mautic\ReportBundle\Scheduler\Model\SchedulerPlanner;
 
 class SchedulerPlannerTest extends \PHPUnit\Framework\TestCase
 {
-    public function testComputeSchedule()
+    public function testComputeSchedule(): void
     {
-        $dateBuilder = $this->getMockBuilder(DateBuilder::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $dateBuilder = $this->createMock(DateBuilder::class);
 
-        $schedulerRepository = $this->getMockBuilder(SchedulerRepository::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $schedulerRepository = $this->createMock(SchedulerRepository::class);
 
-        $entityManager = $this->getMockBuilder(EntityManager::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $entityManager = $this->createMock(EntityManager::class);
 
         $entityManager->expects($this->once())
             ->method('getRepository')
@@ -68,29 +53,20 @@ class SchedulerPlannerTest extends \PHPUnit\Framework\TestCase
 
         $entityManager->expects($this->once())
             ->method('persist')
-            ->with($this->callback(function ($scheduler) use ($report, $dateOfNextSchedule) {
-                return
-                    $scheduler instanceof Scheduler &&
-                    $scheduler->getReport() === $report &&
-                    $scheduler->getScheduleDate() === $dateOfNextSchedule;
-            }));
+            ->with($this->callback(fn ($scheduler): bool => $scheduler instanceof Scheduler
+            && $scheduler->getReport() === $report
+            && $scheduler->getScheduleDate() === $dateOfNextSchedule));
 
         $schedulerPlanner->computeScheduler($report);
     }
 
-    public function testNoSchedule()
+    public function testNoSchedule(): void
     {
-        $dateBuilder = $this->getMockBuilder(DateBuilder::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $dateBuilder = $this->createMock(DateBuilder::class);
 
-        $schedulerRepository = $this->getMockBuilder(SchedulerRepository::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $schedulerRepository = $this->createMock(SchedulerRepository::class);
 
-        $entityManager = $this->getMockBuilder(EntityManager::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $entityManager = $this->createMock(EntityManager::class);
 
         $entityManager->expects($this->once())
             ->method('getRepository')
@@ -124,19 +100,13 @@ class SchedulerPlannerTest extends \PHPUnit\Framework\TestCase
         $schedulerPlanner->computeScheduler($report);
     }
 
-    public function testNoRemoveNoSchedule()
+    public function testNoRemoveNoSchedule(): void
     {
-        $dateBuilder = $this->getMockBuilder(DateBuilder::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $dateBuilder = $this->createMock(DateBuilder::class);
 
-        $schedulerRepository = $this->getMockBuilder(SchedulerRepository::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $schedulerRepository = $this->createMock(SchedulerRepository::class);
 
-        $entityManager = $this->getMockBuilder(EntityManager::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $entityManager = $this->createMock(EntityManager::class);
 
         $entityManager->expects($this->once())
             ->method('getRepository')

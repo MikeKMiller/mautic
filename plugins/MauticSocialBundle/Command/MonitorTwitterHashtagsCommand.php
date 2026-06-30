@@ -1,31 +1,16 @@
 <?php
 
-/*
- * @copyright   2016 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticSocialBundle\Command;
 
 use MauticPlugin\MauticSocialBundle\Entity\Monitoring;
+use Symfony\Component\Console\Attribute\AsCommand;
 
+#[AsCommand(
+    name: 'social:monitor:twitter:hashtags',
+    description: 'Looks at our monitoring records and finds hashtags'
+)]
 class MonitorTwitterHashtagsCommand extends MonitorTwitterBaseCommand
 {
-    /**
-     * Configure the command, set name and options.
-     */
-    protected function configure()
-    {
-        $this->setName('social:monitor:twitter:hashtags')
-            ->setDescription('Looks at our monitoring records and finds hashtags');
-
-        parent::configure();
-    }
-
     /**
      * Search for tweets by hashtag.
      *
@@ -58,7 +43,7 @@ class MonitorTwitterHashtagsCommand extends MonitorTwitterBaseCommand
         return $this->twitter->makeRequest($searchUrl, $requestQuery);
     }
 
-    public function getNetworkName()
+    public function getNetworkName(): string
     {
         return 'twitter';
     }

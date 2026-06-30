@@ -1,51 +1,39 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Helper;
 
-/**
- * Class BundleHelper.
- */
 class BundleHelper
 {
-    private $coreBundles   = [];
-    private $pluginBundles = [];
-    private $allBundles    = [];
+    /**
+     * @var mixed[]
+     */
+    private readonly array $allBundles;
 
     /**
-     * BundleHelper constructor.
+     * @param mixed[] $coreBundles
+     * @param mixed[] $pluginBundles
      */
-    public function __construct(array $coreBundles, array $pluginBundles)
-    {
-        $this->coreBundles   = $coreBundles;
-        $this->pluginBundles = $pluginBundles;
+    public function __construct(
+        private readonly array $coreBundles,
+        private readonly array $pluginBundles,
+    ) {
         $this->allBundles    = array_merge($coreBundles, $pluginBundles);
     }
 
     /**
      * @param bool $includePlugins
      *
-     * @return mixed
+     * @return mixed[]
      */
-    public function getMauticBundles($includePlugins = true)
+    public function getMauticBundles($includePlugins = true): array
     {
         return $includePlugins ? $this->allBundles : $this->coreBundles;
     }
 
     /**
      * Get's an array of details for enabled Mautic plugins.
-     *
-     * @return array
      */
-    public function getPluginBundles()
+    public function getPluginBundles(): array
     {
         return $this->pluginBundles;
     }
@@ -53,7 +41,6 @@ class BundleHelper
     /**
      * Gets an array of a specific bundle's config settings.
      *
-     * @param        $bundleName
      * @param string $configKey
      * @param bool   $includePlugins
      *

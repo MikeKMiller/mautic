@@ -1,127 +1,190 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\FormBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
+use Mautic\CoreBundle\Helper\InputHelper;
+use Mautic\FormBundle\ProgressiveProfiling\DisplayManager;
 use Mautic\LeadBundle\Entity\Lead;
+use Symfony\Component\Serializer\Attribute\Groups;
 
-class Field
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('form:forms:viewown')"),
+        new Post(security: "is_granted('form:forms:create')"),
+        new Get(security: "is_granted('form:forms:viewown', object)"),
+        new Put(security: "is_granted('form:forms:editown', object)"),
+        new Patch(security: "is_granted('form:forms:editother', object)"),
+        new Delete(security: "is_granted('form:forms:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['field:read'],
+        'swagger_definition_name' => 'Read',
+    ],
+    denormalizationContext: [
+        'groups'                  => ['field:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Field implements UuidInterface
 {
+    use UuidTrait;
+
+    public const TABLE_NAME  = 'form_fields';
+
+    public const ENTITY_NAME = 'form_field';
+
     /**
      * @var int
      */
+    #[Groups(['field:read', 'form:read', 'campaign:read', 'email:read'])]
     private $id;
 
     /**
      * @var string
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $label;
 
     /**
-     * @var bool
+     * @var bool|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $showLabel = true;
 
     /**
      * @var string
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $alias;
 
     /**
      * @var string
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $type;
 
     /**
      * @var bool
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $isCustom = false;
 
     /**
      * @var array
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $customParameters = [];
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $defaultValue;
 
     /**
      * @var bool
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $isRequired = false;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $validationMessage;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $helpMessage;
 
     /**
-     * @var int
+     * @var int|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $order = 0;
 
     /**
      * @var array
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $properties = [];
 
     /**
      * @var array
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $validation = [];
 
     /**
-     * @var Form
+     * @var array<string,mixed>|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
+    private $conditions = [];
+
+    /**
+     * @var Form|null
+     */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $form;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $labelAttributes;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $inputAttributes;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $containerAttributes;
 
     /**
-     * @var string
+     * @var string|null
+     *
+     * @deprecated, to be removed in Mautic 4. Use mappedObject and mappedField instead.
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $leadField;
 
     /**
-     * @var bool
+     * @var bool|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $saveResult = true;
 
     /**
-     * @var bool
+     * @var bool|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $isAutoFill = false;
+
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
+    private bool $isReadOnly = false;
+
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
+    private string $fieldWidth = '100%';
 
     /**
      * @var array
@@ -131,114 +194,110 @@ class Field
     private $sessionId;
 
     /**
-     * @var bool
+     * @var bool|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $showWhenValueExists;
 
     /**
-     * @var int
+     * @var int|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
     private $showAfterXSubmissions;
 
     /**
-     * Reset properties on clone.
+     * @var bool|null
      */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
+    private $alwaysDisplay;
+
+    /**
+     * @var string|null
+     */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
+    private $parent;
+
+    /**
+     * @var string|null
+     */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
+    private $mappedObject;
+
+    /**
+     * @var string|null
+     */
+    #[Groups(['field:read', 'field:write', 'form:read', 'campaign:read', 'email:read'])]
+    private $mappedField;
+
+    public ?int $deletedId = null;
+
     public function __clone()
     {
         $this->id   = null;
         $this->form = null;
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
-        $builder->setTable('form_fields')
-            ->setCustomRepositoryClass('Mautic\FormBundle\Entity\FieldRepository')
+        $builder->setTable(self::TABLE_NAME)
+            ->setCustomRepositoryClass(FieldRepository::class)
             ->addIndex(['type'], 'form_field_type_search');
 
         $builder->addId();
+        $builder->addField('label', Types::TEXT);
+        $builder->addNullableField('showLabel', Types::BOOLEAN, 'show_label');
+        $builder->addField('alias', Types::STRING);
+        $builder->addField('type', Types::STRING);
+        $builder->addNamedField('isCustom', Types::BOOLEAN, 'is_custom');
+        $builder->addNullableField('customParameters', Types::ARRAY, 'custom_parameters');
+        $builder->addNullableField('defaultValue', Types::TEXT, 'default_value');
+        $builder->addNamedField('isRequired', Types::BOOLEAN, 'is_required');
+        $builder->addNullableField('validationMessage', Types::TEXT, 'validation_message');
+        $builder->addNullableField('helpMessage', Types::TEXT, 'help_message');
+        $builder->addNullableField('order', Types::INTEGER, 'field_order');
+        $builder->addNullableField('properties', Types::ARRAY);
+        $builder->addNullableField('validation', Types::JSON);
 
-        $builder->addField('label', 'text');
-
-        $builder->createField('showLabel', 'boolean')
-            ->columnName('show_label')
-            ->nullable()
-            ->build();
-
-        $builder->addField('alias', 'string');
-
-        $builder->addField('type', 'string');
-
-        $builder->createField('isCustom', 'boolean')
-            ->columnName('is_custom')
-            ->build();
-
-        $builder->createField('customParameters', 'array')
-            ->columnName('custom_parameters')
-            ->nullable()
-            ->build();
-
-        $builder->createField('defaultValue', 'text')
-            ->columnName('default_value')
-            ->nullable()
-            ->build();
-
-        $builder->createField('isRequired', 'boolean')
-            ->columnName('is_required')
-            ->build();
-
-        $builder->createField('validationMessage', 'text')
-            ->columnName('validation_message')
-            ->nullable()
-            ->build();
-
-        $builder->createField('helpMessage', 'text')
-            ->columnName('help_message')
-            ->nullable()
-            ->build();
-
-        $builder->createField('order', 'integer')
-            ->columnName('field_order')
-            ->nullable()
-            ->build();
-
-        $builder->createField('properties', 'array')
-            ->nullable()
-            ->build();
-
-        $builder->createField('validation', 'json_array')
-            ->nullable()
-            ->build();
+        $builder->addNullableField('parent', 'string', 'parent_id');
+        $builder->addNullableField('conditions', 'json');
 
         $builder->createManyToOne('form', 'Form')
             ->inversedBy('fields')
             ->addJoinColumn('form_id', 'id', false, false, 'CASCADE')
+            ->isOwnershipParent()
             ->build();
 
-        $builder->addNullableField('labelAttributes', 'string', 'label_attr');
+        $builder->addNullableField('labelAttributes', Types::STRING, 'label_attr');
+        $builder->addNullableField('inputAttributes', Types::STRING, 'input_attr');
+        $builder->addNullableField('containerAttributes', Types::STRING, 'container_attr');
+        $builder->addNullableField('leadField', Types::STRING, 'lead_field');
+        $builder->addNullableField('saveResult', Types::BOOLEAN, 'save_result');
+        $builder->addNullableField('isAutoFill', Types::BOOLEAN, 'is_auto_fill');
 
-        $builder->addNullableField('inputAttributes', 'string', 'input_attr');
+        $builder->createField('isReadOnly', Types::BOOLEAN)
+            ->columnName('is_read_only')
+            ->option('default', false)
+            ->build();
 
-        $builder->addNullableField('containerAttributes', 'string', 'container_attr');
-
-        $builder->addNullableField('leadField', 'string', 'lead_field');
-
-        $builder->addNullableField('saveResult', 'boolean', 'save_result');
-
-        $builder->addNullableField('isAutoFill', 'boolean', 'is_auto_fill');
-
-        $builder->addNullableField('showWhenValueExists', 'boolean', 'show_when_value_exists');
-
-        $builder->addNullableField('showAfterXSubmissions', 'integer', 'show_after_x_submissions');
+        $builder->addNullableField('showWhenValueExists', Types::BOOLEAN, 'show_when_value_exists');
+        $builder->addNullableField('showAfterXSubmissions', Types::INTEGER, 'show_after_x_submissions');
+        $builder->addNullableField('alwaysDisplay', Types::BOOLEAN, 'always_display');
+        $builder->addNullableField('mappedObject', Types::STRING, 'mapped_object');
+        $builder->addNullableField('mappedField', Types::STRING, 'mapped_field');
+        $builder->createField('fieldWidth', Types::STRING)
+            ->columnName('field_width')
+            ->length(50)
+            ->option('default', '100%')
+            ->build();
+        static::addUuidField($builder);
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('form')
             ->addProperties(
@@ -255,22 +314,27 @@ class Field
                     'order',
                     'properties',
                     'validation',
+                    'parent',
+                    'conditions',
                     'labelAttributes',
                     'inputAttributes',
                     'containerAttributes',
-                    'leadField',
+                    'leadField', // @deprecated, to be removed in Mautic 4. Use mappedObject and mappedField instead.
                     'saveResult',
                     'isAutoFill',
+                    'isReadOnly',
+                    'mappedObject',
+                    'mappedField',
+                    'fieldWidth',
                 ]
             )
             ->build();
     }
 
     /**
-     * @param $prop
-     * @param $val
+     * @param mixed $val
      */
-    private function isChanged($prop, $val)
+    private function isChanged(string $prop, $val): void
     {
         if ($this->$prop != $val) {
             $this->changes[$prop] = [$this->$prop, $val];
@@ -286,9 +350,7 @@ class Field
     }
 
     /**
-     * Get id.
-     *
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
@@ -296,13 +358,9 @@ class Field
     }
 
     /**
-     * Set label.
-     *
      * @param string $label
-     *
-     * @return Field
      */
-    public function setLabel($label)
+    public function setLabel($label): static
     {
         $this->isChanged('label', $label);
         $this->label = $label;
@@ -311,9 +369,7 @@ class Field
     }
 
     /**
-     * Get label.
-     *
-     * @return string
+     * @return string|null
      */
     public function getLabel()
     {
@@ -321,13 +377,9 @@ class Field
     }
 
     /**
-     * Set alias.
-     *
      * @param string $alias
-     *
-     * @return Field
      */
-    public function setAlias($alias)
+    public function setAlias($alias): static
     {
         $this->isChanged('alias', $alias);
         $this->alias = $alias;
@@ -336,9 +388,7 @@ class Field
     }
 
     /**
-     * Get alias.
-     *
-     * @return string
+     * @return string|null
      */
     public function getAlias()
     {
@@ -346,13 +396,9 @@ class Field
     }
 
     /**
-     * Set type.
-     *
      * @param string $type
-     *
-     * @return Field
      */
-    public function setType($type)
+    public function setType($type): static
     {
         $this->isChanged('type', $type);
         $this->type = $type;
@@ -361,9 +407,7 @@ class Field
     }
 
     /**
-     * Get type.
-     *
-     * @return string
+     * @return string|null
      */
     public function getType()
     {
@@ -371,13 +415,9 @@ class Field
     }
 
     /**
-     * Set defaultValue.
-     *
      * @param string $defaultValue
-     *
-     * @return Field
      */
-    public function setDefaultValue($defaultValue)
+    public function setDefaultValue($defaultValue): static
     {
         $this->isChanged('defaultValue', $defaultValue);
         $this->defaultValue = $defaultValue;
@@ -386,9 +426,7 @@ class Field
     }
 
     /**
-     * Get defaultValue.
-     *
-     * @return string
+     * @return string|null
      */
     public function getDefaultValue()
     {
@@ -396,13 +434,9 @@ class Field
     }
 
     /**
-     * Set isRequired.
-     *
      * @param bool $isRequired
-     *
-     * @return Field
      */
-    public function setIsRequired($isRequired)
+    public function setIsRequired($isRequired): static
     {
         $this->isChanged('isRequired', $isRequired);
         $this->isRequired = $isRequired;
@@ -411,8 +445,6 @@ class Field
     }
 
     /**
-     * Get isRequired.
-     *
      * @return bool
      */
     public function getIsRequired()
@@ -431,13 +463,9 @@ class Field
     }
 
     /**
-     * Set order.
-     *
      * @param int $order
-     *
-     * @return Field
      */
-    public function setOrder($order)
+    public function setOrder($order): static
     {
         $this->isChanged('order', $order);
         $this->order = $order;
@@ -446,9 +474,7 @@ class Field
     }
 
     /**
-     * Get order.
-     *
-     * @return int
+     * @return int|null
      */
     public function getOrder()
     {
@@ -456,13 +482,9 @@ class Field
     }
 
     /**
-     * Set properties.
-     *
      * @param array $properties
-     *
-     * @return Field
      */
-    public function setProperties($properties)
+    public function setProperties($properties): static
     {
         $this->isChanged('properties', $properties);
         $this->properties = $properties;
@@ -471,8 +493,6 @@ class Field
     }
 
     /**
-     * Get properties.
-     *
      * @return array
      */
     public function getProperties()
@@ -481,13 +501,9 @@ class Field
     }
 
     /**
-     * Set validation.
-     *
      * @param array $validation
-     *
-     * @return Field
      */
-    public function setValidation($validation)
+    public function setValidation($validation): static
     {
         $this->isChanged('validation', $validation);
         $this->validation = $validation;
@@ -496,8 +512,6 @@ class Field
     }
 
     /**
-     * Get validation.
-     *
      * @return array
      */
     public function getValidation()
@@ -506,13 +520,9 @@ class Field
     }
 
     /**
-     * Set validationMessage.
-     *
      * @param string $validationMessage
-     *
-     * @return Field
      */
-    public function setValidationMessage($validationMessage)
+    public function setValidationMessage($validationMessage): static
     {
         $this->isChanged('validationMessage', $validationMessage);
         $this->validationMessage = $validationMessage;
@@ -521,21 +531,14 @@ class Field
     }
 
     /**
-     * Get validationMessage.
-     *
-     * @return string
+     * @return string|null
      */
     public function getValidationMessage()
     {
         return $this->validationMessage;
     }
 
-    /**
-     * Set form.
-     *
-     * @return Field
-     */
-    public function setForm(Form $form)
+    public function setForm(Form $form): static
     {
         $this->form = $form;
 
@@ -543,9 +546,7 @@ class Field
     }
 
     /**
-     * Get form.
-     *
-     * @return Form
+     * @return Form|null
      */
     public function getForm()
     {
@@ -553,13 +554,9 @@ class Field
     }
 
     /**
-     * Set labelAttributes.
-     *
      * @param string $labelAttributes
-     *
-     * @return Field
      */
-    public function setLabelAttributes($labelAttributes)
+    public function setLabelAttributes($labelAttributes): static
     {
         $this->isChanged('labelAttributes', $labelAttributes);
         $this->labelAttributes = $labelAttributes;
@@ -568,9 +565,7 @@ class Field
     }
 
     /**
-     * Get labelAttributes.
-     *
-     * @return string
+     * @return string|null
      */
     public function getLabelAttributes()
     {
@@ -578,13 +573,9 @@ class Field
     }
 
     /**
-     * Set inputAttributes.
-     *
      * @param string $inputAttributes
-     *
-     * @return Field
      */
-    public function setInputAttributes($inputAttributes)
+    public function setInputAttributes($inputAttributes): static
     {
         $this->isChanged('inputAttributes', $inputAttributes);
         $this->inputAttributes = $inputAttributes;
@@ -593,9 +584,7 @@ class Field
     }
 
     /**
-     * Get inputAttributes.
-     *
-     * @return string
+     * @return string|null
      */
     public function getInputAttributes()
     {
@@ -603,19 +592,14 @@ class Field
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getContainerAttributes()
     {
         return $this->containerAttributes;
     }
 
-    /**
-     * @param $containerAttributes
-     *
-     * @return $this
-     */
-    public function setContainerAttributes($containerAttributes)
+    public function setContainerAttributes($containerAttributes): static
     {
         $this->containerAttributes = $containerAttributes;
 
@@ -623,21 +607,17 @@ class Field
     }
 
     /**
-     * @return array
+     * @return array<string,mixed>
      */
-    public function convertToArray()
+    public function convertToArray(): array
     {
         return get_object_vars($this);
     }
 
     /**
-     * Set showLabel.
-     *
      * @param bool $showLabel
-     *
-     * @return Field
      */
-    public function setShowLabel($showLabel)
+    public function setShowLabel($showLabel): static
     {
         $this->isChanged('showLabel', $showLabel);
         $this->showLabel = $showLabel;
@@ -646,8 +626,6 @@ class Field
     }
 
     /**
-     * Get showLabel.
-     *
      * @return bool
      */
     public function getShowLabel()
@@ -666,13 +644,9 @@ class Field
     }
 
     /**
-     * Set helpMessage.
-     *
      * @param string $helpMessage
-     *
-     * @return Field
      */
-    public function setHelpMessage($helpMessage)
+    public function setHelpMessage($helpMessage): static
     {
         $this->isChanged('helpMessage', $helpMessage);
         $this->helpMessage = $helpMessage;
@@ -681,9 +655,7 @@ class Field
     }
 
     /**
-     * Get helpMessage.
-     *
-     * @return string
+     * @return string|null
      */
     public function getHelpMessage()
     {
@@ -691,13 +663,9 @@ class Field
     }
 
     /**
-     * Set isCustom.
-     *
      * @param bool $isCustom
-     *
-     * @return Field
      */
-    public function setIsCustom($isCustom)
+    public function setIsCustom($isCustom): static
     {
         $this->isCustom = $isCustom;
 
@@ -705,8 +673,6 @@ class Field
     }
 
     /**
-     * Get isCustom.
-     *
      * @return bool
      */
     public function getIsCustom()
@@ -725,13 +691,9 @@ class Field
     }
 
     /**
-     * Set customParameters.
-     *
      * @param array $customParameters
-     *
-     * @return Field
      */
-    public function setCustomParameters($customParameters)
+    public function setCustomParameters($customParameters): static
     {
         $this->customParameters = $customParameters;
 
@@ -739,8 +701,6 @@ class Field
     }
 
     /**
-     * Get customParameters.
-     *
      * @return array
      */
     public function getCustomParameters()
@@ -759,13 +719,15 @@ class Field
     /**
      * @param mixed $sessionId
      */
-    public function setSessionId($sessionId)
+    public function setSessionId($sessionId): void
     {
         $this->sessionId = $sessionId;
     }
 
     /**
-     * @return mixed
+     * @deprecated, to be removed in Mautic 4. Use mappedObject and mappedField instead.
+     *
+     * @return string|null
      */
     public function getLeadField()
     {
@@ -773,15 +735,17 @@ class Field
     }
 
     /**
+     * @deprecated, to be removed in Mautic 4. Use mappedObject and mappedField instead.
+     *
      * @param mixed $leadField
      */
-    public function setLeadField($leadField)
+    public function setLeadField($leadField): void
     {
         $this->leadField = $leadField;
     }
 
     /**
-     * @return mixed
+     * @return bool|null
      */
     public function getSaveResult()
     {
@@ -791,7 +755,7 @@ class Field
     /**
      * @param mixed $saveResult
      */
-    public function setSaveResult($saveResult)
+    public function setSaveResult($saveResult): void
     {
         $this->saveResult = $saveResult;
     }
@@ -807,13 +771,13 @@ class Field
     /**
      * @param mixed $isAutoFill
      */
-    public function setIsAutoFill($isAutoFill)
+    public function setIsAutoFill($isAutoFill): void
     {
         $this->isAutoFill = $isAutoFill;
     }
 
     /**
-     * @return bool
+     * @return bool|null
      */
     public function getShowWhenValueExists()
     {
@@ -823,13 +787,13 @@ class Field
     /**
      * @param bool $showWhenValueExists
      */
-    public function setShowWhenValueExists($showWhenValueExists)
+    public function setShowWhenValueExists($showWhenValueExists): void
     {
         $this->showWhenValueExists = $showWhenValueExists;
     }
 
     /**
-     * @return int
+     * @return int|null
      */
     public function getShowAfterXSubmissions()
     {
@@ -839,7 +803,7 @@ class Field
     /**
      * @param int $showAfterXSubmissions
      */
-    public function setShowAfterXSubmissions($showAfterXSubmissions)
+    public function setShowAfterXSubmissions($showAfterXSubmissions): void
     {
         $this->showAfterXSubmissions = $showAfterXSubmissions;
     }
@@ -848,12 +812,8 @@ class Field
      * Decide if the field should be displayed based on thr progressive profiling conditions.
      *
      * @param array|null $submissions
-     * @param Lead       $lead
-     * @param Form       $form
-     *
-     * @return bool
      */
-    public function showForContact($submissions = null, Lead $lead = null, Form $form = null)
+    public function showForContact($submissions = null, ?Lead $lead = null, ?Form $form = null, ?DisplayManager $displayManager = null): bool
     {
         // Always show in the kiosk mode
         if (null !== $form && true === $form->getInKioskMode()) {
@@ -861,11 +821,11 @@ class Field
         }
 
         // Hide the field if there is the submission count limit and hide it until the limit is overcame
-        if ($this->showAfterXSubmissions > 0 && $this->showAfterXSubmissions > count($submissions)) {
+        if (!$this->alwaysDisplay && $this->showAfterXSubmissions > 0 && null !== $submissions && $this->showAfterXSubmissions > count($submissions)) {
             return false;
         }
 
-        if (false === $this->showWhenValueExists) {
+        if (!$this->alwaysDisplay && false === $this->showWhenValueExists) {
             // Hide the field if there is the value condition and if we already know the value for this field
             if ($submissions) {
                 foreach ($submissions as $submission) {
@@ -876,7 +836,18 @@ class Field
             }
 
             // Hide the field if the value is already known from the lead profile
-            if (null !== $lead && $this->leadField && !empty($lead->getFieldValue($this->leadField)) && !$this->isAutoFill) {
+            if (null !== $lead
+                && $this->mappedField
+                && 'contact' === $this->mappedObject
+                && !empty($lead->getFieldValue($this->mappedField))
+                && !$this->isAutoFill
+            ) {
+                return false;
+            }
+        }
+
+        if ($displayManager && $displayManager->useProgressiveProfilingLimit()) {
+            if (!$displayManager->showForField($this)) {
                 return false;
             }
         }
@@ -885,18 +856,194 @@ class Field
     }
 
     /**
-     * @return bool
+     * Was field displayed.
+     *
+     * @param mixed[] $data
      */
-    public function isCaptchaType()
+    public function showForConditionalField(array $data): bool
+    {
+        if (!$parentField = $this->findParentFieldInForm()) {
+            return true;
+        }
+
+        if (!isset($data[$parentField->getAlias() ?? ''])) {
+            return false;
+        }
+
+        $sendValues = $data[$parentField->getAlias() ?? ''];
+        if (!is_array($sendValues)) {
+            $sendValues = [$sendValues];
+        }
+
+        foreach ($sendValues as $value) {
+            // any value
+            if ('' !== $value && !empty($this->conditions['any'])) {
+                return true;
+            }
+
+            if ('notIn' === $this->conditions['expr']) {
+                // value not matched
+                if ('' !== $value && !in_array(InputHelper::clean($value), $this->conditions['values'])) {
+                    return true;
+                }
+            } elseif (in_array(InputHelper::clean($value), $this->conditions['values'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function isCaptchaType(): bool
     {
         return 'captcha' === $this->type;
     }
 
-    /**
-     * @return bool
-     */
-    public function isFileType()
+    public function isFileType(): bool
     {
         return 'file' === $this->type;
+    }
+
+    public function hasChoices(): bool
+    {
+        $properties = $this->getProperties();
+
+        return 'checkboxgrp' === $this->getType()
+            || (key_exists('multiple', $properties) && 1 === $properties['multiple']);
+    }
+
+    /**
+     * @return bool|null
+     */
+    public function isAlwaysDisplay()
+    {
+        return $this->alwaysDisplay;
+    }
+
+    /**
+     * @param bool $alwaysDisplay
+     */
+    public function setAlwaysDisplay($alwaysDisplay): void
+    {
+        $this->alwaysDisplay = $alwaysDisplay;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getConditions()
+    {
+        return $this->conditions;
+    }
+
+    /**
+     * @param array<string, mixed> $conditions
+     */
+    public function setConditions($conditions): static
+    {
+        $this->isChanged('conditions', $conditions);
+        $this->conditions = $conditions;
+
+        return $this;
+    }
+
+    /**
+     * @param string $parent
+     */
+    public function setParent($parent): static
+    {
+        $this->isChanged('parent', $parent);
+        $this->parent = $parent;
+
+        return $this;
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getParent()
+    {
+        return $this->parent;
+    }
+
+    private function findParentFieldInForm(): ?Field
+    {
+        if (!$this->parent) {
+            return null;
+        }
+
+        $fields = $this->getForm()->getFields();
+        foreach ($fields as $field) {
+            if (intval($field->getId()) === intval($this->parent)) {
+                return $field;
+            }
+        }
+
+        return null;
+    }
+
+    public function getMappedObject(): ?string
+    {
+        return $this->mappedObject;
+    }
+
+    public function setMappedObject(?string $mappedObject): void
+    {
+        $this->mappedObject = $mappedObject;
+        $this->resetLeadFieldIfValueIsEmpty($mappedObject);
+    }
+
+    public function getMappedField(): ?string
+    {
+        return $this->mappedField;
+    }
+
+    public function setMappedField(?string $mappedField): void
+    {
+        $this->mappedField = $mappedField;
+        $this->resetLeadFieldIfValueIsEmpty($mappedField);
+    }
+
+    private function resetLeadFieldIfValueIsEmpty(?string $value): void
+    {
+        if ($value) {
+            return;
+        }
+
+        /**
+         * Ignoring this line because the leadField is deprecated and will be removed in Mautic 4.
+         * Todo: Use mappedObject or mappedField instead.
+         *
+         * @phpstan-ignore-next-line
+         */
+        $this->leadField = null;
+    }
+
+    public function isAutoFillReadOnly(): bool
+    {
+        return $this->isAutoFill && $this->isReadOnly;
+    }
+
+    public function getFieldWidth(): string
+    {
+        return empty($this->fieldWidth) ? '100%' : $this->fieldWidth;
+    }
+
+    public function setFieldWidth(?string $fieldWidth): Field
+    {
+        $this->isChanged('fieldWidth', $fieldWidth);
+        $this->fieldWidth = $fieldWidth;
+
+        return $this;
+    }
+
+    public function setIsReadOnly(?bool $isReadOnly): void
+    {
+        $this->isReadOnly = $isReadOnly ?? false;
+    }
+
+    public function getPermissionUser(): mixed
+    {
+        return $this->getForm()?->getCreatedBy();
     }
 }

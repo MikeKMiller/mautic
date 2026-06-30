@@ -1,19 +1,12 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\EventListener;
 
 use Mautic\CoreBundle\Helper\Chart\ChartQuery;
 use Mautic\LeadBundle\Model\CompanyReportData;
+use Mautic\LeadBundle\Report\DncReportService;
 use Mautic\ReportBundle\Event\ReportBuilderEvent;
+use Mautic\ReportBundle\Event\ReportDataEvent;
 use Mautic\ReportBundle\Event\ReportGeneratorEvent;
 use Mautic\ReportBundle\Event\ReportGraphEvent;
 use Mautic\ReportBundle\ReportEvents;
@@ -21,34 +14,28 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class ReportSubscriber implements EventSubscriberInterface
 {
-    const CONTEXT_CAMPAIGN_LEAD_EVENT_LOG = 'campaign_lead_event_log';
+    public const CONTEXT_CAMPAIGN_LEAD_EVENT_LOG = 'campaign_lead_event_log';
 
-    /**
-     * @var CompanyReportData
-     */
-    private $companyReportData;
-
-    public function __construct(CompanyReportData $companyReportData)
-    {
-        $this->companyReportData = $companyReportData;
+    public function __construct(
+        private readonly CompanyReportData $companyReportData,
+        private readonly DncReportService $dncReportService,
+    ) {
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             ReportEvents::REPORT_ON_BUILD          => ['onReportBuilder', 0],
             ReportEvents::REPORT_ON_GENERATE       => ['onReportGenerate', 0],
             ReportEvents::REPORT_ON_GRAPH_GENERATE => ['onReportGraphGenerate', 0],
+            ReportEvents::REPORT_ON_DISPLAY        => ['onReportDisplay', 0],
         ];
     }
 
     /**
      * Add available tables and columns to the report builder lookup.
      */
-    public function onReportBuilder(ReportBuilderEvent $event)
+    public function onReportBuilder(ReportBuilderEvent $event): void
     {
         if (!$event->checkContext(self::CONTEXT_CAMPAIGN_LEAD_EVENT_LOG)) {
             return;
@@ -153,7 +140,7 @@ class ReportSubscriber implements EventSubscriberInterface
 
         $companyColumns = $this->companyReportData->getCompanyData();
 
-        $columns = array_merge(
+        $commonColumnsAndFilters = array_merge(
             $columns,
             $event->getStandardColumns($campaignPrefix, [], 'mautic_campaign_action'),
             $event->getCategoryColumns($catPrefix),
@@ -162,21 +149,24 @@ class ReportSubscriber implements EventSubscriberInterface
             $event->getChannelColumns(),
             $companyColumns
         );
+        $reportColumns = array_merge($commonColumnsAndFilters, $this->dncReportService->getDncColumns());
+        $reportFilters = array_merge($commonColumnsAndFilters, $this->dncReportService->getDncFilters());
 
         $data = [
             'display_name' => 'mautic.campaign.events',
-            'columns'      => $columns,
+            'columns'      => $reportColumns,
+            'filters'      => $reportFilters,
         ];
         $event->addTable(self::CONTEXT_CAMPAIGN_LEAD_EVENT_LOG, $data);
 
         // Register graphs
-        //$event->addGraph($context, 'line', 'mautic.page.graph.line.hits');
+        // $event->addGraph($context, 'line', 'mautic.page.graph.line.hits');
     }
 
     /**
      * Initialize the QueryBuilder object to generate reports from.
      */
-    public function onReportGenerate(ReportGeneratorEvent $event)
+    public function onReportGenerate(ReportGeneratorEvent $event): void
     {
         if (!$event->checkContext(self::CONTEXT_CAMPAIGN_LEAD_EVENT_LOG)) {
             return;
@@ -206,7 +196,7 @@ class ReportSubscriber implements EventSubscriberInterface
     /**
      * Initialize the QueryBuilder object to generate reports from.
      */
-    public function onReportGraphGenerate(ReportGraphEvent $event)
+    public function onReportGraphGenerate(ReportGraphEvent $event): void
     {
         if (!$event->checkContext(self::CONTEXT_CAMPAIGN_LEAD_EVENT_LOG)) {
             return;
@@ -240,5 +230,17 @@ class ReportSubscriber implements EventSubscriberInterface
 
             unset($queryBuilder);
         }
+    }
+
+    public function onReportDisplay(ReportDataEvent $event): void
+    {
+        $data = $event->getData();
+
+        if ($event->checkContext([self::CONTEXT_CAMPAIGN_LEAD_EVENT_LOG])) {
+            $data = $this->dncReportService->processDncStatusDisplay($data);
+        }
+
+        $event->setData($data);
+        unset($data);
     }
 }

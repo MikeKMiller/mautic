@@ -1,22 +1,10 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Model;
 
 use Mautic\CoreBundle\Entity\TranslationEntityInterface;
 use Mautic\CoreBundle\Entity\VariantEntityInterface;
 
-/**
- * Class VariantModelTrait.
- */
 trait VariantModelTrait
 {
     /**
@@ -26,17 +14,19 @@ trait VariantModelTrait
 
     /**
      * Converts a variant to the main item and the original main item a variant.
+     *
+     * @deprecated use VariantConverterService instead
      */
-    public function convertVariant(VariantEntityInterface $entity)
+    public function convertVariant(VariantEntityInterface $entity): void
     {
-        //let saveEntities() know it does not need to set variant start dates
+        // let saveEntities() know it does not need to set variant start dates
         $this->inConversion = true;
 
-        list($parent, $children) = $entity->getVariants();
+        [$parent, $children] = $entity->getVariants();
 
         $save = [];
 
-        //set this email as the parent for the original parent and children
+        // set this email as the parent for the original parent and children
         if ($parent) {
             if ($parent->getId() != $entity->getId()) {
                 if (method_exists($parent, 'setIsPublished')) {
@@ -51,7 +41,7 @@ trait VariantModelTrait
             $parent->setVariantSentCount(0);
 
             foreach ($children as $child) {
-                //capture child before it's removed from collection
+                // capture child before it's removed from collection
                 $save[] = $child;
 
                 $parent->removeVariantChild($child);
@@ -79,7 +69,7 @@ trait VariantModelTrait
         $save[] = $parent;
         $save[] = $entity;
 
-        //save the entities
+        // save the entities
         $this->saveEntities($save, false);
     }
 
@@ -88,14 +78,14 @@ trait VariantModelTrait
      *
      * @param array $resetVariantCounterMethods ['setVariantHits', 'setVariantSends', ...]
      */
-    protected function preVariantSaveEntity(VariantEntityInterface $entity, array $resetVariantCounterMethods = [], \DateTime $variantStartDate = null)
+    protected function preVariantSaveEntity(VariantEntityInterface $entity, array $resetVariantCounterMethods = [], ?\DateTime $variantStartDate = null): bool
     {
         $isVariant = $entity->isVariant();
 
         if (!$isVariant && $entity instanceof TranslationEntityInterface) {
             // Translations could be assigned to a variant and thus applicable to be reset
             if ($translationParent = $entity->getTranslationParent()) {
-                $isVariant = $translationParent->isVariant();
+                $isVariant = $translationParent->isVariant(); /** @phpstan-ignore-line @todo for M6, extend the TranslationEntityInterface from The VariantEntityInterface */
             }
         }
 
@@ -111,9 +101,7 @@ trait VariantModelTrait
 
             // Reset the variant
             if (!empty($changes) && empty($this->inConversion)) {
-                if (method_exists($entity, 'setVariantStartDate')) {
-                    $entity->setVariantStartDate($variantStartDate);
-                }
+                $entity->setVariantStartDate($variantStartDate);
 
                 // Reset counters
                 foreach ($resetVariantCounterMethods as $method) {
@@ -135,7 +123,7 @@ trait VariantModelTrait
      * @param bool  $resetVariants
      * @param array $relatedIds
      */
-    protected function postVariantSaveEntity(VariantEntityInterface $entity, $resetVariants = false, $relatedIds = [], \DateTime $variantStartDate = null)
+    protected function postVariantSaveEntity(VariantEntityInterface $entity, $resetVariants = false, $relatedIds = [], ?\DateTime $variantStartDate = null)
     {
         // If parent, add this entity as a child of the parent so that it populates the list in the tab (due to Doctrine hanging on to entities in memory)
         if ($parent = $entity->getVariantParent()) {
@@ -148,12 +136,7 @@ trait VariantModelTrait
         }
     }
 
-    /**
-     * @param           $entity
-     * @param           $relatedIds
-     * @param \DateTime $variantStartDate
-     */
-    protected function resetVariants($entity, $relatedIds = null, \DateTime $variantStartDate = null)
+    protected function resetVariants($entity, $relatedIds = null, ?\DateTime $variantStartDate = null)
     {
         $repo = $this->getRepository();
 

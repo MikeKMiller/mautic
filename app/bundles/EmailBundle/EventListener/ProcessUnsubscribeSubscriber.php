@@ -1,16 +1,8 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\EventListener;
 
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\EmailBundle\EmailEvents;
 use Mautic\EmailBundle\Event\EmailSendEvent;
 use Mautic\EmailBundle\Event\MonitoredEmailEvent;
@@ -21,23 +13,11 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class ProcessUnsubscribeSubscriber implements EventSubscriberInterface
 {
-    const BUNDLE     = 'EmailBundle';
-    const FOLDER_KEY = 'unsubscribes';
+    public const BUNDLE     = 'EmailBundle';
 
-    /**
-     * @var Unsubscribe
-     */
-    private $unsubscriber;
+    public const FOLDER_KEY = 'unsubscribes';
 
-    /**
-     * @var FeedbackLoop
-     */
-    private $looper;
-
-    /**
-     * @return array
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             EmailEvents::MONITORED_EMAIL_CONFIG => ['onEmailConfig', 0],
@@ -46,21 +26,19 @@ class ProcessUnsubscribeSubscriber implements EventSubscriberInterface
         ];
     }
 
-    /**
-     * ProcessUnsubscribeSubscriber constructor.
-     */
-    public function __construct(Unsubscribe $unsubscriber, FeedbackLoop $looper)
-    {
-        $this->unsubscriber = $unsubscriber;
-        $this->looper       = $looper;
+    public function __construct(
+        private readonly Unsubscribe $unsubscriber,
+        private readonly FeedbackLoop $looper,
+        private readonly CoreParametersHelper $coreParametersHelper,
+    ) {
     }
 
-    public function onEmailConfig(MonitoredEmailEvent $event)
+    public function onEmailConfig(MonitoredEmailEvent $event): void
     {
         $event->addFolder(self::BUNDLE, self::FOLDER_KEY, 'mautic.email.config.monitored_email.unsubscribe_folder');
     }
 
-    public function onEmailParse(ParseEmailEvent $event)
+    public function onEmailParse(ParseEmailEvent $event): void
     {
         if ($event->isApplicable(self::BUNDLE, self::FOLDER_KEY)) {
             // Process the messages
@@ -76,16 +54,19 @@ class ProcessUnsubscribeSubscriber implements EventSubscriberInterface
     /**
      * Add an unsubscribe email to the List-Unsubscribe header if applicable.
      */
-    public function onEmailSend(EmailSendEvent $event)
+    public function onEmailSend(EmailSendEvent $event): void
     {
+        if ($this->coreParametersHelper->get('disable_unsubscribe_link_header')) {
+            return;
+        }
         $helper = $event->getHelper();
         if ($helper && $unsubscribeEmail = $helper->generateUnsubscribeEmail()) {
             $headers          = $event->getTextHeaders();
-            $existing         = (isset($headers['List-Unsubscribe'])) ? $headers['List-Unsubscribe'] : '';
+            $existing         = $headers['List-Unsubscribe'] ?? '';
             $unsubscribeEmail = "<mailto:$unsubscribeEmail>";
             if ($existing) {
-                if (false === strpos($existing, $unsubscribeEmail)) {
-                    $updatedHeader = $unsubscribeEmail.', '.$existing;
+                if (!str_contains($existing, $unsubscribeEmail)) {
+                    $updatedHeader = $existing.', '.$unsubscribeEmail;
                 } else {
                     $updatedHeader = $existing;
                 }
@@ -94,6 +75,7 @@ class ProcessUnsubscribeSubscriber implements EventSubscriberInterface
             }
 
             $event->addTextHeader('List-Unsubscribe', $updatedHeader);
+            $event->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
         }
     }
 }

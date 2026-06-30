@@ -51,6 +51,10 @@ Mautic.reportOnLoad = function (container) {
         Mautic.schedulePreview($isScheduled, $unitTypeId, $scheduleDay, $scheduleMonthFrequency);
     });
     Mautic.scheduleDisplay($isScheduled, $unitTypeId, $scheduleDay, $scheduleMonthFrequency);
+
+    jQuery(document).ajaxComplete(function(){
+        Mautic.ajaxifyForm('daterange');
+    });
 };
 
 Mautic.scheduleDisplay = function ($isScheduled, $unitTypeId, $scheduleDay, $scheduleMonthFrequency) {
@@ -77,7 +81,7 @@ Mautic.schedulePreview = function ($isScheduled, $unitTypeId, $scheduleDay, $sch
     var $schedulePreviewData = mQuery('#schedule_preview_data');
 
     var isScheduledVal = 0;
-    if (!mQuery($isScheduled).prop("checked")) { //$isScheduled.val() does not work
+    if (mQuery($isScheduled).prop("checked")) { //$isScheduled.val() does not work
         isScheduledVal = 1;
     }
 
@@ -105,7 +109,7 @@ Mautic.schedulePreview = function ($isScheduled, $unitTypeId, $scheduleDay, $sch
 
 Mautic.checkIsScheduled = function ($isScheduled) {
     var $scheduleForm = mQuery('#schedule-container .schedule_form');
-    if (!mQuery($isScheduled).prop("checked")) {
+    if (mQuery($isScheduled).prop("checked")) {
         $scheduleForm.show();
         return;
     }
@@ -156,7 +160,7 @@ Mautic.addReportRow = function (elId) {
         Mautic.updateReportGlueTriggers();
     } else if (typeof Mautic.reportPrototypeColumnOptions != 'undefined') {
         // Update the column options if applicable
-        mQuery(newColumnId).html(Mautic.reportPrototypeColumnOptions);
+        mQuery(newColumnId).html(Mautic.reportPrototypeColumnOptions.clone());
     }
 
     Mautic.activateChosenSelect(mQuery('#' + elId + '_' + index + '_column'));
@@ -201,6 +205,8 @@ Mautic.updateReportFilterValueInput = function (filterColumn, setup) {
     var valueId = 'report_filters_' + idParts[2] + '_value';
     var valueName = 'report[filters][' + idParts[2] + '][value]';
 
+    valueEl.data('filter-type', filterType);
+
     // Replace the condition list with operators
     var currentOperator = mQuery('#report_filters_' + idParts[2] + '_condition').val();
     mQuery('#report_filters_' + idParts[2] + '_condition').html(operators[newValue]);
@@ -212,18 +218,31 @@ Mautic.updateReportFilterValueInput = function (filterColumn, setup) {
     Mautic.destroyChosen(mQuery('#' + valueId));
 
     if (filterType == 'bool' || filterType == 'boolean') {
-        if (mQuery(valueEl).attr('type') != 'radio') {
-            var template = mQuery('#filterValueYesNoTemplate .btn-group').clone(true);
-            mQuery(template).find('input[type="radio"]').each(function () {
-                mQuery(this).attr('name', valueName);
-                var radioVal = mQuery(this).val();
-                mQuery(this).attr('id', valueId + '_' + radioVal);
-            });
-            mQuery(valueEl).replaceWith(template);
+        const yesId = valueId + '_1';
+        const noId = valueId + '_0';
+        const isYes = valueVal == '1';
+        const $template = mQuery('#filterValueYesNoTemplate').clone();
+        const $label = $template.find('#report_value_template_yesno_label');
+        const $yesOption = $template.find('#report_value_template_yesno_1');
+        const $noOption = $template.find('#report_value_template_yesno_0');
+
+        $template.removeAttr('id').addClass('toggle-container');
+        $yesOption.attr('name', valueName)
+            .attr('id', yesId);
+        $noOption.attr('name', valueName)
+            .attr('id', noId);
+        $label.attr('id', valueId + '_bool-label')
+            .attr('data-yes-id', yesId)
+            .attr('data-no-id', noId);
+
+        if (mQuery(valueEl).is(':radio')) {
+            mQuery(valueEl).closest('.toggle-container').replaceWith($template);
+        } else {
+            mQuery(valueEl).replaceWith($template);
         }
 
-        if (setup) {
-            mQuery('#' + valueId + '_' + valueVal).click();
+        if (!isYes) {
+            Mautic.toggleYesNo($label);
         }
     } else if (mQuery(valueEl).attr('type') != 'text') {
         var newValueEl = mQuery('<input type="text" />').attr({
@@ -247,7 +266,9 @@ Mautic.updateReportFilterValueInput = function (filterColumn, setup) {
         };
 
         if (filterType == 'multiselect') {
+            attr.name += '[]';
             attr.multiple = true;
+            currentValue = (typeof currentValue !== 'undefined') ? currentValue.split(",") : null;
         }
 
         var newSelect = mQuery('<select />', attr);
@@ -257,22 +278,57 @@ Mautic.updateReportFilterValueInput = function (filterColumn, setup) {
                 .val(value)
                 .html(label);
 
-            if (value == currentValue) {
+            if (value == currentValue && filterType != 'multiselect') {
                 newOption.prop('selected', true);
             }
 
             newOption.appendTo(newSelect);
         });
+        if (filterType == 'multiselect') {
+            newSelect.val(currentValue);
+        }
         mQuery(valueEl).replaceWith(newSelect);
 
         Mautic.activateChosenSelect(newSelect);
     }
 
-    // Activate datetime
-    if (filterType == 'datetime' || filterType == 'date' || filterType == 'time') {
+    const dateTypes = ['datetime', 'date', 'time'];
+    const stringComparisonOperators = ['like', 'notLike', 'startsWith', 'endsWith', 'contains'];
+
+    if (dateTypes.includes(filterType)) {
         Mautic.activateDateTimeInputs('#' + valueId, filterType);
     } else if (mQuery('#' + valueId).hasClass('calendar-activated')) {
         mQuery('#' + valueId).datetimepicker('destroy');
+    }
+
+    if (dateTypes.includes(filterType)) {
+        const inputElement = mQuery('#' + valueId);
+        if (inputElement.data('utc-tooltip-initialized')) {
+            return;
+        }
+
+        inputElement.attr('data-bs-toggle', 'tooltip')
+            .attr('data-bs-placement', 'bottom')
+            .attr('title', '...') // Set a placeholder title, to be replaced later
+            .tooltip({ trigger: 'manual' });
+
+        inputElement.on('focus', function () {
+            const currentOperator = mQuery('#report_filters_' + idParts[2] + '_condition').val();
+            const currentFilterType = mQuery(this).data('filter-type');
+            let message = null;
+            if (dateTypes.includes(currentFilterType)) {
+                if (stringComparisonOperators.includes(currentOperator)) {
+                    message = Mautic.translate('mautic.report.filter.string_comparison_utc_tooltip');
+                } else {
+                    message = Mautic.translate('mautic.report.filter.date_comparison_timezone_tooltip');
+                }
+                mQuery(this).attr('title', message).tooltip('fixTitle').tooltip('show');
+            }
+        }).on('blur', function () {
+            mQuery(this).tooltip('hide');
+        });
+
+        inputElement.data('utc-tooltip-initialized', true);
     }
 };
 
@@ -343,9 +399,9 @@ Mautic.checkReportCondition = function (selector) {
 
     // Disable the value input if the condition is empty or notEmpty
     if (option == 'empty' || option == 'notEmpty') {
-        mQuery('#' + valueInput).prop('disabled', true);
+        mQuery('#' + valueInput).prop('disabled', true).trigger('chosen:updated');
     } else {
-        mQuery('#' + valueInput).prop('disabled', false);
+        mQuery('#' + valueInput).prop('disabled', false).trigger('chosen:updated');
     }
 };
 
@@ -373,4 +429,54 @@ Mautic.getHighestIndex = function (selector) {
     });
 
     return parseInt(highestIndex);
+};
+
+Mautic.cloneReportRow = function (containerId) {
+    // Get the existing filter container
+    const container = mQuery(`#${containerId}`);
+
+    // Extract values from the existing filter
+    const glue = container.find('.filter-glue').val();
+    const column = container.find('.filter-columns').val();
+    const value = container.find('.filter-value:checked, .filter-value').val();
+    const dynamic = container.find('[name*="[dynamic]"]:checked').val();
+
+    // Add a new filter row using the existing add function
+    Mautic.addReportRow('report_filters');
+
+    // Get the new container by finding the last filter container
+    const newContainer = mQuery('#report_filters').find('> .panel.in-group').last();
+
+    // Set the 'glue' and 'column' values
+    newContainer.find('.filter-glue').val(glue);
+    const columnSelect = newContainer.find('.filter-columns').val(column).trigger('change');
+
+    // Initialize Chosen when the select field is ready
+    const initializeChosenWhenReady = (selectElement) => {
+        if (selectElement.find('option').length > 0) {
+            Mautic.destroyChosen(selectElement);
+            Mautic.activateChosenSelect(selectElement);
+        } else {
+            setTimeout(() => initializeChosenWhenReady(selectElement), 200);
+        }
+    };
+    initializeChosenWhenReady(columnSelect);
+
+    // Set the 'value' field
+    const newValueInput = newContainer.find('.filter-value');
+    if (newValueInput.is('select')) {
+        newValueInput.val(value);
+        initializeChosenWhenReady(newValueInput);
+    } else {
+        newValueInput.val(value).prop('checked', true).parent().addClass('active');
+    }
+
+    // Set the dynamic option correctly using the toggle element
+    const dynamicLabel = newContainer.find('.toggle__label');
+    if ((dynamic === '1' && dynamicLabel.attr('aria-checked') !== 'true') || (dynamic === '0' && dynamicLabel.attr('aria-checked') !== 'false')) {
+        dynamicLabel.trigger('click');
+    }
+
+    // Reinitialize tooltips
+    newContainer.find("*[data-toggle='tooltip']").tooltip({ html: true, container: 'body' });
 };

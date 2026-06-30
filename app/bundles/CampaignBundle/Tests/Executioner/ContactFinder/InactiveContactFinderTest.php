@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Tests\Executioner\ContactFinder;
 
 use Doctrine\Common\Collections\ArrayCollection;
@@ -24,14 +15,14 @@ use Psr\Log\NullLogger;
 class InactiveContactFinderTest extends \PHPUnit\Framework\TestCase
 {
     /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|LeadRepository
+     * @var \PHPUnit\Framework\MockObject\MockObject&LeadRepository
      */
-    private $leadRepository;
+    private \PHPUnit\Framework\MockObject\MockObject $leadRepository;
 
     /**
-     * @var \PHPUnit\Framework\MockObject\MockObject|CampaignLeadRepository
+     * @var \PHPUnit\Framework\MockObject\MockObject&CampaignLeadRepository
      */
-    private $campaignLeadRepository;
+    private \PHPUnit\Framework\MockObject\MockObject $campaignLeadRepository;
 
     protected function setUp(): void
     {
@@ -39,7 +30,7 @@ class InactiveContactFinderTest extends \PHPUnit\Framework\TestCase
         $this->campaignLeadRepository = $this->createMock(CampaignLeadRepository::class);
     }
 
-    public function testNoContactsFoundExceptionIsThrown()
+    public function testNoContactsFoundExceptionIsThrown(): void
     {
         $this->campaignLeadRepository->expects($this->once())
             ->method('getInactiveContacts')
@@ -51,7 +42,7 @@ class InactiveContactFinderTest extends \PHPUnit\Framework\TestCase
         $this->getContactFinder()->getContacts(1, new Event(), $limiter);
     }
 
-    public function testNoContactsFoundExceptionIsThrownIfEntitiesAreNotFound()
+    public function testNoContactsFoundExceptionIsThrownIfEntitiesAreNotFound(): void
     {
         $contactMemberDates = [
             1 => new \DateTime(),
@@ -63,7 +54,7 @@ class InactiveContactFinderTest extends \PHPUnit\Framework\TestCase
 
         $this->leadRepository->expects($this->once())
             ->method('getContactCollection')
-            ->willReturn([]);
+            ->willReturn(new ArrayCollection([]));
 
         $this->expectException(NoContactsFoundException::class);
 
@@ -71,7 +62,7 @@ class InactiveContactFinderTest extends \PHPUnit\Framework\TestCase
         $this->getContactFinder()->getContacts(1, new Event(), $limiter);
     }
 
-    public function testContactsAreFoundAndStoredInCampaignMemberDatesAdded()
+    public function testContactsAreFoundAndStoredInCampaignMemberDatesAdded(): void
     {
         $contactMemberDates = [
             1 => new \DateTime(),
@@ -94,10 +85,7 @@ class InactiveContactFinderTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals($contactMemberDates, $contactFinder->getDatesAdded());
     }
 
-    /**
-     * @return InactiveContactFinder
-     */
-    private function getContactFinder()
+    private function getContactFinder(): InactiveContactFinder
     {
         return new InactiveContactFinder(
             $this->leadRepository,

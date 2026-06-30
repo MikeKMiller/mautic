@@ -1,68 +1,53 @@
 <?php
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        https://www.mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\Update\Step;
 
-use Doctrine\Bundle\MigrationsBundle\Command\MigrationsMigrateDoctrineCommand;
+use Doctrine\Migrations\Tools\Console\Command\DoctrineCommand as MigrateCommand;
 use Mautic\CoreBundle\Exception\UpdateFailedException;
 use Mautic\CoreBundle\Update\Step\UpdateSchemaStep;
+use PHPUnit\Framework\Attributes\DoesNotPerformAssertions;
 use PHPUnit\Framework\MockObject\MockObject;
-use Symfony\Component\Console\ConsoleEvents;
+use Symfony\Component\Console\Event\ConsoleCommandEvent;
+use Symfony\Component\Console\Event\ConsoleEvent;
+use Symfony\Component\Console\Helper\HelperSet;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\EventDispatcher\Event;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpKernel\KernelInterface;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-class UpdateSchemaStepTest extends AbstractStepTest
+class UpdateSchemaStepTest extends AbstractStepTestCase
 {
     /**
-     * @var MockObject|TranslatorInterface
+     * @var MockObject&TranslatorInterface
      */
-    private $translator;
+    private MockObject $translator;
 
     /**
-     * @var MockObject|KernelInterface
+     * @var MockObject&MigrateCommand
      */
-    private $kernel;
+    private MockObject $migrateCommand;
 
     /**
-     * @var MockObject|MigrationsMigrateDoctrineCommand
+     * @var MockObject&EventDispatcherInterface
      */
-    private $migrateCommand;
+    private MockObject $eventDispatcher;
 
-    /**
-     * @var MockObject|EventDispatcherInterface
-     */
-    private $eventDispatcher;
-
-    /**
-     * @var UpdateSchemaStep
-     */
-    private $step;
+    private UpdateSchemaStep $step;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->translator     = $this->createMock(TranslatorInterface::class);
-
-        $this->kernel         = $this->createMock(KernelInterface::class);
-        $this->kernel
+        $kernel               = $this->createMock(KernelInterface::class);
+        $helperSet            = $this->createMock(HelperSet::class);
+        $kernel
             ->method('getBundles')
             ->willReturn([]);
 
-        $this->migrateCommand = $this->createMock(MigrationsMigrateDoctrineCommand::class);
+        $this->migrateCommand = $this->createMock(MigrateCommand::class);
         $this->migrateCommand->method('isEnabled')
             ->willReturn(true);
         $this->migrateCommand->method('getName')
@@ -70,7 +55,7 @@ class UpdateSchemaStepTest extends AbstractStepTest
         $this->migrateCommand->method('getAliases')
             ->willReturn([]);
         $this->migrateCommand->method('getHelperSet')
-            ->willReturn([]);
+            ->willReturn($helperSet);
 
         $definition = $this->createMock(InputDefinition::class);
         $definition->method('hasArgument')
@@ -90,26 +75,16 @@ class UpdateSchemaStepTest extends AbstractStepTest
         /** @var ContainerInterface|MockObject $container */
         $container = $this->createMock(ContainerInterface::class);
         $container->method('get')
-            ->withConsecutive(
-                ['kernel'],
-                ['event_dispatcher'],
-                ['doctrine:migrations:migrate']
-            )
-            ->willReturnOnConsecutiveCalls(
-                $this->kernel,
-                $this->eventDispatcher,
-                $this->migrateCommand
-            );
-
+            ->willReturnMap([
+                ['kernel', ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE, $kernel],
+                ['event_dispatcher', ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE, $this->eventDispatcher],
+                ['doctrine:migrations:migrate', ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE, $this->migrateCommand],
+            ]);
         $container->method('hasParameter')
-            ->withConsecutive(
-                ['console.command.ids'],
-                ['console.lazy_command.ids']
-            )
-            ->willReturnOnConsecutiveCalls(
-                true,
-                false
-            );
+            ->willReturnMap([
+                ['console.command.ids', true],
+                ['console.lazy_command.ids', false],
+            ]);
 
         $container->method('getParameter')
             ->with('console.command.ids')
@@ -117,54 +92,62 @@ class UpdateSchemaStepTest extends AbstractStepTest
                 ['doctrine:migrations:migrate']
             );
 
-        $this->kernel->method('getContainer')
+        $kernel->method('getContainer')
             ->willReturn($container);
 
         $this->step = new UpdateSchemaStep($this->translator, $container);
     }
 
-    public function testUpdateFailedExceptionThrownIfMigrationsFailed()
+    public function testUpdateFailedExceptionThrownIfMigrationsFailed(): void
     {
         $this->expectException(UpdateFailedException::class);
 
+        $this->migrateCommand->method('run')
+            ->willReturn(1);
+
         $this->eventDispatcher->method('dispatch')
             ->willReturnCallback(
-                function (string $eventName, Event $event) {
-                    switch ($eventName) {
-                        case ConsoleEvents::COMMAND:
+                function (ConsoleEvent $event, string $eventName): ConsoleEvent {
+                    switch (true) {
+                        case $event instanceof ConsoleCommandEvent:
                             $event->enableCommand();
                             break;
-                        case ConsoleEvents::TERMINATE:
-                            $event->setExitCode(1);
-                            break;
                     }
+
+                    return $event;
                 }
             );
+
+        $this->translator->expects($this->any())
+            ->method('trans')
+            ->willReturn('');
 
         $this->step->execute($this->progressBar, $this->input, $this->output);
     }
 
-    public function testExceptionNotThrownIfMigrationsWereSuccessful()
+    #[DoesNotPerformAssertions]
+    public function testExceptionNotThrownIfMigrationsWereSuccessful(): void
     {
+        $this->migrateCommand->method('run')
+            ->willReturn(0);
+
         $this->eventDispatcher->method('dispatch')
             ->willReturnCallback(
-                function (string $eventName, Event $event) {
-                    switch ($eventName) {
-                        case ConsoleEvents::COMMAND:
+                function (ConsoleEvent $event, string $eventName): ConsoleEvent {
+                    switch (true) {
+                        case $event instanceof ConsoleCommandEvent:
                             $event->enableCommand();
                             break;
-                        case ConsoleEvents::TERMINATE:
-                            $event->setExitCode(0);
-                            break;
                     }
+
+                    return $event;
                 }
             );
 
-        try {
-            $this->step->execute($this->progressBar, $this->input, $this->output);
-            $this->assertTrue(true);
-        } catch (UpdateFailedException $exception) {
-            $this->fail('UpdateFailedException should not have been thrown');
-        }
+        $this->translator->expects($this->any())
+            ->method('trans')
+            ->willReturn('');
+
+        $this->step->execute($this->progressBar, $this->input, $this->output);
     }
 }

@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2019 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\UserBundle\Security\SAML\Store;
 
 use LightSaml\Meta\TrustOptions\TrustOptions;
@@ -17,25 +8,12 @@ use Mautic\CoreBundle\Helper\CoreParametersHelper;
 
 class TrustOptionsStore implements TrustOptionsStoreInterface
 {
-    /**
-     * @var CoreParametersHelper
-     */
-    private $coreParametersHelper;
+    private ?TrustOptions $trustOptions = null;
 
-    /**
-     * @var string
-     */
-    private $entityId;
-
-    /**
-     * @var TrustOptions
-     */
-    private $trustOptions;
-
-    public function __construct(CoreParametersHelper $coreParametersHelper, string $entityId)
-    {
-        $this->coreParametersHelper = $coreParametersHelper;
-        $this->entityId             = $entityId;
+    public function __construct(
+        private readonly CoreParametersHelper $coreParametersHelper,
+        private readonly string $entityId,
+    ) {
     }
 
     public function get($entityId): TrustOptions
@@ -55,11 +33,7 @@ class TrustOptionsStore implements TrustOptionsStoreInterface
         }
 
         // EntityIds do not match
-        if ($entityId !== $this->entityId) {
-            return false;
-        }
-
-        return true;
+        return $entityId === $this->entityId;
     }
 
     private function createTrustOptions(): TrustOptions

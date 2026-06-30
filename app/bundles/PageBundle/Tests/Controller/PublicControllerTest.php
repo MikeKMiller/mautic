@@ -1,96 +1,87 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\Tests\Controller;
 
+use Doctrine\Persistence\ManagerRegistry;
 use Mautic\CoreBundle\Entity\IpAddress;
 use Mautic\CoreBundle\Exception\InvalidDecodedStringException;
 use Mautic\CoreBundle\Factory\ModelFactory;
 use Mautic\CoreBundle\Helper\CookieHelper;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Helper\IpLookupHelper;
+use Mautic\CoreBundle\Helper\ThemeHelper;
+use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
-use Mautic\CoreBundle\Templating\Helper\AnalyticsHelper;
-use Mautic\CoreBundle\Templating\Helper\AssetsHelper;
+use Mautic\CoreBundle\Service\FlashBag;
+use Mautic\CoreBundle\Translation\Translator;
+use Mautic\CoreBundle\Twig\Helper\AnalyticsHelper;
+use Mautic\CoreBundle\Twig\Helper\AssetsHelper;
 use Mautic\LeadBundle\Entity\Lead;
-use Mautic\LeadBundle\Helper\PrimaryCompanyHelper;
-use Mautic\LeadBundle\Model\LeadModel;
+use Mautic\LeadBundle\Helper\ContactRequestHelper;
+use Mautic\LeadBundle\Tracker\ContactTracker;
+use Mautic\LeadBundle\Tracker\Service\DeviceTrackingService\DeviceTrackingServiceInterface;
 use Mautic\PageBundle\Controller\PublicController;
 use Mautic\PageBundle\Entity\Page;
 use Mautic\PageBundle\Entity\Redirect;
 use Mautic\PageBundle\Event\TrackingEvent;
+use Mautic\PageBundle\Helper\TrackingHelper;
 use Mautic\PageBundle\Model\PageModel;
 use Mautic\PageBundle\Model\RedirectModel;
+use Mautic\PageBundle\Model\Tracking404Model;
+use Mautic\PageBundle\PageEvents;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Symfony\Bridge\Monolog\Logger;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Asset\Packages;
 use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\EventDispatcher\EventDispatcher;
-use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Router;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\RouterInterface;
 
 class PublicControllerTest extends TestCase
 {
-    /** @var PublicControllerTest */
-    private $controller;
+    private MockObject&Container $internalContainer;
 
-    /** @var Container */
-    private $container;
+    private \PHPUnit\Framework\MockObject\Stub&LoggerInterface $logger;
 
-    /** @var Logger */
-    private $logger;
+    /**
+     * @var ModelFactory<object>&\PHPUnit\Framework\MockObject\Stub
+     */
+    private \PHPUnit\Framework\MockObject\Stub&ModelFactory $modelFactory;
 
-    /** @var ModelFactory */
-    private $modelFactory;
+    private MockObject&RedirectModel $redirectModel;
 
-    /** @var RedirectModel */
-    private $redirectModel;
+    private MockObject&Redirect $redirect;
 
-    /** @var Redirect */
-    private $redirect;
+    private Request $request;
 
-    /** @var Request */
-    private $request;
+    private MockObject&IpLookupHelper $ipLookupHelper;
 
-    /** @var IpLookupHelper */
-    private $ipLookupHelper;
+    private MockObject&IpAddress $ipAddress;
 
-    /** @var IpAddress */
-    private $ipAddress;
+    private MockObject&PageModel $pageModel;
 
-    /** @var LeadModel */
-    private $leadModel;
+    private MockObject&ContactRequestHelper $contactRequestHelper;
 
-    /** @var PageModel */
-    private $pageModel;
-
-    /** @var PrimaryCompanyHelper */
-    private $primaryCompanyHelper;
+    private MockObject&RouterInterface $router;
 
     protected function setUp(): void
     {
-        $this->controller           = new PublicController();
         $this->request              = new Request();
-        $this->container            = $this->createMock(Container::class);
-        $this->logger               = $this->createMock(Logger::class);
-        $this->modelFactory         = $this->createMock(ModelFactory::class);
+        $this->internalContainer    = $this->createMock(Container::class);
+        $this->logger               = $this->createStub(LoggerInterface::class);
+        $this->modelFactory         = $this->createStub(ModelFactory::class);
         $this->redirectModel        = $this->createMock(RedirectModel::class);
         $this->redirect             = $this->createMock(Redirect::class);
         $this->ipLookupHelper       = $this->createMock(IpLookupHelper::class);
         $this->ipAddress            = $this->createMock(IpAddress::class);
-        $this->leadModel            = $this->createMock(LeadModel::class);
         $this->pageModel            = $this->createMock(PageModel::class);
-        $this->primaryCompanyHelper = $this->createMock(PrimaryCompanyHelper::class);
-
-        $this->controller->setContainer($this->container);
-        $this->controller->setRequest($this->request);
+        $this->contactRequestHelper = $this->createMock(ContactRequestHelper::class);
+        $this->router               = $this->createMock(RouterInterface::class);
 
         parent::setUp();
     }
@@ -98,7 +89,7 @@ class PublicControllerTest extends TestCase
     /**
      * Test that the appropriate variant is displayed based on hit counts and variant weights.
      */
-    public function testVariantPageWeightsAreAppropriate()
+    public function testVariantPageWeightsAreAppropriate(): void
     {
         // Each of these should return the one with the greatest weight deficit based on
         // A = 50%
@@ -106,199 +97,157 @@ class PublicControllerTest extends TestCase
         // C = 25%
 
         // A = 0/50; B = 0/25; C = 0/25
-        $this->assertEquals('pageA', $this->getVariantContent(0, 0, 0));
+        $this->assertSame('pageA', $this->getVariantContent(0, 0, 0));
 
         // A = 100/50; B = 0/25; C = 0/25
-        $this->assertEquals('pageB', $this->getVariantContent(1, 0, 0));
+        $this->assertSame('pageB', $this->getVariantContent(1, 0, 0));
 
         // A = 50/50; B = 50/25; C = 0/25;
-        $this->assertEquals('pageC', $this->getVariantContent(1, 1, 0));
+        $this->assertSame('pageC', $this->getVariantContent(1, 1, 0));
 
         // A = 33/50; B = 33/25; C = 33/25;
-        $this->assertEquals('pageA', $this->getVariantContent(1, 1, 1));
+        $this->assertSame('pageA', $this->getVariantContent(1, 1, 1));
 
         // A = 66/50; B = 33/25; C = 0/25
-        $this->assertEquals('pageC', $this->getVariantContent(2, 1, 0));
+        $this->assertSame('pageC', $this->getVariantContent(2, 1, 0));
 
         // A = 50/50; B = 25/25; C = 25/25
-        $this->assertEquals('pageA', $this->getVariantContent(2, 1, 1));
+        $this->assertSame('pageA', $this->getVariantContent(2, 1, 1));
 
         // A = 33/50; B = 66/50; C = 0/25
-        $this->assertEquals('pageC', $this->getVariantContent(1, 2, 0));
+        $this->assertSame('pageC', $this->getVariantContent(1, 2, 0));
 
         // A = 25/50; B = 50/50; C = 25/25
-        $this->assertEquals('pageA', $this->getVariantContent(1, 2, 1));
+        $this->assertSame('pageA', $this->getVariantContent(1, 2, 1));
 
         // A = 55/50; B = 18/25; C = 27/25
-        $this->assertEquals('pageB', $this->getVariantContent(6, 2, 3));
+        $this->assertSame('pageB', $this->getVariantContent(6, 2, 3));
 
         // A = 50/50; B = 25/25; C = 25/25
-        $this->assertEquals('pageA', $this->getVariantContent(6, 3, 3));
+        $this->assertSame('pageA', $this->getVariantContent(6, 3, 3));
     }
 
-    /**
-     * @param $aCount
-     * @param $bCount
-     * @param $cCount
-     *
-     * @return string
-     */
-    private function getVariantContent($aCount, $bCount, $cCount)
+    private function getVariantContent(int $aCount, int $bCount, int $cCount): string
     {
-        $pageEntityB = $this->getMockBuilder(Page::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pageEntityB = $this->createMock(Page::class);
         $pageEntityB->method('getId')
-            ->will($this->returnValue(2));
+            ->willReturn(2);
         $pageEntityB->method('isPublished')
-            ->will($this->returnValue(true));
+            ->willReturn(true);
         $pageEntityB->method('getVariantHits')
-            ->will($this->returnValue($bCount));
+            ->willReturn($bCount);
         $pageEntityB->method('getTranslations')
-            ->will($this->returnValue([]));
+            ->willReturn([]);
         $pageEntityB->method('isTranslation')
-            ->will($this->returnValue(false));
+            ->willReturn(false);
         $pageEntityB->method('getContent')
-            ->will($this->returnValue(null));
+            ->willReturn(null);
         $pageEntityB->method('getCustomHtml')
-            ->will($this->returnValue('pageB'));
+            ->willReturn('pageB');
         $pageEntityB->method('getVariantSettings')
-            ->will($this->returnValue(['weight' => '25']));
+            ->willReturn(['weight' => '25']);
 
-        $pageEntityC = $this->getMockBuilder(Page::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pageEntityC = $this->createMock(Page::class);
         $pageEntityC->method('getId')
-            ->will($this->returnValue(3));
+            ->willReturn(3);
         $pageEntityC->method('isPublished')
-            ->will($this->returnValue(true));
+            ->willReturn(true);
         $pageEntityC->method('getVariantHits')
-            ->will($this->returnValue($cCount));
+            ->willReturn($cCount);
         $pageEntityC->method('getTranslations')
-            ->will($this->returnValue([]));
+            ->willReturn([]);
         $pageEntityC->method('isTranslation')
-            ->will($this->returnValue(false));
+            ->willReturn(false);
         $pageEntityC->method('getContent')
-            ->will($this->returnValue(null));
+            ->willReturn(null);
         $pageEntityC->method('getCustomHtml')
-            ->will($this->returnValue('pageC'));
+            ->willReturn('pageC');
         $pageEntityC->method('getVariantSettings')
-            ->will($this->returnValue(['weight' => '25']));
+            ->willReturn(['weight' => '25']);
 
-        $pageEntityA = $this->getMockBuilder(Page::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pageEntityA = $this->createMock(Page::class);
         $pageEntityA->method('getId')
-            ->will($this->returnValue(1));
+            ->willReturn(1);
         $pageEntityA->method('isPublished')
-            ->will($this->returnValue(true));
+            ->willReturn(true);
         $pageEntityA->method('getVariants')
-            ->will($this->returnValue([$pageEntityA, [2 => $pageEntityB, 3 => $pageEntityC]]));
+            ->willReturn([$pageEntityA, [2 => $pageEntityB, 3 => $pageEntityC]]);
         $pageEntityA->method('getVariantHits')
-            ->will($this->returnValue($aCount));
+            ->willReturn($aCount);
         $pageEntityA->method('getTranslations')
-            ->will($this->returnValue([]));
+            ->willReturn([]);
         $pageEntityA->method('isTranslation')
-            ->will($this->returnValue(false));
+            ->willReturn(false);
         $pageEntityA->method('getContent')
-            ->will($this->returnValue(null));
+            ->willReturn(null);
         $pageEntityA->method('getCustomHtml')
-            ->will($this->returnValue('pageA'));
+            ->willReturn('pageA');
         $pageEntityA->method('getVariantSettings')
-            ->will($this->returnValue(['weight' => '50']));
+            ->willReturn(['weight' => '50']);
 
-        $cookieHelper = $this->getMockBuilder(CookieHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $cookieHelper = $this->createMock(CookieHelper::class);
 
-        $ipHelper = $this->getMockBuilder(IpLookupHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-        $ipHelper->method('getIpAddress')
-            ->will($this->returnValue(new IpAddress()));
+        /** @var Packages&MockObject $packagesMock */
+        $packagesMock = $this->createMock(Packages::class);
 
-        $assetHelper = $this->getMockBuilder(AssetsHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        /** @var CoreParametersHelper&MockObject $coreParametersHelper */
+        $coreParametersHelper = $this->createMock(CoreParametersHelper::class);
 
-        $mauticSecurity = $this->getMockBuilder(CorePermissions::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $assetHelper = new AssetsHelper($packagesMock);
+
+        $mauticSecurity = $this->createMock(CorePermissions::class);
         $mauticSecurity->method('hasEntityAccess')
-            ->will($this->returnValue(false));
+            ->willReturn(false);
 
-        $analyticsHelper = $this->getMockBuilder(AnalyticsHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $analyticsHelper = new AnalyticsHelper($coreParametersHelper);
 
-        $pageModel = $this->getMockBuilder(PageModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pageModel = $this->createMock(PageModel::class);
         $pageModel->method('getHitQuery')
-            ->will($this->returnValue([]));
+            ->willReturn([]);
         $pageModel->method('getEntityBySlugs')
-            ->will($this->returnValue($pageEntityA));
+            ->willReturn($pageEntityA);
         $pageModel->method('hitPage')
-            ->will($this->returnValue(true));
+            ->willReturn(true);
 
-        $leadModel = $this->getMockBuilder(LeadModel::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-        $leadModel->method('getContactFromRequest')
-            ->will($this->returnValue(new Lead()));
-
-        $router = $this->getMockBuilder(Router::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $dispatcher = new EventDispatcher();
-
-        $modelFactory = $this->getMockBuilder(ModelFactory::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-        $modelFactory->method('getModel')
-            ->will(
-                $this->returnValueMap(
-                    [
-                        ['page', $pageModel],
-                        ['lead', $leadModel],
-                    ]
-                )
-            );
-
-        $container = $this->getMockBuilder(Container::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-        $container->method('has')
-            ->will($this->returnValue(true));
-        $container->method('get')
-            ->will(
-                $this->returnValueMap(
-                    [
-                        ['mautic.helper.cookie', Container::EXCEPTION_ON_INVALID_REFERENCE, $cookieHelper],
-                        ['templating.helper.assets', Container::EXCEPTION_ON_INVALID_REFERENCE, $assetHelper],
-                        ['mautic.helper.ip_lookup', Container::EXCEPTION_ON_INVALID_REFERENCE, $ipHelper],
-                        ['mautic.security', Container::EXCEPTION_ON_INVALID_REFERENCE, $mauticSecurity],
-                        ['mautic.helper.template.analytics', Container::EXCEPTION_ON_INVALID_REFERENCE, $analyticsHelper],
-                        ['mautic.page.model.page', Container::EXCEPTION_ON_INVALID_REFERENCE, $pageModel],
-                        ['mautic.lead.model.lead', Container::EXCEPTION_ON_INVALID_REFERENCE, $leadModel],
-                        ['router', Container::EXCEPTION_ON_INVALID_REFERENCE, $router],
-                        ['event_dispatcher', Container::EXCEPTION_ON_INVALID_REFERENCE, $dispatcher],
-                        ['mautic.model.factory', Container::EXCEPTION_ON_INVALID_REFERENCE, $modelFactory],
-                    ]
-                )
-            );
+        $this->contactRequestHelper->method('getContactFromQuery')
+            ->willReturn(new Lead());
 
         $this->request->attributes->set('ignore_mismatch', true);
+        $themeHelper = $this->createMock(ThemeHelper::class);
+        $themeHelper->expects(self::never())
+            ->method('checkForTwigTemplate');
 
-        $this->controller->setContainer($container);
+        $controller = new PublicController(
+            $this->createStub(ManagerRegistry::class),
+            $this->modelFactory,
+            $this->createStub(UserHelper::class),
+            $this->createStub(CoreParametersHelper::class),
+            new EventDispatcher(),
+            $this->createStub(Translator::class),
+            $this->createStub(FlashBag::class),
+            new RequestStack([$this->request]),
+            $mauticSecurity
+        );
+        $controller->setContainer($this->internalContainer);
 
-        $response = $this->controller->indexAction('/page/a', $this->request);
+        $response = $controller->indexAction(
+            $this->request,
+            $this->contactRequestHelper,
+            $cookieHelper,
+            $analyticsHelper,
+            $assetHelper,
+            $themeHelper,
+            $this->createStub(Tracking404Model::class),
+            $this->router,
+            $this->createStub(DeviceTrackingServiceInterface::class),
+            $pageModel,
+            '/page/a',
+        );
 
         return $response->getContent();
     }
 
-    public function testThatInvalidClickTroughGetsProcessed()
+    public function testThatInvalidClickTroughGetsProcessed(): void
     {
         $redirectId  = 'someRedirectId';
         $clickTrough = 'someClickTroughValue';
@@ -308,11 +257,6 @@ class PublicControllerTest extends TestCase
             ->method('getRedirectById')
             ->with($redirectId)
             ->willReturn($this->redirect);
-
-        $this->modelFactory->expects($this->exactly(3))
-            ->method('getModel')
-            ->withConsecutive(['page.redirect'], ['lead'], ['page'])
-            ->willReturnOnConsecutiveCalls($this->redirectModel, $this->leadModel, $this->pageModel);
 
         $this->redirect->expects($this->once())
             ->method('isPublished')
@@ -331,7 +275,7 @@ class PublicControllerTest extends TestCase
             ->method('isTrackable')
             ->willReturn(true);
 
-        $getContactFromRequestCallback = function ($queryFields) use ($clickTrough) {
+        $getContactFromRequestCallback = function ($queryFields) use ($clickTrough): null {
             if (empty($queryFields)) {
                 return null;
             }
@@ -339,32 +283,256 @@ class PublicControllerTest extends TestCase
             throw new InvalidDecodedStringException($clickTrough);
         };
 
-        $this->leadModel->expects($this->exactly(2))
-            ->method('getContactFromRequest')
-            ->will($this->returnCallback($getContactFromRequestCallback));
+        $this->contactRequestHelper->expects(self::exactly(2))
+            ->method('getContactFromQuery')
+            ->willReturnCallback($getContactFromRequestCallback);
 
-        $this->container->expects($this->exactly(6))
+        $this->router->expects($this->once())
+            ->method('generate')
+            ->willReturn('/asset/');
+
+        $this->internalContainer
+            ->expects($this->once())
             ->method('get')
-            ->withConsecutive(
-                ['monolog.logger.mautic'],
-                ['mautic.model.factory'],
-                ['mautic.helper.ip_lookup'],
-                ['mautic.model.factory'],
-                ['mautic.model.factory'],
-                ['mautic.lead.helper.primary_company']
-                )
-            ->willReturnOnConsecutiveCalls(
-                $this->logger,
-                $this->modelFactory,
-                $this->ipLookupHelper,
-                $this->modelFactory,
-                $this->modelFactory,
-                $this->primaryCompanyHelper
-        );
+            ->willReturnMap([
+                ['router', Container::EXCEPTION_ON_INVALID_REFERENCE, $this->router],
+            ]);
 
         $this->request->query->set('ct', $clickTrough);
 
-        $response = $this->controller->redirectAction($redirectId);
-        $this->assertInstanceOf(RedirectResponse::class, $response);
+        $controller = new PublicController(
+            $this->createStub(ManagerRegistry::class),
+            $this->modelFactory,
+            $this->createStub(UserHelper::class),
+            $this->createStub(CoreParametersHelper::class),
+            $this->createStub(EventDispatcherInterface::class),
+            $this->createStub(Translator::class),
+            $this->createStub(FlashBag::class),
+            new RequestStack(),
+            $this->createStub(CorePermissions::class)
+        );
+        $controller->setContainer($this->internalContainer);
+
+        $response = $controller->redirectAction(
+            $this->request,
+            $this->contactRequestHelper,
+            $this->ipLookupHelper,
+            $this->logger,
+            $this->redirectModel,
+            $this->pageModel,
+            $redirectId
+        );
+
+        self::assertSame('https://someurl.test/', $response->getTargetUrl());
+    }
+
+    #[DataProvider('provideRedirectUrls')]
+    public function testAssetRedirectUrlWithClickThrough(string $redirectUrl, string $targetUrl): void
+    {
+        $redirectId   = 'dummy_redirect_id';
+        $clickThrough = 'dummy_click_through';
+
+        $this->redirectModel->expects($this->once())
+            ->method('getRedirectById')
+            ->with($redirectId)
+            ->willReturn($this->redirect);
+
+        $this->redirect->expects($this->once())
+            ->method('isPublished')
+            ->with(false)
+            ->willReturn(true);
+
+        $this->redirect->expects($this->once())
+            ->method('getUrl')
+            ->willReturn($redirectUrl);
+
+        $this->ipLookupHelper->expects($this->once())
+            ->method('getIpAddress')
+            ->willReturn($this->ipAddress);
+
+        $this->ipAddress->expects($this->once())
+            ->method('isTrackable')
+            ->willReturn(true);
+
+        $getContactFromRequestCallback = function ($queryFields) use ($clickThrough): null {
+            if (empty($queryFields)) {
+                return null;
+            }
+
+            throw new InvalidDecodedStringException($clickThrough);
+        };
+
+        $this->contactRequestHelper->expects(self::exactly(2))
+            ->method('getContactFromQuery')
+            ->willReturnCallback($getContactFromRequestCallback);
+
+        $this->router->expects($this->once())
+            ->method('generate')
+            ->with('mautic_asset_download')
+            ->willReturn('/asset');
+
+        $this->internalContainer
+            ->expects($this->once())
+            ->method('get')
+            ->willReturnMap([
+                ['router', Container::EXCEPTION_ON_INVALID_REFERENCE, $this->router],
+            ]);
+
+        $this->request->query->set('ct', $clickThrough);
+
+        $controller = new PublicController(
+            $this->createStub(ManagerRegistry::class),
+            $this->modelFactory,
+            $this->createStub(UserHelper::class),
+            $this->createStub(CoreParametersHelper::class),
+            $this->createStub(EventDispatcherInterface::class),
+            $this->createStub(Translator::class),
+            $this->createStub(FlashBag::class),
+            new RequestStack(),
+            $this->createStub(CorePermissions::class)
+        );
+        $controller->setContainer($this->internalContainer);
+
+        $response = $controller->redirectAction(
+            $this->request,
+            $this->contactRequestHelper,
+            $this->ipLookupHelper,
+            $this->logger,
+            $this->redirectModel,
+            $this->pageModel,
+            $redirectId
+        );
+        self::assertSame($targetUrl, $response->getTargetUrl());
+        self::assertSame(Response::HTTP_FOUND, $response->getStatusCode());
+    }
+
+    public static function provideRedirectUrls(): \Generator
+    {
+        yield 'No query parameters' => [
+            'redirectUrl' => 'https://some.test.url/asset/1:examplefilejpg',
+            'targetUrl'   => 'https://some.test.url/asset/1:examplefilejpg?ct=dummy_click_through',
+        ];
+
+        yield 'With query parameter' => [
+            'redirectUrl' => 'https://some.test.url/asset/1:examplefilejpg?param=value',
+            'targetUrl'   => 'https://some.test.url/asset/1:examplefilejpg?param=value&ct=dummy_click_through',
+        ];
+
+        yield 'With click-through parameter' => [
+            'redirectUrl' => 'https://some.test.url/asset/1:examplefilejpg?ct=parameter',
+            'targetUrl'   => 'https://some.test.url/asset/1:examplefilejpg?ct=dummy_click_through',
+        ];
+    }
+
+    public function testMtcTrackingEvent(): void
+    {
+        $request = new Request(['foo' => 'bar']);
+        $contact = new Lead();
+        $contact->setEmail('foo@bar.com');
+
+        $mtcSessionEventArray = ['mtc' => 'foobar'];
+
+        $event           = new TrackingEvent($contact, $request, $mtcSessionEventArray);
+        $eventDispatcher = $this->createMock(EventDispatcherInterface::class);
+        $eventDispatcher->expects($this->once())
+            ->method('dispatch')
+            ->with($event, PageEvents::ON_CONTACT_TRACKED)
+            ->willReturnCallback(
+                function (TrackingEvent $event): TrackingEvent {
+                    $contact  = $event->getContact()->getEmail();
+                    $request  = $event->getRequest();
+                    $response = $event->getResponse();
+
+                    $response->set('tracking', $contact);
+                    $response->set('foo', $request->get('foo'));
+
+                    return $event;
+                }
+            );
+
+        $security = $this->createMock(CorePermissions::class);
+        $security->expects($this->once())
+            ->method('isAnonymous')
+            ->willReturn(true);
+
+        $deviceTrackingService = $this->createStub(DeviceTrackingServiceInterface::class);
+
+        $trackingHelper = $this->createMock(TrackingHelper::class);
+        $trackingHelper->expects($this->once())
+            ->method('getCacheItem')
+            ->willReturn($mtcSessionEventArray);
+
+        $contactTracker = $this->createMock(ContactTracker::class);
+        $contactTracker->method('getContact')
+            ->willReturn($contact);
+
+        $publicController = new PublicController(
+            $this->createStub(ManagerRegistry::class),
+            $this->modelFactory,
+            $this->createStub(UserHelper::class),
+            $this->createStub(CoreParametersHelper::class),
+            $eventDispatcher,
+            $this->createStub(Translator::class),
+            $this->createStub(FlashBag::class),
+            new RequestStack(),
+            $security
+        );
+
+        $response = $publicController->trackingAction(
+            $request,
+            $deviceTrackingService,
+            $trackingHelper,
+            $contactTracker,
+            $this->pageModel
+        );
+
+        $json = json_decode($response->getContent(), true);
+
+        $this->assertEquals(
+            [
+                'mtc'      => 'foobar',
+                'tracking' => 'foo@bar.com',
+                'foo'      => 'bar',
+            ],
+            $json['events']
+        );
+    }
+
+    public function testTrackingActionWithInvalidCt(): void
+    {
+        $this->pageModel->expects($this->once())->method('hitPage')->willReturnCallback(
+            function (): void {
+                throw new InvalidDecodedStringException();
+            }
+        );
+
+        $security = $this->createMock(CorePermissions::class);
+        $security->expects($this->once())
+            ->method('isAnonymous')
+            ->willReturn(true);
+
+        $publicController = new PublicController(
+            $this->createStub(ManagerRegistry::class),
+            $this->modelFactory,
+            $this->createStub(UserHelper::class),
+            $this->createStub(CoreParametersHelper::class),
+            $this->createStub(EventDispatcherInterface::class),
+            $this->createStub(Translator::class),
+            $this->createStub(FlashBag::class),
+            new RequestStack(),
+            $security
+        );
+
+        $response = $publicController->trackingAction(
+            $this->request,
+            $this->createStub(DeviceTrackingServiceInterface::class),
+            $this->createStub(TrackingHelper::class),
+            $this->createStub(ContactTracker::class),
+            $this->pageModel
+        );
+        $this->assertEquals(
+            ['success' => 0],
+            json_decode($response->getContent(), true)
+        );
     }
 }

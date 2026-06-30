@@ -1,24 +1,13 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticSocialBundle\Entity;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\LeadBundle\Entity\Lead as TheLead;
 
-/**
- * Class TweetStat.
- */
 class TweetStat
 {
     /**
@@ -29,17 +18,14 @@ class TweetStat
     /**
      * ID of the tweet from Twitter.
      *
-     * @var string
+     * @var string|null
      */
     private $twitterTweetId;
 
-    /**
-     * @var Tweet
-     */
-    private $tweet;
+    private ?Tweet $tweet = null;
 
     /**
-     * @var TheLead
+     * @var TheLead|null
      */
     private $lead;
 
@@ -49,46 +35,34 @@ class TweetStat
     private $handle;
 
     /**
-     * @var DateTime
+     * @var \DateTime|null
      */
     private $dateSent;
 
-    /**
-     * @var bool
-     */
-    private $isFailed = false;
+    private ?bool $isFailed = false;
+
+    private ?int $retryCount = 0;
 
     /**
-     * @var int
-     */
-    private $retryCount = 0;
-
-    /**
-     * @var string
+     * @var string|null
      */
     private $source;
 
     /**
-     * @var int
+     * @var int|null
      */
     private $sourceId;
 
-    /**
-     * @var int
-     */
-    private $favoriteCount = 0;
+    private ?int $favoriteCount = 0;
+
+    private ?int $retweetCount = 0;
 
     /**
-     * @var int
+     * @var ?mixed[]
      */
-    private $retweetCount = 0;
+    private ?array $responseDetails = [];
 
-    /**
-     * @var array
-     */
-    private $responseDetails = [];
-
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
@@ -146,15 +120,13 @@ class TweetStat
 
         $builder->addNullableField('favoriteCount', 'integer', 'favorite_count');
         $builder->addNullableField('retweetCount', 'integer', 'retweet_count');
-        $builder->addNullableField('responseDetails', 'json_array', 'response_details');
+        $builder->addNullableField('responseDetails', Types::JSON, 'response_details');
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('stat')
             ->addProperties(
@@ -195,10 +167,8 @@ class TweetStat
 
     /**
      * @param string $twitterTweetId
-     *
-     * @return $this
      */
-    public function setTwitterTweetId($twitterTweetId)
+    public function setTwitterTweetId($twitterTweetId): static
     {
         $this->twitterTweetId = $twitterTweetId;
 
@@ -206,7 +176,7 @@ class TweetStat
     }
 
     /**
-     * @return mixed
+     * @return \DateTime|null
      */
     public function getDateSent()
     {
@@ -214,25 +184,19 @@ class TweetStat
     }
 
     /**
-     * @param mixed $dateSent
+     * @param \DateTime|null $dateSent
      */
-    public function setDateSent($dateSent)
+    public function setDateSent($dateSent): void
     {
         $this->dateSent = $dateSent;
     }
 
-    /**
-     * @return Tweet
-     */
-    public function getTweet()
+    public function getTweet(): ?Tweet
     {
         return $this->tweet;
     }
 
-    /**
-     * @param mixed $tweet
-     */
-    public function setTweet(Tweet $tweet = null)
+    public function setTweet(?Tweet $tweet = null): void
     {
         $this->tweet = $tweet;
     }
@@ -245,95 +209,61 @@ class TweetStat
         return $this->lead;
     }
 
-    /**
-     * @param mixed $lead
-     */
-    public function setLead(TheLead $lead = null)
+    public function setLead(?TheLead $lead = null): void
     {
         $this->lead = $lead;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getRetryCount()
+    public function getRetryCount(): ?int
     {
         return $this->retryCount;
     }
 
-    /**
-     * @param mixed $retryCount
-     */
-    public function setRetryCount($retryCount)
+    public function setRetryCount(?int $retryCount): void
     {
         $this->retryCount = $retryCount;
     }
 
-    public function retryCountUp()
+    public function retryCountUp(): void
     {
         $this->setRetryCount($this->getRetryCount() + 1);
     }
 
-    /**
-     * @return int
-     */
-    public function getFavoriteCount()
+    public function getFavoriteCount(): ?int
     {
         return $this->favoriteCount;
     }
 
-    /**
-     * @param int $favoriteCount
-     *
-     * @return $this
-     */
-    public function setFavoriteCount($favoriteCount)
+    public function setFavoriteCount(?int $favoriteCount): static
     {
         $this->favoriteCount = $favoriteCount;
 
         return $this;
     }
 
-    /**
-     * @return int
-     */
-    public function getRetweetCount()
+    public function getRetweetCount(): ?int
     {
         return $this->retweetCount;
     }
 
-    /**
-     * @param int $retweetCount
-     *
-     * @return $this
-     */
-    public function setRetweetCount($retweetCount)
+    public function setRetweetCount(?int $retweetCount): static
     {
         $this->retweetCount = $retweetCount;
 
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getIsFailed()
+    public function getIsFailed(): ?bool
     {
         return $this->isFailed;
     }
 
-    /**
-     * @param mixed $isFailed
-     */
-    public function setIsFailed($isFailed)
+    public function setIsFailed(?bool $isFailed): void
     {
         $this->isFailed = $isFailed;
     }
 
-    /**
-     * @return mixed
-     */
-    public function isFailed()
+    public function isFailed(): ?bool
     {
         return $this->getIsFailed();
     }
@@ -349,7 +279,7 @@ class TweetStat
     /**
      * @param mixed $handle
      */
-    public function setHandle($handle)
+    public function setHandle($handle): void
     {
         $this->handle = $handle;
     }
@@ -365,7 +295,7 @@ class TweetStat
     /**
      * @param mixed $source
      */
-    public function setSource($source)
+    public function setSource($source): void
     {
         $this->source = $source;
     }
@@ -381,25 +311,23 @@ class TweetStat
     /**
      * @param mixed $sourceId
      */
-    public function setSourceId($sourceId)
+    public function setSourceId($sourceId): void
     {
         $this->sourceId = (int) $sourceId;
     }
 
     /**
-     * @return mixed
+     * @return ?mixed[]
      */
-    public function getResponseDetails()
+    public function getResponseDetails(): ?array
     {
         return $this->responseDetails;
     }
 
     /**
-     * @param mixed $responseDetails
-     *
-     * @return Stat
+     * @param ?mixed[] $responseDetails
      */
-    public function setResponseDetails($responseDetails)
+    public function setResponseDetails(?array $responseDetails): static
     {
         $this->responseDetails = $responseDetails;
 

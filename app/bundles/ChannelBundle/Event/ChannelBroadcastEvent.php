@@ -1,49 +1,18 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ChannelBundle\Event;
 
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
-/**
- * Class ChannelBroadcastEvent.
- */
 class ChannelBroadcastEvent extends Event
 {
-    /**
-     * Specific channel.
-     *
-     * @var null
-     */
-    protected $channel;
-
-    /**
-     * Specific ID of a specific channel.
-     *
-     * @var null
-     */
-    protected $id;
-
     /**
      * Number of contacts successfully processed and/or failed per channel.
      *
      * @var array
      */
     protected $results = [];
-
-    /**
-     * @var OutputInterface
-     */
-    protected $output;
 
     /**
      * Min contact ID filter can be used for process parallelization.
@@ -61,40 +30,37 @@ class ChannelBroadcastEvent extends Event
 
     /**
      * How many contacts to load from the database.
-     *
-     * @var int
      */
-    private $limit = 100;
+    private int $limit = 100;
 
     /**
      * How big batches to use to actually send.
-     *
-     * @var int
      */
-    private $batch = 50;
+    private int $batch = 50;
 
-    /**
-     * MaintenanceEvent constructor.
-     */
-    public function __construct($channel, $channelId, OutputInterface $output)
-    {
-        $this->channel = $channel;
-        $this->id      = $channelId;
-        $this->output  = $output;
+    private ?int $maxThreads = null;
+
+    private ?int $threadId = null;
+
+    public function __construct(
+        /**
+         * Specific channel.
+         */
+        protected ?string $channel,
+        /**
+         * Specific ID of a specific channel.
+         */
+        protected string|int|null $id,
+        protected OutputInterface $output,
+    ) {
     }
 
-    /**
-     * @return mixed
-     */
-    public function getChannel()
+    public function getChannel(): ?string
     {
         return $this->channel;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getId()
+    public function getId(): string|int|null
     {
         return $this->id;
     }
@@ -104,7 +70,7 @@ class ChannelBroadcastEvent extends Event
      * @param int    $successCount
      * @param int    $failedCount
      */
-    public function setResults($channelLabel, $successCount, $failedCount = 0, array $failedRecipientsByList = [])
+    public function setResults($channelLabel, $successCount, $failedCount = 0, array $failedRecipientsByList = []): void
     {
         $this->results[$channelLabel] = [
             'success'                => (int) $successCount,
@@ -121,12 +87,7 @@ class ChannelBroadcastEvent extends Event
         return $this->results;
     }
 
-    /**
-     * @param $channel
-     *
-     * @return bool
-     */
-    public function checkContext($channel)
+    public function checkContext($channel): bool
     {
         if ($this->channel && $this->channel !== $channel) {
             return false;
@@ -135,10 +96,7 @@ class ChannelBroadcastEvent extends Event
         return true;
     }
 
-    /**
-     * @return OutputInterface
-     */
-    public function getOutput()
+    public function getOutput(): OutputInterface
     {
         return $this->output;
     }
@@ -146,7 +104,7 @@ class ChannelBroadcastEvent extends Event
     /**
      * @param int $minContactIdFilter
      */
-    public function setMinContactIdFilter($minContactIdFilter)
+    public function setMinContactIdFilter($minContactIdFilter): void
     {
         $this->minContactIdFilter = $minContactIdFilter;
     }
@@ -162,7 +120,7 @@ class ChannelBroadcastEvent extends Event
     /**
      * @param int $maxContactIdFilter
      */
-    public function setMaxContactIdFilter($maxContactIdFilter)
+    public function setMaxContactIdFilter($maxContactIdFilter): void
     {
         $this->maxContactIdFilter = $maxContactIdFilter;
     }
@@ -175,35 +133,43 @@ class ChannelBroadcastEvent extends Event
         return $this->maxContactIdFilter;
     }
 
-    /**
-     * @param int $limit
-     */
-    public function setLimit($limit)
+    public function setLimit(int $limit): void
     {
         $this->limit = $limit;
     }
 
-    /**
-     * @return int
-     */
-    public function getLimit()
+    public function getLimit(): int
     {
         return $this->limit;
     }
 
-    /**
-     * @param int $batch
-     */
-    public function setBatch($batch)
+    public function setBatch(int $batch): void
     {
         $this->batch = $batch;
     }
 
-    /**
-     * @return int
-     */
-    public function getBatch()
+    public function getBatch(): int
     {
         return $this->batch;
+    }
+
+    public function getMaxThreads(): ?int
+    {
+        return $this->maxThreads;
+    }
+
+    public function setMaxThreads(?int $maxThreads): void
+    {
+        $this->maxThreads = $maxThreads;
+    }
+
+    public function getThreadId(): ?int
+    {
+        return $this->threadId;
+    }
+
+    public function setThreadId(?int $threadId): void
+    {
+        $this->threadId = $threadId;
     }
 }

@@ -1,115 +1,105 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\UserBundle\Controller;
 
+use Doctrine\Persistence\ManagerRegistry;
 use Mautic\CoreBundle\Controller\CommonController;
+use Mautic\CoreBundle\Factory\ModelFactory;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Helper\UserHelper;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Service\FlashBag;
+use Mautic\CoreBundle\Translation\Translator;
+use Mautic\PluginBundle\Helper\IntegrationHelper;
+use Mautic\UserBundle\Exception\WeakPasswordException;
+use Mautic\UserBundle\Security\SAML\Helper as SAMLHelper;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
-use Symfony\Component\HttpKernel\Event\FilterControllerEvent;
-use Symfony\Component\Security\Core\Exception as Exception;
-use Symfony\Component\Security\Core\Security;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\Session\SessionInterface;
+use Symfony\Component\HttpKernel\Event\RequestEvent;
+use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
+use Symfony\Component\Security\Core\Exception;
+use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-/**
- * Class DefaultController.
- */
-class SecurityController extends CommonController
+class SecurityController extends CommonController implements EventSubscriberInterface
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function initialize(FilterControllerEvent $event)
-    {
-        /** @var \Symfony\Component\Security\Core\Authorization\AuthorizationChecker $authChecker */
-        $authChecker = $this->get('security.authorization_checker');
+    public function __construct(
+        ManagerRegistry $doctrine,
+        ModelFactory $modelFactory,
+        UserHelper $userHelper,
+        CoreParametersHelper $coreParametersHelper,
+        EventDispatcherInterface $dispatcher,
+        Translator $translator,
+        FlashBag $flashBag,
+        ?RequestStack $requestStack,
+        ?CorePermissions $security,
+        private readonly AuthorizationCheckerInterface $authorizationChecker,
+    ) {
+        parent::__construct($doctrine, $modelFactory, $userHelper, $coreParametersHelper, $dispatcher, $translator, $flashBag, $requestStack, $security);
+    }
 
-        //redirect user if they are already authenticated
-        if ($authChecker->isGranted('IS_AUTHENTICATED_FULLY') ||
-            $authChecker->isGranted('IS_AUTHENTICATED_REMEMBERED')
+    public function onRequest(RequestEvent $event): void
+    {
+        $controller = $event->getRequest()->attributes->get('_controller');
+        \assert(is_string($controller));
+
+        if (!str_contains($controller, self::class)) {
+            return;
+        }
+
+        // redirect user if they are already authenticated
+        if ($this->authorizationChecker->isGranted('IS_AUTHENTICATED_FULLY')
+            || $this->authorizationChecker->isGranted('IS_AUTHENTICATED_REMEMBERED')
         ) {
             $redirectUrl = $this->generateUrl('mautic_dashboard_index');
-            $event->setController(function () use ($redirectUrl) {
-                return new RedirectResponse($redirectUrl);
-            });
+            $event->setResponse(new RedirectResponse($redirectUrl));
         }
     }
 
     /**
      * Generates login form and processes login.
-     *
-     * @return \Symfony\Component\HttpFoundation\JsonResponse|\Symfony\Component\HttpFoundation\Response
      */
-    public function loginAction()
+    public function loginAction(Request $request, AuthenticationUtils $authenticationUtils, IntegrationHelper $integrationHelper, TranslatorInterface $translator): Response
     {
-        // A way to keep the upgrade from failing if the session is lost after
-        // the cache is cleared by upgrade.php
-        if ($this->request->cookies->has('mautic_update')) {
-            $step = $this->request->cookies->get('mautic_update');
-            if ('clearCache' == $step) {
-                // Run migrations
-                $this->request->query->set('finalize', 1);
+        $error = $authenticationUtils->getLastAuthenticationError();
 
-                return $this->forward('MauticCoreBundle:Ajax:updateDatabaseMigration',
-                    [
-                        'request' => $this->request,
-                    ]
-                );
-            } elseif ('schemaMigration' == $step) {
-                // Done so finalize
-                return $this->forward('MauticCoreBundle:Ajax:updateFinalization',
-                    [
-                        'request' => $this->request,
-                    ]
-                );
-            }
+        if (null !== $error) {
+            if ($error instanceof WeakPasswordException) {
+                $this->addFlash(FlashBag::LEVEL_ERROR, $translator->trans('mautic.user.auth.error.weakpassword', [], 'flashes'));
 
-            /** @var \Mautic\CoreBundle\Helper\CookieHelper $cookieHelper */
-            $cookieHelper = $this->factory->getHelper('cookie');
-            $cookieHelper->deleteCookie('mautic_update');
-        }
-
-        $session = $this->request->getSession();
-
-        // get the login error if there is one
-        if ($this->request->attributes->has(Security::AUTHENTICATION_ERROR)) {
-            $error = $this->request->attributes->get(Security::AUTHENTICATION_ERROR);
-        } else {
-            $error = $session->get(Security::AUTHENTICATION_ERROR);
-            $session->remove(Security::AUTHENTICATION_ERROR);
-        }
-
-        if (!empty($error)) {
-            if (($error instanceof Exception\BadCredentialsException)) {
+                return $this->forward('Mautic\UserBundle\Controller\PublicController::passwordResetAction');
+            } elseif ($error instanceof Exception\BadCredentialsException) {
                 $msg = 'mautic.user.auth.error.invalidlogin';
             } elseif ($error instanceof Exception\DisabledException) {
                 $msg = 'mautic.user.auth.error.disabledaccount';
-            } elseif ($error instanceof \Exception) {
-                $msg = $error->getMessage();
+            } elseif ($error instanceof Exception\AuthenticationException) {
+                $msg = $error->getMessageKey();
             } else {
-                $msg = $error;
+                $msg = $error->getMessage();
             }
 
-            $this->addFlash($msg, [], 'error', null, false);
+            $messageVars = $error instanceof Exception\AuthenticationException ? $error->getMessageData() : [];
+            $this->addFlashMessage($msg, $messageVars, FlashBag::LEVEL_ERROR, null);
         }
-        $this->request->query->set('tmpl', 'login');
+        $request->query->set('tmpl', 'login');
 
         // Get a list of SSO integrations
-        $integrationHelper = $this->get('mautic.helper.integration');
-        $integrations      = $integrationHelper->getIntegrationObjects(null, ['sso_service'], true, null, true);
+        $integrations = $integrationHelper->getIntegrationObjects(null, ['sso_service'], true, null, true);
 
         return $this->delegateView([
             'viewParameters' => [
-                'last_username' => $session->get(Security::LAST_USERNAME),
+                'last_username' => $authenticationUtils->getLastUsername(),
                 'integrations'  => $integrations,
             ],
-            'contentTemplate' => 'MauticUserBundle:Security:login.html.php',
+            'contentTemplate' => '@MauticUser/Security/login.html.twig',
             'passthroughVars' => [
                 'route'          => $this->generateUrl('login'),
                 'mauticContent'  => 'user',
@@ -121,33 +111,58 @@ class SecurityController extends CommonController
     /**
      * Do nothing.
      */
-    public function loginCheckAction()
+    public function loginCheckAction(): void
     {
     }
 
     /**
      * The plugin should be handling this in it's listener.
-     *
-     * @param $integration
-     *
-     * @return RedirectResponse
      */
-    public function ssoLoginAction($integration)
+    public function ssoLoginAction($integration): RedirectResponse
     {
         return new RedirectResponse($this->generateUrl('login'));
     }
 
     /**
      * The plugin should be handling this in it's listener.
-     *
-     * @param $integration
-     *
-     * @return RedirectResponse
      */
-    public function ssoLoginCheckAction($integration)
+    public function ssoLoginCheckAction($integration): RedirectResponse
     {
         // The plugin should be handling this in it's listener
 
         return new RedirectResponse($this->generateUrl('login'));
+    }
+
+    public function samlLoginRetryAction(Request $request, SAMLHelper $samlHelper, SessionInterface $session): Response
+    {
+        if (!$samlHelper->isSamlEnabled()) {
+            return new RedirectResponse($this->generateUrl('login'));
+        }
+
+        $session->invalidate();
+
+        $this->addFlashMessage('mautic.user.security.saml.clearsession', [], FlashBag::LEVEL_ERROR);
+
+        return $this->delegateView([
+            'viewParameters' => [
+                'loginRoute' => $this->generateUrl('lightsaml_sp.discovery'),
+            ],
+            'contentTemplate' => '@MauticUser/Security/saml_login_retry.html.twig',
+            'passthroughVars' => [
+                'route'          => $this->generateUrl('mautic_base_index'),
+                'mauticContent'  => 'user',
+                'sessionExpired' => true,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            KernelEvents::REQUEST => 'onRequest',
+        ];
     }
 }

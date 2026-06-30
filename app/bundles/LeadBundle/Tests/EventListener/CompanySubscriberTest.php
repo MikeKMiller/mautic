@@ -1,47 +1,55 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\EventListener;
 
+use Doctrine\ORM\EntityManager;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Helper\IpLookupHelper;
 use Mautic\CoreBundle\Model\AuditLogModel;
 use Mautic\LeadBundle\Entity\Company;
+use Mautic\LeadBundle\Entity\CompanyLeadRepository;
 use Mautic\LeadBundle\Event\CompanyEvent;
 use Mautic\LeadBundle\EventListener\CompanySubscriber;
 use Mautic\LeadBundle\LeadEvents;
+use Mautic\LeadBundle\Model\CompanyModel;
 
 class CompanySubscriberTest extends \PHPUnit\Framework\TestCase
 {
-    public function testGetSubscribedEvents()
+    public function testGetSubscribedEvents(): void
     {
-        $ipLookupHelper = $this->createMock(IpLookupHelper::class);
-        $auditLogModel  = $this->createMock(AuditLogModel::class);
-        $subscriber     = new CompanySubscriber($ipLookupHelper, $auditLogModel);
+        $ipLookupHelper        = $this->createStub(IpLookupHelper::class);
+        $auditLogModel         = $this->createStub(AuditLogModel::class);
+        $entityManager         = $this->createStub(EntityManager::class);
+        $coreParameters        = $this->createStub(CoreParametersHelper::class);
+        $companyLeadRepository = $this->createStub(CompanyLeadRepository::class);
+        $companyModel          = $this->createStub(CompanyModel::class);
+        $subscriber            = new CompanySubscriber(
+            $ipLookupHelper,
+            $auditLogModel,
+            $entityManager,
+            $coreParameters,
+            $companyLeadRepository,
+            $companyModel
+        );
 
-        $this->assertEquals(
+        $this->assertSame(
             [
+                LeadEvents::COMPANY_PRE_SAVE    => ['onCompanyPreSave', 0],
                 LeadEvents::COMPANY_POST_SAVE   => ['onCompanyPostSave', 0],
                 LeadEvents::COMPANY_POST_DELETE => ['onCompanyDelete', 0],
+                LeadEvents::COMPANY_SOFT_DELETE => ['onCompanySoftDelete', 0],
             ],
             $subscriber->getSubscribedEvents()
         );
     }
 
-    public function testOnCompanyPostSave()
+    public function testOnCompanyPostSave(): void
     {
         $this->onCompanyPostSaveMethodCall(false); // update company log
         $this->onCompanyPostSaveMethodCall(true); // create company log
     }
 
-    public function testOnCompanyDelete()
+    public function testOnCompanyDelete(): void
     {
         $companyId        = 1;
         $companyName      = 'name';
@@ -59,35 +67,44 @@ class CompanySubscriberTest extends \PHPUnit\Framework\TestCase
         $ipLookupHelper = $this->createMock(IpLookupHelper::class);
         $ipLookupHelper->expects($this->once())
             ->method('getIpAddressFromRequest')
-            ->will($this->returnValue($ip));
+            ->willReturn($ip);
 
         $auditLogModel = $this->createMock(AuditLogModel::class);
         $auditLogModel->expects($this->once())
             ->method('writeToLog')
             ->with($log);
 
-        $subscriber = new CompanySubscriber($ipLookupHelper, $auditLogModel);
+        $entityManager         = $this->createStub(EntityManager::class);
+        $coreParameters        = $this->createStub(CoreParametersHelper::class);
+        $companyLeadRepository = $this->createStub(CompanyLeadRepository::class);
+        $companyModel          = $this->createStub(CompanyModel::class);
+        $subscriber            = new CompanySubscriber(
+            $ipLookupHelper,
+            $auditLogModel,
+            $entityManager,
+            $coreParameters,
+            $companyLeadRepository,
+            $companyModel,
+        );
 
         $company            = $this->createMock(Company::class);
         $company->deletedId = $companyId;
         $company->expects($this->once())
             ->method('getPrimaryIdentifier')
-            ->will($this->returnValue($companyName));
+            ->willReturn($companyName);
 
         $event = $this->createMock(CompanyEvent::class);
         $event->expects($this->once())
             ->method('getCompany')
-            ->will($this->returnValue($company));
+            ->willReturn($company);
 
         $subscriber->onCompanyDelete($event);
     }
 
     /**
      * Test create or update company logging.
-     *
-     * @param bool $isNew
      */
-    private function onCompanyPostSaveMethodCall($isNew)
+    private function onCompanyPostSaveMethodCall(bool $isNew): void
     {
         $companyId = 1;
         $changes   = ['changes'];
@@ -105,30 +122,41 @@ class CompanySubscriberTest extends \PHPUnit\Framework\TestCase
         $ipLookupHelper = $this->createMock(IpLookupHelper::class);
         $ipLookupHelper->expects($this->once())
             ->method('getIpAddressFromRequest')
-            ->will($this->returnValue($ip));
+            ->willReturn($ip);
 
         $auditLogModel = $this->createMock(AuditLogModel::class);
         $auditLogModel->expects($this->once())
             ->method('writeToLog')
             ->with($log);
 
-        $subscriber = new CompanySubscriber($ipLookupHelper, $auditLogModel);
+        $entityManager         = $this->createMock(EntityManager::class);
+        $coreParameters        = $this->createMock(CoreParametersHelper::class);
+        $companyLeadRepository = $this->createMock(CompanyLeadRepository::class);
+        $companyModel          = $this->createMock(CompanyModel::class);
+        $subscriber            = new CompanySubscriber(
+            $ipLookupHelper,
+            $auditLogModel,
+            $entityManager,
+            $coreParameters,
+            $companyLeadRepository,
+            $companyModel,
+        );
 
         $company = $this->createMock(Company::class);
         $company->expects($this->once())
             ->method('getId')
-            ->will($this->returnValue($companyId));
+            ->willReturn($companyId);
 
         $event = $this->createMock(CompanyEvent::class);
         $event->expects($this->once())
             ->method('getCompany')
-            ->will($this->returnValue($company));
+            ->willReturn($company);
         $event->expects($this->once())
             ->method('getChanges')
-            ->will($this->returnValue($changes));
+            ->willReturn($changes);
         $event->expects($this->once())
             ->method('isNew')
-            ->will($this->returnValue($isNew));
+            ->willReturn($isNew);
 
         $subscriber->onCompanyPostSave($event);
     }

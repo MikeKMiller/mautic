@@ -1,67 +1,42 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PointBundle\Event;
 
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\PointBundle\Entity\TriggerEvent as TriggerEventEntity;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
 class TriggerExecutedEvent extends Event
 {
-    /** @var TriggerEventEntity */
-    private $triggerEvent;
+    private ?bool $result = null;
 
-    /** @var Lead */
-    private $lead;
-
-    /** @var bool */
-    private $result;
-
-    public function __construct(TriggerEventEntity $triggerEvent, Lead $lead)
-    {
-        $this->triggerEvent = $triggerEvent;
-        $this->lead         = $lead;
+    public function __construct(
+        private readonly TriggerEventEntity $triggerEvent,
+        private readonly Lead $lead,
+    ) {
     }
 
-    /**
-     * @return TriggerEventEntity
-     */
-    public function getTriggerEvent()
+    public function getTriggerEvent(): TriggerEventEntity
     {
         return $this->triggerEvent;
     }
 
-    /**
-     * @return Lead
-     */
-    public function getLead()
+    public function getLead(): Lead
     {
         return $this->lead;
     }
 
-    /**
-     * @return bool
-     */
-    public function getResult()
+    public function getResult(): ?bool
     {
         return $this->result;
     }
 
-    public function setSucceded()
+    public function setSucceded(): void
     {
         $this->result = true;
     }
 
-    public function setFailed()
+    public function setFailed(): void
     {
         $this->result = false;
     }

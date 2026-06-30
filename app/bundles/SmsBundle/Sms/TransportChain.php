@@ -1,55 +1,37 @@
 <?php
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
 
 namespace Mautic\SmsBundle\Sms;
 
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
+use Mautic\SmsBundle\Collection\RecipientCollection;
 use Mautic\SmsBundle\Entity\Stat;
 use Mautic\SmsBundle\Exception\PrimaryTransportNotEnabledException;
+use Mautic\SmsBundle\Helper\DTO\SmsRecipientDTO;
 
 class TransportChain
 {
     /**
-     * @var TransportInterface[]
+     * @var array<string, array{alias: string, integrationAlias: string, service: TransportInterface, published?: bool}>
      */
-    private $transports;
-
-    /**
-     * @var string
-     */
-    private $primaryTransport;
-
-    /**
-     * @var IntegrationHelper
-     */
-    private $integrationHelper;
+    private array $transports;
 
     /**
      * @param string $primaryTransport
      */
-    public function __construct($primaryTransport, IntegrationHelper $integrationHelper)
-    {
-        $this->primaryTransport  = $primaryTransport;
+    public function __construct(
+        private $primaryTransport,
+        private readonly IntegrationHelper $integrationHelper,
+    ) {
         $this->transports        = [];
-        $this->integrationHelper = $integrationHelper;
     }
 
     /**
      * @param string $alias
      * @param string $translatableAlias
      * @param string $integrationAlias
-     *
-     * @return $this
      */
-    public function addTransport($alias, TransportInterface $transport, $translatableAlias, $integrationAlias)
+    public function addTransport($alias, TransportInterface $transport, $translatableAlias, $integrationAlias): static
     {
         $this->transports[$alias]['alias']            = $translatableAlias;
         $this->transports[$alias]['integrationAlias'] = $integrationAlias;
@@ -86,13 +68,68 @@ class TransportChain
     }
 
     /**
+     * @param RecipientCollection<SmsRecipientDTO> $collection
+     *
+     * @return RecipientCollection<SmsRecipientDTO>
+     *
+     * @throws PrimaryTransportNotEnabledException
+     */
+    public function sendBatchSms(RecipientCollection $collection, string $template): RecipientCollection
+    {
+        $primaryTransport = $this->getPrimaryTransport();
+
+        // If the transport support sending of bulk sms
+        if ($primaryTransport instanceof BulkTransportInterface) {
+            return $primaryTransport->sendBatchSms($collection, $template);
+        }
+
+        return $this->sendMessage($collection);
+    }
+
+    /**
+     * @param RecipientCollection<SmsRecipientDTO> $collection
+     * @param array<mixed>                         $media
+     *
+     * @return RecipientCollection<SmsRecipientDTO>
+     */
+    public function sendMMS(RecipientCollection $collection, array $media = []): RecipientCollection
+    {
+        return $this->sendMessage($collection, $media);
+    }
+
+    /**
+     * @param RecipientCollection<SmsRecipientDTO> $collection
+     * @param array<mixed>                         $media
+     *
+     * @return RecipientCollection<SmsRecipientDTO>
+     */
+    private function sendMessage(RecipientCollection $collection, array $media = []): RecipientCollection
+    {
+        // loops through contacts
+        foreach ($collection as $recipient) {
+            $content          = $recipient->getFinalMessage();
+            $primaryTransport = $this->getPrimaryTransport();
+
+            // As of now media is only supported by twilio
+            if ($media && $primaryTransport instanceof MMSTransportInterface) {
+                $status = $primaryTransport->sendMms($recipient->getLead(), $content, $media);
+            } else {
+                $status  = $this->sendSms($recipient->getLead(), $content);
+            }
+            $recipient->setResult($status);
+        }
+
+        return $collection;
+    }
+
+    /**
      * @param string $content
      *
      * @return mixed
      *
      * @throws \Exception
      */
-    public function sendSms(Lead $lead, $content, Stat $stat = null)
+    public function sendSms(Lead $lead, $content, ?Stat $stat = null)
     {
         return $this->getPrimaryTransport()->sendSms($lead, $content, $stat);
     }
@@ -100,9 +137,9 @@ class TransportChain
     /**
      * Get all transports registered in service container.
      *
-     * @return TransportInterface[]
+     * @return array<string, array{alias: string, integrationAlias: string, service: TransportInterface, published?: bool}>
      */
-    public function getTransports()
+    public function getTransports(): array
     {
         return $this->transports;
     }
@@ -130,7 +167,7 @@ class TransportChain
      *
      * @return TransportInterface[]
      */
-    public function getEnabledTransports()
+    public function getEnabledTransports(): array
     {
         $enabled = [];
         foreach ($this->transports as $alias => $transport) {

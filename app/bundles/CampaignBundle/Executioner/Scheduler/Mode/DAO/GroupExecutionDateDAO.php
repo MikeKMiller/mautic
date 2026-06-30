@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Executioner\Scheduler\Mode\DAO;
 
 use Doctrine\Common\Collections\ArrayCollection;
@@ -16,42 +7,25 @@ use Mautic\LeadBundle\Entity\Lead;
 
 class GroupExecutionDateDAO
 {
-    /**
-     * @var \DateTime
-     */
-    private $executionDate;
+    private readonly ArrayCollection $contacts;
 
-    /**
-     * @var ArrayCollection
-     */
-    private $contacts;
-
-    /**
-     * GroupExecutionDateDAO constructor.
-     */
-    public function __construct(\DateTime $executionDate)
-    {
-        $this->executionDate = $executionDate;
+    public function __construct(
+        private readonly \DateTimeInterface $executionDate,
+    ) {
         $this->contacts      = new ArrayCollection();
     }
 
-    public function addContact(Lead $contact)
+    public function addContact(Lead $contact): void
     {
         $this->contacts->set($contact->getId(), $contact);
     }
 
-    /**
-     * @return \DateTime
-     */
-    public function getExecutionDate()
+    public function getExecutionDate(): \DateTimeInterface
     {
         return $this->executionDate;
     }
 
-    /**
-     * @return ArrayCollection
-     */
-    public function getContacts()
+    public function getContacts(): ArrayCollection
     {
         return $this->contacts;
     }

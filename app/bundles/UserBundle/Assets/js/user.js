@@ -2,13 +2,64 @@
 Mautic.userOnLoad = function (container) {
     if (mQuery(container + ' form[name="user"]').length) {
         if (mQuery('#user_position').length) {
-            Mautic.activateTypeahead('#user_position', {displayKey: 'position'});
+            Mautic.activateTypeahead('#user_position', { displayKey: 'position' });
         }
     } else {
         if (mQuery(container + ' #list-search').length) {
             Mautic.activateSearchAutocomplete('list-search', 'user.user');
         }
+
+        if (mQuery('#InviteUserModal').data('auto-open')) {
+            mQuery('#InviteUserModal').modal('show');
+        }
     }
+
+    /**
+     * Initializes radio button states for UI settings and updates hidden inputs
+     * when settings are changed.
+     */
+    // Initialize radio buttons based on hidden input values
+    document.querySelectorAll('input[type="radio"][data-attribute-toggle]').forEach(radio => {
+        const attributeName = radio.dataset.attributeToggle;
+        const hiddenInput = document.getElementById(`user_preferences_${attributeName.replace('-', '_')}`);
+
+        if (hiddenInput?.value) {
+            // If hidden input has a value, set the corresponding radio
+            const correspondingRadio = document.querySelector(
+                `input[name="${attributeName}"][data-attribute-value="${hiddenInput.value}"]`
+            );
+            if (correspondingRadio) correspondingRadio.checked = true;
+        } else if (radio.checked && hiddenInput) {
+            // Use the checked state from the HTML as the default
+            hiddenInput.value = radio.dataset.attributeValue;
+        }
+    });
+
+    // Handle radio button changes - update hidden inputs and HTML attributes
+    document.querySelectorAll('input[type="radio"][data-attribute-toggle]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.checked) {
+                const attributeName = this.dataset.attributeToggle;
+                const hiddenInput = document.getElementById(`user_preferences_${attributeName.replace('-', '_')}`);
+
+                if (hiddenInput) {
+                    hiddenInput.value = this.dataset.attributeValue;
+                }
+            }
+        });
+    });
+
+    const saveButton = document.querySelector('[id^="user_buttons_save_toolbar"]');
+    if (saveButton) {
+        saveButton.addEventListener('click', function() {
+            document.querySelectorAll('input[type="radio"][data-attribute-toggle]:checked').forEach(radio => {
+                const attributeToggle = radio.dataset.attributeToggle;
+                const attributeValue = radio.dataset.attributeValue;
+                document.documentElement.setAttribute(attributeToggle, attributeValue);
+            });
+        });
+    }
+
 };
 
 Mautic.roleOnLoad = function (container, response) {
@@ -19,6 +70,7 @@ Mautic.roleOnLoad = function (container, response) {
     if (response && response.permissionList) {
         MauticVars.permissionList = response.permissionList;
     }
+    Mautic.togglePermissionVisibility();
 };
 
 /**
@@ -31,9 +83,11 @@ Mautic.togglePermissionVisibility = function () {
         if (mQuery('#role_isAdmin_0').prop('checked')) {
             mQuery('#rolePermissions').removeClass('hide');
             mQuery('#isAdminMessage').addClass('hide');
+            mQuery('#permissions-tab').removeClass('disabled');
         } else {
             mQuery('#rolePermissions').addClass('hide');
             mQuery('#isAdminMessage').removeClass('hide');
+            mQuery('#permissions-tab').addClass('disabled');
         }
     }, 10);
 };
@@ -72,8 +126,8 @@ Mautic.onPermissionChange = function (changedPermission, bundle) {
     if (mQuery('.' + bundle + '_granted').length) {
         var granted = 0;
         var levelPerms = MauticVars.permissionList[bundle];
-        mQuery.each(levelPerms, function(level, perms) {
-            mQuery.each(perms, function(index, perm) {
+        mQuery.each(levelPerms, function (level, perms) {
+            mQuery.each(perms, function (index, perm) {
                 var isChecked = mQuery('input[data-permission="' + bundle + ':' + level + ':' + perm + '"]').prop('checked');
                 if (perm == 'full') {
                     if (isChecked) {

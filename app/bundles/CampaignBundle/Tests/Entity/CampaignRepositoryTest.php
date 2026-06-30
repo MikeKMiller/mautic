@@ -2,132 +2,74 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2020 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Tests\Entity;
 
-use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\Query\QueryBuilder;
-use Doctrine\ORM\AbstractQuery;
-use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\Query;
+use Doctrine\DBAL\Query\QueryBuilder as DbalQueryBuilder;
+use Mautic\CampaignBundle\Entity\Campaign;
 use Mautic\CampaignBundle\Entity\CampaignRepository;
-use PHPUnit\Framework\MockObject\MockObject;
+use Mautic\CoreBundle\Test\Doctrine\RepositoryConfiguratorTrait;
 use PHPUnit\Framework\TestCase;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class CampaignRepositoryTest extends TestCase
 {
-    /**
-     * @var EntityManager|MockObject
-     */
-    private $entityManager;
+    use RepositoryConfiguratorTrait;
 
-    /**
-     * @var ClassMetadata|MockObject
-     */
-    private $classMetadata;
-
-    /**
-     * @var Connection|MockObject
-     */
-    private $connection;
-
-    /**
-     * @var CampaignRepository
-     */
-    private $repository;
+    private CampaignRepository $repository;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        defined('MAUTIC_TABLE_PREFIX') or define('MAUTIC_TABLE_PREFIX', '');
+        $this->repository = $this->configureRepository(Campaign::class);
 
-        $this->entityManager = $this->createMock(EntityManager::class);
-        $this->classMetadata = $this->createMock(ClassMetadata::class);
-        $this->connection    = $this->createMock(Connection::class);
-        $this->repository    = new CampaignRepository($this->entityManager, $this->classMetadata);
+        $this->connection->method('createQueryBuilder')->willReturnCallback(fn (): DbalQueryBuilder => new DbalQueryBuilder($this->connection));
+
+        $translator = $this->createMock(TranslatorInterface::class);
+        $translator->method('trans')->willReturnCallback(fn ($id) => match ($id) {
+            'mautic.campaign.campaign.searchcommand.isexpired' => 'is:expired',
+            'mautic.campaign.campaign.searchcommand.ispending' => 'is:pending',
+            default                                            => $id,
+        });
+        $this->repository->setTranslator($translator);
     }
 
-    public function testFetchEmailIdsById(): void
+    public function testAddSearchCommandWhereClauseHandlesExpirationFilters(): void
     {
-        $id          = 2;
-        $queryResult = [
-            1 => [
-                'channelId' => 1,
-            ],
-            2 => [
-                'channelId' => 2,
-            ],
-        ];
+        $qb     = $this->connection->createQueryBuilder();
+        $filter = (object) ['command' => 'is:expired', 'string' => '', 'not' => false, 'strict' => false];
 
-        $expectedResult = [
-            1,
-            2,
-        ];
+        $method = new \ReflectionMethod(CampaignRepository::class, 'addSearchCommandWhereClause');
 
-        $queryBuilder = $this->getMockBuilder(QueryBuilder::class)
-            ->disableOriginalConstructor()
-            ->setMethods(['select', 'from', 'where', 'setParameter', 'andWhere', 'getQuery'])
-            ->getMock();
+        [$expr, $params] = $method->invoke($this->repository, $qb, $filter);
 
-        $this->entityManager
-            ->method('createQueryBuilder')
-            ->willReturn($queryBuilder);
+        self::assertSame(
+            '(c.isPublished = :par1) AND (c.publishDown IS NOT NULL) AND (c.publishDown <> \'\') AND (c.publishDown < CURRENT_TIMESTAMP())',
+            (string) $expr
+        );
+        self::assertSame(['par1' => true], $params);
+    }
 
-        $queryBuilder->expects(self::once())
-            ->method('select')
-            ->with('e.channelId')
-            ->willReturn($queryBuilder);
+    public function testAddSearchCommandWhereClauseHandlesPendingFilters(): void
+    {
+        $qb     = $this->connection->createQueryBuilder();
+        $filter = (object) ['command' => 'is:pending', 'string' => '', 'not' => false, 'strict' => false];
 
-        $queryBuilder->expects(self::once())
-            ->method('from')
-            ->with('MauticCampaignBundle:Campaign', $this->repository->getTableAlias(), $this->repository->getTableAlias().'.id')
-            ->willReturn($queryBuilder);
+        $method = new \ReflectionMethod(CampaignRepository::class, 'addSearchCommandWhereClause');
 
-        $queryBuilder->expects(self::once())
-            ->method('where')
-            ->with($this->repository->getTableAlias().'.id = :id')
-            ->willReturn($queryBuilder);
+        [$expr, $params] = $method->invoke($this->repository, $qb, $filter);
 
-        $queryBuilder->expects(self::once())
-            ->method('setParameter')
-            ->with('id', $id)
-            ->willReturn($queryBuilder);
+        self::assertSame(
+            '(c.isPublished = :par1) AND (c.publishUp IS NOT NULL) AND (c.publishUp <> \'\') AND (c.publishUp > CURRENT_TIMESTAMP())',
+            (string) $expr
+        );
+        self::assertSame(['par1' => true], $params);
+    }
 
-        $queryBuilder->expects(self::once())
-            ->method('andWhere')
-            ->with('e.channelId IS NOT NULL')
-            ->willReturn($queryBuilder);
-
-        $query = $this->getMockBuilder(AbstractQuery::class)
-            ->disableOriginalConstructor()
-            ->setMethods(['setHydrationMode', 'getResult'])
-            ->getMockForAbstractClass();
-
-        $query->expects(self::once())
-            ->method('setHydrationMode')
-            ->with(Query::HYDRATE_ARRAY)
-            ->willReturn($query);
-
-        $queryBuilder->expects(self::once())
-            ->method('getQuery')
-            ->willReturn($query);
-
-        $query->expects(self::once())
-            ->method('getResult')
-            ->willReturn($queryResult);
-
-        $result = $this->repository->fetchEmailIdsById($id);
-
-        $this->assertEquals($expectedResult, $result);
+    public function testGetSearchCommandsContainsExpirationFilters(): void
+    {
+        $commands = $this->repository->getSearchCommands();
+        self::assertContains('mautic.campaign.campaign.searchcommand.isexpired', $commands);
+        self::assertContains('mautic.campaign.campaign.searchcommand.ispending', $commands);
     }
 }

@@ -1,29 +1,17 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ApiBundle\Security\Permissions;
 
 use Mautic\CoreBundle\Security\Permissions\AbstractPermissions;
 use Mautic\UserBundle\Form\Type\PermissionListType;
 use Symfony\Component\Form\FormBuilderInterface;
 
-/**
- * Class ApiPermissions.
- */
 class ApiPermissions extends AbstractPermissions
 {
     /**
-     * {@inheritdoc}
+     * @param mixed[] $params
      */
-    public function __construct($params)
+    public function __construct(array $params)
     {
         parent::__construct($params);
 
@@ -35,18 +23,12 @@ class ApiPermissions extends AbstractPermissions
         $this->addStandardPermissions('clients', false);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getName(): string
     {
         return 'api';
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function buildForm(FormBuilderInterface &$builder, array $options, array $data)
+    public function buildForm(FormBuilderInterface &$builder, array $options, array $data): void
     {
         $builder->add(
             'api:access',
@@ -65,12 +47,9 @@ class ApiPermissions extends AbstractPermissions
         $this->addStandardFormFields('api', 'clients', $builder, $data, false);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getValue($name, $perm)
     {
-        //ensure api is enabled system wide
+        // ensure api is enabled system wide
         if (empty($this->params['api_enabled'])) {
             return 0;
         }
@@ -78,17 +57,11 @@ class ApiPermissions extends AbstractPermissions
         return parent::getValue($name, $perm);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function isEnabled()
+    public function isEnabled(): bool
     {
         return !empty($this->params['api_enabled']);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     protected function getSynonym($name, $level)
     {
         if ('access' == $name && 'granted' == $level) {

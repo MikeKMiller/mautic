@@ -29,11 +29,47 @@
 .clickable-stat a { color: #fff; }
 .clickable-stat a:hover { color: #fff; }
 
-#emailGraphStats {
-    height: 437px;
+#emailGraphStats .spinner,
+#reads-map-container .spinner{
+    text-align: center;
+    font-size: 32px;
 }
 
-#emailGraphStats .spinner {
-    padding-top: 50px;
-    text-align: center;
+.dynamic-content .nav-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+    display: flex;
+    scrollbar-width: thin; /* Firefox */
+}
+
+.abtest-sidebar-actions {
+    width: 100%;
+}
+
+.abtest-sidebar-actions > .btn,
+.abtest-sidebar-actions > .btn-group,
+.abtest-sidebar-actions > .btn + .btn,
+.abtest-sidebar-actions > .btn-group + .btn,
+.abtest-sidebar-actions > .btn + .btn-group,
+.abtest-sidebar-actions > .btn-group + .btn-group {
+    margin-left: 0;
+}
+
+.abtest-sidebar-actions .btn {
+    justify-content: flex-start;
+}
+
+.abtest-sidebar-actions .btn-primary,
+.abtest-sidebar-actions .btn-tertiary {
+    gap: var(--spacing-03);
+}
+
+.abtest-sidebar-actions .btn i {
+    order: 0;
+}
+
+.abtest-sidebar-actions .btn span {
+    width: auto;
 }

@@ -12,27 +12,25 @@ use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Tracker\ContactTracker;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use ReflectionException;
-use ReflectionMethod;
 
 class FormSubscriberTest extends TestCase
 {
     /**
-     * @var MockObject|EmailModel
+     * @var MockObject&EmailModel
      */
-    protected $emailModel;
+    protected MockObject $emailModel;
 
     /**
-     * @var MockObject|ContactTracker
+     * @var MockObject&ContactTracker
      */
-    protected $contactTracker;
+    protected MockObject $contactTracker;
 
     /**
      * @var FormSubscriber
      */
     protected $formSubscriber;
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         $this->emailModel     = $this->createMock(EmailModel::class);
         $this->contactTracker = $this->createMock(ContactTracker::class);
@@ -43,13 +41,11 @@ class FormSubscriberTest extends TestCase
     }
 
     /**
-     * @throws ReflectionException
+     * @throws \ReflectionException
      */
     public function testGetCurrentLeadWithLeadInFeedback(): void
     {
-        $reflection = new ReflectionMethod($this->formSubscriber, 'getCurrentLead');
-
-        $reflection->setAccessible(true);
+        $reflection = new \ReflectionMethod($this->formSubscriber, 'getCurrentLead');
 
         $feedback    = ['lead.create' => ['lead' => ['email' => 'foobar']]];
         $currentLead = $reflection->invoke($this->formSubscriber, $feedback);
@@ -58,13 +54,11 @@ class FormSubscriberTest extends TestCase
     }
 
     /**
-     * @throws ReflectionException
+     * @throws \ReflectionException
      */
     public function testGetCurrentLeadWithoutLeadInFeedback(): void
     {
-        $reflection = new ReflectionMethod($this->formSubscriber, 'getCurrentLead');
-
-        $reflection->setAccessible(true);
+        $reflection = new \ReflectionMethod($this->formSubscriber, 'getCurrentLead');
 
         $contact = new Lead();
         $contact->setFirstname('Test');
@@ -86,10 +80,10 @@ class FormSubscriberTest extends TestCase
 
         $event->expects($this->exactly(2))
             ->method('checkContext')
-            ->will($this->returnValueMap([
+            ->willReturnMap([
                 ['email.send.user', false],
                 ['email.send.lead', false],
-            ]));
+            ]);
 
         $event->expects($this->exactly(0))
             ->method('getAction');
@@ -144,10 +138,10 @@ class FormSubscriberTest extends TestCase
 
         $event->expects($this->exactly(2))
             ->method('checkContext')
-            ->will($this->returnValueMap([
+            ->willReturnMap([
                 ['email.send.user', false],
                 ['email.send.lead', true],
-            ]));
+            ]);
 
         $event->expects($this->once())
             ->method('getTokens')
@@ -167,7 +161,7 @@ class FormSubscriberTest extends TestCase
 
         $action->expects($this->once())
             ->method('getForm')
-            ->willReturn($this->createMock(Form::class));
+            ->willReturn($this->createStub(Form::class));
 
         $this->emailModel->expects($this->once())
             ->method('getEntity')

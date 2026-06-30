@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\NotificationBundle\Entity;
 
 use Doctrine\ORM\Query;
@@ -16,7 +7,7 @@ use Doctrine\ORM\Tools\Pagination\Paginator;
 use Mautic\CoreBundle\Entity\CommonRepository;
 
 /**
- * Class NotificationRepository.
+ * @extends CommonRepository<Notification>
  */
 class NotificationRepository extends CommonRepository
 {
@@ -30,8 +21,8 @@ class NotificationRepository extends CommonRepository
         $q = $this->_em
             ->createQueryBuilder()
             ->select('e')
-            ->from('MauticNotificationBundle:Notification', 'e', 'e.id');
-        if (empty($args['iterator_mode'])) {
+            ->from(Notification::class, 'e', 'e.id');
+        if (empty($args['iterable_mode'])) {
             $q->leftJoin('e.category', 'c');
         }
 
@@ -49,7 +40,7 @@ class NotificationRepository extends CommonRepository
     {
         $q = $this->_em->createQueryBuilder();
         $q->select('SUM(e.sentCount) as sent_count, SUM(e.readCount) as read_count')
-            ->from('MauticNotificationBundle:Notification', 'e');
+            ->from(Notification::class, 'e');
         $results = $q->getQuery()->getSingleResult(Query::HYDRATE_ARRAY);
 
         if (!isset($results['sent_count'])) {
@@ -64,20 +55,17 @@ class NotificationRepository extends CommonRepository
 
     /**
      * @param \Doctrine\ORM\QueryBuilder|\Doctrine\DBAL\Query\QueryBuilder $q
-     * @param                                                              $filter
-     *
-     * @return array
      */
-    protected function addSearchCommandWhereClause($q, $filter)
+    protected function addSearchCommandWhereClause($q, $filter): array
     {
-        list($expr, $parameters) = $this->addStandardSearchCommandWhereClause($q, $filter);
+        [$expr, $parameters] = $this->addStandardSearchCommandWhereClause($q, $filter);
         if ($expr) {
             return [$expr, $parameters];
         }
 
         $command         = $filter->command;
         $unique          = $this->generateRandomParameterName();
-        $returnParameter = false; //returning a parameter that is not used will lead to a Doctrine error
+        $returnParameter = false; // returning a parameter that is not used will lead to a Doctrine error
 
         switch ($command) {
             case $this->translator->trans('mautic.core.searchcommand.lang'):
@@ -88,7 +76,7 @@ class NotificationRepository extends CommonRepository
                     $langUnique => $langValue,
                     $unique     => $filter->string,
                 ];
-                $expr = $q->expr()->orX(
+                $expr = $q->expr()->or(
                     $q->expr()->eq('e.language', ":$unique"),
                     $q->expr()->like('e.language', ":$langUnique")
                 );
@@ -111,9 +99,9 @@ class NotificationRepository extends CommonRepository
     }
 
     /**
-     * @return array
+     * @return string[]
      */
-    public function getSearchCommands()
+    public function getSearchCommands(): array
     {
         $commands = [
             'mautic.core.searchcommand.ispublished',
@@ -128,19 +116,16 @@ class NotificationRepository extends CommonRepository
     }
 
     /**
-     * @return string
+     * @return array<array<string>>
      */
-    protected function getDefaultOrder()
+    protected function getDefaultOrder(): array
     {
         return [
             ['e.name', 'ASC'],
         ];
     }
 
-    /**
-     * @return string
-     */
-    public function getTableAlias()
+    public function getTableAlias(): string
     {
         return 'e';
     }
@@ -148,11 +133,10 @@ class NotificationRepository extends CommonRepository
     /**
      * Up the click/sent counts.
      *
-     * @param        $id
      * @param string $type
      * @param int    $increaseBy
      */
-    public function upCount($id, $type = 'sent', $increaseBy = 1)
+    public function upCount($id, $type = 'sent', $increaseBy = 1): void
     {
         try {
             $q = $this->_em->getConnection()->createQueryBuilder();
@@ -161,8 +145,8 @@ class NotificationRepository extends CommonRepository
                 ->set($type.'_count', $type.'_count + '.(int) $increaseBy)
                 ->where('id = '.(int) $id);
 
-            $q->execute();
-        } catch (\Exception $exception) {
+            $q->executeStatement();
+        } catch (\Exception) {
             // not important
         }
     }
@@ -183,7 +167,7 @@ class NotificationRepository extends CommonRepository
 
         if (!empty($search)) {
             if (is_array($search)) {
-                $search = array_map('intval', $search);
+                $search = array_map(intval(...), $search);
                 $q->andWhere($q->expr()->in('e.id', ':search'))
                     ->setParameter('search', $search);
             } else {
@@ -216,22 +200,19 @@ class NotificationRepository extends CommonRepository
     }
 
     /**
-     * @param string $search
-     * @param int    $limit
-     * @param int    $start
-     * @param bool   $viewOther
-     * @param string $notificationType
+     * @param string|array<mixed> $search
+     * @param array<mixed>        $options
      *
-     * @return array
+     * @return array<int, array<string, int|string>>
      */
-    public function getMobileNotificationList($search = '', $limit = 10, $start = 0, $viewOther = false, $notificationType = null)
+    public function getMobileNotificationList(string|array $search = '', int $limit = 10, int $start = 0, bool $viewOther = false, array $options = []): array
     {
         $q = $this->createQueryBuilder('e');
         $q->select('partial e.{id, name, language}');
 
         if (!empty($search)) {
             if (is_array($search)) {
-                $search = array_map('intval', $search);
+                $search = array_map(intval(...), $search);
                 $q->andWhere($q->expr()->in('e.id', ':search'))
                     ->setParameter('search', $search);
             } else {
@@ -245,10 +226,18 @@ class NotificationRepository extends CommonRepository
                 ->setParameter('id', $this->currentUser->getId());
         }
 
-        if (!empty($notificationType)) {
+        if (!empty($options['notification_type'])) {
             $q->andWhere(
-                $q->expr()->eq('e.notificationType', $q->expr()->literal($notificationType))
+                $q->expr()->eq('e.notificationType', $q->expr()->literal($options['notification_type']))
             );
+        }
+
+        if (!empty($options['top_level']) && 'translation' === $options['top_level']) {
+            $q->andWhere($q->expr()->isNull('e.translationParent'));
+        }
+
+        if (!empty($options['ignore_ids'])) {
+            $q->andWhere($q->expr()->notIn('e.id', $options['ignore_ids']));
         }
 
         $q->andWhere('e.mobile = 1');

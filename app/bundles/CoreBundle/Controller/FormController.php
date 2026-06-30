@@ -1,30 +1,26 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Controller;
 
 /**
- * Class FormController.
- *
  * @deprecated 2.3 - to be removed in 3.0; use AbstractFormController instead
  */
 class FormController extends AbstractStandardFormController
 {
-    private $deprecatedModelName;
-    private $deprecatedPermissionBase;
-    private $deprecatedRouteBase;
-    private $deprecatedSessionBase;
-    private $deprecatedTranslationBase;
-    private $deprecatedTemplateBase;
-    private $deprecatedMauticContent;
+    private string $deprecatedModelName = '';
+
+    private ?string $deprecatedPermissionBase = null;
+
+    private ?string $deprecatedRouteBase = null;
+
+    private ?string $deprecatedSessionBase = null;
+
+    private ?string $deprecatedTranslationBase = null;
+
+    private ?string $deprecatedTemplateBase = null;
+
+    private ?string $deprecatedMauticContent = null;
+
     protected $activeLink;
 
     /**
@@ -40,18 +36,18 @@ class FormController extends AbstractStandardFormController
      * @param string $mauticContent   Mautic content string to return via ajax response for onLoad functions
      */
     protected function setStandardParameters(
-        $modelName,
-        $permissionBase,
-        $routeBase,
-        $sessionBase,
-        $translationBase,
-        $templateBase = null,
-        $activeLink = null,
-        $mauticContent = null
+        string $modelName,
+        string $permissionBase,
+        string $routeBase,
+        string $sessionBase,
+        string $translationBase,
+        string $templateBase,
+        string $activeLink,
+        string $mauticContent,
     ) {
         $this->deprecatedModelName      = $modelName;
         $this->deprecatedPermissionBase = $permissionBase;
-        if (0 !== strpos($sessionBase, 'mautic.')) {
+        if (!str_starts_with($sessionBase, 'mautic.')) {
             $sessionBase = 'mautic.'.$sessionBase;
         }
         $this->deprecatedSessionBase     = $sessionBase;
@@ -63,32 +59,14 @@ class FormController extends AbstractStandardFormController
     }
 
     /**
-     * @param $action
-     *
-     * @return array
+     * @return mixed[]
      */
-    public function getViewArguments(array $args, $action)
-    {
-        return $this->customizeViewArguments($args, $action);
-    }
-
-    /**
-     * @param $args
-     * @param $action
-     *
-     * @deprecated 2.6.0 to be removed in 3.0; use getViewArguments instead
-     *
-     * @return array
-     */
-    public function customizeViewArguments($args, $action)
+    public function getViewArguments(array $args, $action): array
     {
         return $args;
     }
 
-    /**
-     * @return mixed
-     */
-    protected function getModelName()
+    protected function getModelName(): string
     {
         return $this->deprecatedModelName;
     }
@@ -110,27 +88,17 @@ class FormController extends AbstractStandardFormController
     }
 
     /**
-     * @param null $objectId
-     *
      * @return mixed
      */
     protected function getSessionBase($objectId = null)
     {
-        return $this->deprecatedSessionBase;
+        return $this->deprecatedSessionBase ?? parent::getSessionBase($objectId);
     }
 
     /**
      * @return mixed
      */
     protected function getTemplateBase()
-    {
-        return $this->deprecatedTemplateBase;
-    }
-
-    /**
-     * @return mixed
-     */
-    protected function getControllerBase()
     {
         return $this->deprecatedTemplateBase;
     }

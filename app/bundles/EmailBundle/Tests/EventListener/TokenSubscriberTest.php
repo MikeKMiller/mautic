@@ -1,45 +1,105 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\EmailBundle\Tests\EventListener;
 
-use Mautic\CoreBundle\Factory\MauticFactory;
+use Doctrine\ORM\EntityManagerInterface;
+use Mautic\AssetBundle\Model\AssetModel;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Helper\PathsHelper;
+use Mautic\CoreBundle\Helper\ThemeHelper;
 use Mautic\EmailBundle\Entity\Email;
 use Mautic\EmailBundle\Event\EmailSendEvent;
 use Mautic\EmailBundle\EventListener\TokenSubscriber;
+use Mautic\EmailBundle\Helper\FromEmailHelper;
+use Mautic\EmailBundle\Helper\MailHashHelper;
 use Mautic\EmailBundle\Helper\MailHelper;
+use Mautic\EmailBundle\Helper\SMimeHelper;
+use Mautic\EmailBundle\Model\EmailStatModel;
+use Mautic\EmailBundle\MonitoredEmail\Mailbox;
+use Mautic\EmailBundle\Tests\Helper\Transport\SmtpTransport;
 use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Entity\LeadListRepository;
 use Mautic\LeadBundle\Helper\PrimaryCompanyHelper;
+use Mautic\PageBundle\Model\RedirectModel;
+use Mautic\PageBundle\Model\TrackableModel;
+use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\Mailer\Mailer;
+use Symfony\Component\Routing\RouterInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Twig\Environment;
 
 class TokenSubscriberTest extends \PHPUnit\Framework\TestCase
 {
-    public function testDynamicContentCustomTokens()
+    public function testDynamicContentCustomTokens(): void
     {
-        $mockFactory = $this->getMockBuilder(MauticFactory::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        /** @var MockObject&FromEmailHelper $fromEmailHelper */
+        $fromEmailHelper = $this->createStub(FromEmailHelper::class);
 
-        $swiftMailer = $this->getMockBuilder(\Swift_Mailer::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        /** @var MockObject&CoreParametersHelper $coreParametersHelper */
+        $coreParametersHelper = $this->createMock(CoreParametersHelper::class);
 
-        $tokens = [
-            '{test}' => 'value',
-        ];
+        /** @var MockObject&Mailbox $mailbox */
+        $mailbox = $this->createStub(Mailbox::class);
 
-        $mailHelper = new MailHelper($mockFactory, $swiftMailer);
+        /** @var MockObject&LoggerInterface $logger */
+        $logger = $this->createStub(LoggerInterface::class);
+
+        /** @var MockObject&RouterInterface $router */
+        $router = $this->createStub(RouterInterface::class);
+
+        /** @var MockObject&Environment $twig */
+        $twig = $this->createStub(Environment::class);
+
+        $requestStack = new RequestStack();
+        $themeHelper  = $this->createMock(ThemeHelper::class);
+        $themeHelper->expects(self::never())
+            ->method('checkForTwigTemplate');
+
+        $mailHashHelper = new MailHashHelper($coreParametersHelper);
+
+        $coreParametersHelper->expects($this->atLeast(2))->method('get')
+            ->willReturnMap(
+                [
+                    ['mailer_from_email', null, 'nobody@nowhere.com'],
+                    ['mailer_from_name', null, 'No Body'],
+                ]
+            );
+
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects($this->never()) // Never to make sure that the mock is properly tested if needed.
+            ->method('getReference');
+
+        $tokens = ['{test}' => 'value'];
+
+        $mailHelper = new MailHelper(
+            new Mailer(new SmtpTransport()),
+            $fromEmailHelper,
+            $coreParametersHelper,
+            $mailbox,
+            $logger,
+            $mailHashHelper,
+            $router,
+            $twig,
+            $themeHelper,
+            $this->createStub(PathsHelper::class),
+            $this->createStub(EventDispatcherInterface::class),
+            $requestStack,
+            $entityManager,
+            $this->createStub(AssetModel::class),
+            $this->createStub(TrackableModel::class),
+            $this->createStub(RedirectModel::class),
+            $this->createStub(SMimeHelper::class),
+            $this->createStub(EmailStatModel::class),
+        );
         $mailHelper->setTokens($tokens);
 
         $email = new Email();
+        $email->setSubject('Test subject');
         $email->setCustomHtml(
             <<<'CONTENT'
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -97,11 +157,12 @@ CONTENT
         $primaryCompanyHelper = $this->createMock(PrimaryCompanyHelper::class);
         $primaryCompanyHelper->method('getProfileFieldsWithPrimaryCompany')
             ->willReturn(['email' => 'hello@someone.com']);
+        $segmentRepository    = $this->createStub(LeadListRepository::class);
 
         /** @var TokenSubscriber $subscriber */
         $subscriber = $this->getMockBuilder(TokenSubscriber::class)
-            ->setConstructorArgs([$dispatcher, $primaryCompanyHelper])
-            ->setMethods(null)
+            ->setConstructorArgs([$dispatcher, $primaryCompanyHelper, $segmentRepository])
+            ->onlyMethods([])
             ->getMock();
 
         $dispatcher->addSubscriber($subscriber);
@@ -120,10 +181,11 @@ CONTENT
         );
         $mailHelper->addTokens($eventTokens);
         $mailerTokens = $mailHelper->getTokens();
-        $mailHelper->message->setBody($email->getCustomHtml());
+        $mailHelper->message->html($email->getCustomHtml());
+        $mailHelper->message->subject($email->getSubject());
 
         MailHelper::searchReplaceTokens(array_keys($mailerTokens), $mailerTokens, $mailHelper->message);
-        $parsedBody = $mailHelper->message->getBody();
+        $parsedBody = $mailHelper->message->getHtmlBody();
 
         $this->assertNotFalse(strpos($parsedBody, 'DEC value'));
         $this->assertNotFalse(strpos($parsedBody, 'value test We'));

@@ -1,34 +1,27 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Controller;
 
+use Mautic\CoreBundle\Exception\BadConfigurationException;
+use Mautic\CoreBundle\Exception\FileNotFoundException;
 use Mautic\CoreBundle\Form\Type\ThemeUploadType;
 use Mautic\CoreBundle\Helper\InputHelper;
+use Mautic\CoreBundle\Helper\PathsHelper;
+use Mautic\CoreBundle\Helper\ThemeHelperInterface;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\IntegrationsBundle\Helper\BuilderIntegrationsHelper;
+use Symfony\Component\Filesystem\Exception\IOException;
 use Symfony\Component\Form\FormError;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-/**
- * Class ThemeController.
- */
 class ThemeController extends FormController
 {
-    /**
-     * @return JsonResponse|\Symfony\Component\HttpFoundation\Response
-     */
-    public function indexAction()
+    public function indexAction(Request $request, ThemeHelperInterface $themeHelper, BuilderIntegrationsHelper $builderIntegrationsHelper, PathsHelper $pathsHelper): Response
     {
-        //set some permissions
-        $permissions = $this->get('mautic.security')->isGranted([
+        // set some permissions
+        $permissions = $this->security->isGranted([
             'core:themes:view',
             'core:themes:create',
             'core:themes:edit',
@@ -36,16 +29,15 @@ class ThemeController extends FormController
         ], 'RETURN_ARRAY');
 
         if (!$permissions['core:themes:view']) {
-            return $this->accessDenied();
+            $this->throwAccessDenied();
         }
 
-        $themeHelper = $this->container->get('mautic.helper.theme');
-        $dir         = $this->factory->getSystemPath('themes', true);
-        $action      = $this->generateUrl('mautic_themes_index');
-        $form        = $this->get('form.factory')->create(ThemeUploadType::class, [], ['action' => $action]);
+        $dir    = $pathsHelper->getSystemPath('themes', true);
+        $action = $this->generateUrl('mautic_themes_index');
+        $form   = $this->formFactory->create(ThemeUploadType::class, [], ['action' => $action]);
 
-        if ('POST' == $this->request->getMethod()) {
-            if (isset($form) && !$cancelled = $this->isFormCancelled($form)) {
+        if ('POST' === $request->getMethod()) {
+            if (!$this->isFormCancelled($form)) {
                 if ($this->isFormValid($form)) {
                     $fileData = $form['file']->getData();
 
@@ -59,36 +51,30 @@ class ThemeController extends FormController
                         $fileName  = InputHelper::filename($fileData->getClientOriginalName());
                         $themeName = basename($fileName, '.zip');
 
-                        if (!empty($fileData)) {
-                            $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+                        $extension = pathinfo($fileName, PATHINFO_EXTENSION);
 
-                            if ('zip' === $extension) {
-                                try {
-                                    $fileData->move($dir, $fileName);
-                                    $themeHelper->install($dir.'/'.$fileName);
-                                    $this->addFlash('mautic.core.theme.installed', ['%name%' => $themeName]);
-                                } catch (\Exception $e) {
-                                    $form->addError(
-                                        new FormError(
-                                            $this->translator->trans($e->getMessage(), [], 'validators')
-                                        )
-                                    );
-                                }
-                            } else {
+                        if ('zip' === $extension) {
+                            try {
+                                $fileData->move($dir, $fileName);
+                                $themeHelper->install($dir.'/'.$fileName);
+                                $this->addFlashMessage('mautic.core.theme.installed', ['%name%' => $themeName]);
+                            } catch (\Exception $e) {
                                 $form->addError(
                                     new FormError(
-                                        $this->translator->trans('mautic.core.not.allowed.file.extension', ['%extension%' => $extension], 'validators')
+                                        $this->translator->trans($e->getMessage(), [], 'validators')
                                     )
                                 );
                             }
                         } else {
                             $form->addError(
                                 new FormError(
-                                    $this->translator->trans('mautic.dashboard.upload.filenotfound', [], 'validators')
+                                    $this->translator->trans('mautic.core.not.allowed.file.extension', ['%extension%' => $extension], 'validators')
                                 )
                             );
                         }
                     }
+                } else {
+                    $form->addError(new FormError($form->getErrors(true)));
                 }
             }
         }
@@ -96,12 +82,13 @@ class ThemeController extends FormController
         return $this->delegateView([
             'viewParameters' => [
                 'items'         => $themeHelper->getInstalledThemes('all', true, true),
+                'builders'      => $builderIntegrationsHelper->getBuilderNames(),
                 'defaultThemes' => $themeHelper->getDefaultThemes(),
                 'form'          => $form->createView(),
                 'permissions'   => $permissions,
-                'security'      => $this->get('mautic.security'),
+                'security'      => $this->security,
             ],
-            'contentTemplate' => 'MauticCoreBundle:Theme:list.html.php',
+            'contentTemplate' => '@MauticCore/Theme/list.html.twig',
             'passthroughVars' => [
                 'activeLink'    => '#mautic_themes_index',
                 'mauticContent' => 'theme',
@@ -113,20 +100,18 @@ class ThemeController extends FormController
     /**
      * Download a theme.
      *
-     * @param string $themeName
-     *
      * @return JsonResponse|\Symfony\Component\HttpFoundation\RedirectResponse|Response
      */
-    public function downloadAction($themeName)
+    public function downloadAction(Request $request, ThemeHelperInterface $themeHelper, string $objectId)
     {
-        $themeHelper = $this->container->get('mautic.helper.theme');
-        $flashes     = [];
-        $error       = false;
+        $flashes = [];
+        $error   = false;
 
-        if (!$this->get('mautic.security')->isGranted('core:themes:view')) {
-            return $this->accessDenied();
+        if (!$this->security->isGranted('core:themes:view')) {
+            $this->throwAccessDenied();
         }
 
+        $themeName = $objectId;
         if (!$themeHelper->exists($themeName)) {
             $flashes[] = [
                 'type'    => 'error',
@@ -164,9 +149,9 @@ class ThemeController extends FormController
 
         $response = new Response();
         $response->headers->set('Content-Type', 'application/octet-stream');
-        $response->headers->set('Content-Length', filesize($zipPath));
+        $response->headers->set('Content-Length', (string) filesize($zipPath));
 
-        $stream = $this->request->get('stream', 0);
+        $stream = $request->get('stream', 0);
 
         if (!$stream) {
             $response->headers->set('Content-Disposition', 'attachment;filename="'.$themeName.'.zip"');
@@ -179,17 +164,14 @@ class ThemeController extends FormController
 
     /**
      * Deletes the theme.
-     *
-     * @param string $themeName
-     *
-     * @return \Symfony\Component\HttpFoundation\JsonResponse|\Symfony\Component\HttpFoundation\RedirectResponse
      */
-    public function deleteAction($themeName)
+    public function deleteAction(Request $request, ThemeHelperInterface $themeHelper, string $objectId): Response
     {
         $flashes = [];
 
-        if ('POST' == $this->request->getMethod()) {
-            $flashes = $this->deleteTheme($themeName);
+        $themeName = $objectId;
+        if ('POST' === $request->getMethod()) {
+            $flashes = $this->deleteTheme($themeHelper, $themeName);
         }
 
         return $this->postActionRedirect(
@@ -201,18 +183,40 @@ class ThemeController extends FormController
 
     /**
      * Deletes a group of themes.
-     *
-     * @return \Symfony\Component\HttpFoundation\JsonResponse|\Symfony\Component\HttpFoundation\RedirectResponse
      */
-    public function batchDeleteAction()
+    public function batchDeleteAction(Request $request, ThemeHelperInterface $themeHelper): Response
     {
         $flashes = [];
+        $error   = [];
 
-        if ('POST' == $this->request->getMethod()) {
-            $themeNames = json_decode($this->request->query->get('ids', '{}'));
+        if ('POST' === $request->getMethod()) {
+            $themeNames = json_decode($request->query->get('ids', '{}'));
 
             foreach ($themeNames as $themeName) {
-                $flashes = $this->deleteTheme($themeName);
+                $flash = $this->deleteTheme($themeHelper, $themeName)[0];
+
+                if ('error' === $flash['type']) {
+                    $error[] = $flash;
+                } else {
+                    $flashes[] = $flash;
+                }
+            }
+
+            if (count($flashes) > 1) {
+                $flashNumber = count($flashes);
+                unset($flashes);
+
+                $flashes[] = [
+                    'type'    => 'notice',
+                    'msg'     => 'mautic.core.theme.notice.batch_deleted',
+                    'msgVars' => [
+                        '%count%' => $flashNumber,
+                    ],
+                ];
+            }
+
+            if ($error) {
+                $flashes = array_merge($flashes, $error);
             }
         }
 
@@ -225,13 +229,10 @@ class ThemeController extends FormController
 
     /**
      * Deletes a theme.
-     *
-     * @return array
      */
-    public function deleteTheme($themeName)
+    public function deleteTheme(ThemeHelperInterface $themeHelper, $themeName): array
     {
-        $flashes     = [];
-        $themeHelper = $this->container->get('mautic.helper.theme');
+        $flashes = [];
 
         if (!$themeHelper->exists($themeName)) {
             $flashes[] = [
@@ -239,8 +240,8 @@ class ThemeController extends FormController
                 'msg'     => 'mautic.core.theme.error.notfound',
                 'msgVars' => ['%theme%' => $themeName],
             ];
-        } elseif (!$this->get('mautic.security')->isGranted('core:themes:delete')) {
-            return $this->accessDenied();
+        } elseif (!$this->security->isGranted('core:themes:delete')) {
+            $this->throwAccessDenied();
         } elseif (in_array($themeName, $themeHelper->getDefaultThemes())) {
             $flashes[] = [
                 'type'    => 'error',
@@ -274,18 +275,96 @@ class ThemeController extends FormController
 
     /**
      * A helper method to keep the code DRY.
-     *
-     * @return array
      */
-    public function getIndexPostActionVars()
+    public function getIndexPostActionVars(): array
     {
         return [
             'returnUrl'       => $this->generateUrl('mautic_themes_index'),
-            'contentTemplate' => 'MauticCoreBundle:theme:index',
+            'contentTemplate' => 'Mautic\CoreBundle\Controller\ThemeController::indexAction',
             'passthroughVars' => [
                 'activeLink'    => 'mautic_themes_index',
                 'mauticContent' => 'theme',
             ],
         ];
+    }
+
+    /**
+     * Change default theme's visibility.
+     */
+    public function visibilityAction(string $objectId, Request $request, CorePermissions $corePermissions, ThemeHelperInterface $themeHelper): Response
+    {
+        if (!$corePermissions->isGranted('core:themes:view')) {
+            $this->throwAccessDenied();
+        }
+
+        $flashes = [];
+
+        if (Request::METHOD_POST === $request->getMethod()) {
+            $flashes = $this->visibility($objectId, $themeHelper);
+        }
+
+        return $this->postActionRedirect(
+            array_merge($this->getIndexPostActionVars(), [
+                'flashes' => $flashes,
+            ])
+        );
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    private function visibility(string $themeName, ThemeHelperInterface $themeHelper): array
+    {
+        if (!$themeHelper->exists($themeName)) {
+            return [
+                [
+                    'type'    => 'error',
+                    'msg'     => 'mautic.core.theme.error.notfound',
+                    'msgVars' => ['%theme%' => $themeName],
+                ],
+            ];
+        }
+
+        if (!in_array($themeName, $themeHelper->getDefaultThemes())) {
+            return [
+                [
+                    'type'    => 'error',
+                    'msg'     => 'mautic.core.theme.cannot.change.visibility',
+                    'msgVars' => ['%theme%' => $themeName],
+                ],
+            ];
+        }
+
+        $flashes = [];
+
+        try {
+            $theme = $themeHelper->getTheme($themeName);
+            $themeHelper->toggleVisibility($themeName);
+            $flashes[] = [
+                'type'    => 'notice',
+                'msg'     => 'mautic.core.theme.visibility.changed',
+                'msgVars' => ['%theme%' => $theme->getName()],
+            ];
+        } catch (IOException) {
+            $flashes[] = [
+                'type'    => 'error',
+                'msg'     => 'mautic.core.theme.visibility.error',
+                'msgVars' => ['%error%' => 'Failed to change the theme visibility'],
+            ];
+        } catch (BadConfigurationException) {
+            $flashes[] = [
+                'type'    => 'error',
+                'msg'     => 'mautic.core.theme.visibility.error',
+                'msgVars' => ['%error%' => sprintf('Theme %s not configured properly: builder property in the config.json', $themeName)],
+            ];
+        } catch (FileNotFoundException) {
+            $flashes[] = [
+                'type'    => 'error',
+                'msg'     => 'mautic.core.theme.visibility.error',
+                'msgVars' => ['%error%' => sprintf('Theme %s not found', $themeName)],
+            ];
+        }
+
+        return $flashes;
     }
 }

@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ApiBundle\Serializer\Exclusion;
 
 use JMS\Serializer\Context;
@@ -21,43 +12,25 @@ use JMS\Serializer\Metadata\PropertyMetadata;
  */
 class FieldExclusionStrategy implements ExclusionStrategyInterface
 {
-    /**
-     * @var array
-     */
-    private $fields = [];
-
-    /**
-     * @var int
-     */
-    private $level;
-
-    /**
-     * @var string|null
-     */
-    private $path;
+    private readonly int $level;
 
     /**
      * @param int         $level
      * @param string|null $path
      */
-    public function __construct(array $fields, $level = 3, $path = null)
-    {
-        $this->fields = $fields;
+    public function __construct(
+        private readonly array $fields,
+        $level = 3,
+        private $path = null,
+    ) {
         $this->level  = (int) $level;
-        $this->path   = $path;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function shouldSkipClass(ClassMetadata $metadata, Context $navigatorContext): bool
     {
         return false;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function shouldSkipProperty(PropertyMetadata $property, Context $navigatorContext): bool
     {
         if ($this->path) {
@@ -73,10 +46,6 @@ class FieldExclusionStrategy implements ExclusionStrategyInterface
         }
 
         // children of children or parents of chidlren will be more than 3 levels deep
-        if ($navigatorContext->getDepth() <= $this->level) {
-            return false;
-        }
-
-        return true;
+        return $navigatorContext->getDepth() > $this->level;
     }
 }

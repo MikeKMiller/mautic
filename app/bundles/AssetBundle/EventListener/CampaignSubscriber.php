@@ -1,17 +1,9 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\AssetBundle\EventListener;
 
 use Mautic\AssetBundle\AssetEvents;
+use Mautic\AssetBundle\Entity\Asset;
 use Mautic\AssetBundle\Event\AssetLoadEvent;
 use Mautic\AssetBundle\Form\Type\CampaignEventAssetDownloadType;
 use Mautic\CampaignBundle\CampaignEvents;
@@ -22,20 +14,12 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class CampaignSubscriber implements EventSubscriberInterface
 {
-    /**
-     * @var RealTimeExecutioner
-     */
-    private $realTimeExecutioner;
-
-    public function __construct(RealTimeExecutioner $realTimeExecutioner)
-    {
-        $this->realTimeExecutioner = $realTimeExecutioner;
+    public function __construct(
+        private readonly RealTimeExecutioner $realTimeExecutioner,
+    ) {
     }
 
-    /**
-     * @return array
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         return [
             CampaignEvents::CAMPAIGN_ON_BUILD         => ['onCampaignBuild', 0],
@@ -44,7 +28,7 @@ class CampaignSubscriber implements EventSubscriberInterface
         ];
     }
 
-    public function onCampaignBuild(CampaignBuilderEvent $event)
+    public function onCampaignBuild(CampaignBuilderEvent $event): void
     {
         $trigger = [
             'label'          => 'mautic.asset.campaign.event.download',
@@ -61,7 +45,7 @@ class CampaignSubscriber implements EventSubscriberInterface
     /**
      * Trigger point actions for asset download.
      */
-    public function onAssetDownload(AssetLoadEvent $event)
+    public function onAssetDownload(AssetLoadEvent $event): void
     {
         $asset = $event->getRecord()->getAsset();
 
@@ -70,20 +54,29 @@ class CampaignSubscriber implements EventSubscriberInterface
         }
     }
 
-    public function onCampaignTriggerDecision(CampaignExecutionEvent $event)
+    public function onCampaignTriggerDecision(CampaignExecutionEvent $event): void
     {
         $eventDetails = $event->getEventDetails();
 
         if (null == $eventDetails) {
-            return $event->setResult(true);
+            $event->setResult(true);
+
+            return;
+        }
+
+        if (!$eventDetails instanceof Asset) {
+            $event->setResult(false);
+
+            return;
         }
 
         $assetId       = $eventDetails->getId();
         $limitToAssets = $event->getConfig()['assets'];
 
         if (!empty($limitToAssets) && !in_array($assetId, $limitToAssets)) {
-            //no points change
-            return $event->setResult(false);
+            $event->setResult(false);
+
+            return;
         }
 
         $event->setResult(true);

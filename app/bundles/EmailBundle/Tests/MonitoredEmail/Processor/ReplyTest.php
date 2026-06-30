@@ -1,87 +1,103 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Tests\MonitoredEmail\Processor;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\EntityNotFoundException;
+use Mautic\CoreBundle\Helper\EmailAddressHelper;
 use Mautic\EmailBundle\EmailEvents;
 use Mautic\EmailBundle\Entity\Email;
 use Mautic\EmailBundle\Entity\EmailReply;
 use Mautic\EmailBundle\Entity\Stat;
 use Mautic\EmailBundle\Entity\StatRepository;
 use Mautic\EmailBundle\Event\EmailReplyEvent;
+use Mautic\EmailBundle\Model\EmailStatModel;
 use Mautic\EmailBundle\MonitoredEmail\Message;
 use Mautic\EmailBundle\MonitoredEmail\Processor\Reply;
 use Mautic\EmailBundle\MonitoredEmail\Search\ContactFinder;
 use Mautic\EmailBundle\MonitoredEmail\Search\Result;
 use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Entity\LeadRepository;
 use Mautic\LeadBundle\Model\LeadModel;
 use Mautic\LeadBundle\Tracker\ContactTracker;
 use Monolog\Logger;
+use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 class ReplyTest extends \PHPUnit\Framework\TestCase
 {
-    private $statRepo;
-    private $contactFinder;
-    private $leadModel;
-    private $dispatcher;
-    private $logger;
-    private $contactTracker;
+    /**
+     * @var MockObject&StatRepository
+     */
+    private MockObject $statRepo;
 
     /**
-     * @var Reply
+     * @var MockObject&EmailStatModel
      */
-    private $processor;
+    private MockObject $emailStatModel;
+
+    /**
+     * @var MockObject&ContactFinder
+     */
+    private MockObject $contactFinder;
+
+    /**
+     * @var MockObject&EventDispatcherInterface
+     */
+    private MockObject $dispatcher;
+
+    /**
+     * @var MockObject&ContactTracker
+     */
+    private MockObject $contactTracker;
+
+    private Reply $processor;
+
+    /**
+     * @var MockObject&LeadRepository
+     */
+    private MockObject $leadRepository;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->statRepo       = $this->createMock(StatRepository::class);
-        $this->contactFinder  = $this->createMock(ContactFinder::class);
-        $this->leadModel      = $this->createMock(LeadModel::class);
-        $this->leadModel      = $this->createMock(LeadModel::class);
-        $this->dispatcher     = $this->createMock(EventDispatcherInterface::class);
-        $this->logger         = $this->createMock(Logger::class);
-        $this->contactTracker = $this->createMock(ContactTracker::class);
-        $this->processor      = new Reply(
-            $this->statRepo,
+        $this->statRepo           = $this->createMock(StatRepository::class);
+        $this->emailStatModel     = $this->createMock(EmailStatModel::class);
+        $this->contactFinder      = $this->createMock(ContactFinder::class);
+        $leadModel                = $this->createMock(LeadModel::class);
+        $this->dispatcher         = $this->createMock(EventDispatcherInterface::class);
+        $logger                   = $this->createMock(Logger::class);
+        $this->contactTracker     = $this->createMock(ContactTracker::class);
+        $emailAddressHelper       = new EmailAddressHelper();
+        $this->leadRepository     = $this->createMock(LeadRepository::class);
+        $leadModel->method('getRepository')->willReturn($this->leadRepository);
+        $this->processor          = new Reply(
+            $this->emailStatModel,
             $this->contactFinder,
-            $this->leadModel,
+            $leadModel,
             $this->dispatcher,
-            $this->logger,
-            $this->contactTracker
+            $logger,
+            $this->contactTracker,
+            $emailAddressHelper
         );
+
+        $this->emailStatModel->method('getRepository')->willReturn($this->statRepo);
     }
 
-    /**
-     * @testdox Test that the message is processed appropriately
-     *
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Processor\Reply::process()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Search\Result::setStat()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Search\Result::getStat()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Search\Result::setContacts()
-     * @covers  \Mautic\EmailBundle\MonitoredEmail\Search\Result::getContacts()
-     */
-    public function testContactIsFoundFromMessageAndDncRecordAdded()
+    #[\PHPUnit\Framework\Attributes\TestDox('Test that the message is processed appropriately')]
+    public function testContactIsFoundFromMessageAndDncRecordAdded(): void
     {
         // This tells us that a reply was found and processed
-        $this->statRepo->expects($this->once())
+        $this->emailStatModel->expects($this->once())
             ->method('saveEntity');
+
+        $this->leadRepository->expects(self::atLeastOnce())
+            ->method('detachEntity');
 
         $this->contactFinder->method('findByHash')
             ->willReturnCallback(
-                function ($hash) {
+                function ($hash): Result {
                     $stat = new Stat();
                     $stat->setTrackingHash($hash);
 
@@ -113,7 +129,7 @@ BODY;
         $this->processor->process($message);
     }
 
-    public function testCreateReplyByHashIfStatNotFound()
+    public function testCreateReplyByHashIfStatNotFound(): void
     {
         $trackingHash = '@Stat#';
 
@@ -127,11 +143,11 @@ BODY;
         $this->processor->createReplyByHash($trackingHash, 'api-msg1d');
     }
 
-    public function testCreateReplyByHash()
+    public function testCreateReplyByHash(): void
     {
         $trackingHash = '@Stat#';
         $stat         = $this->createMock(Stat::class);
-        $contact      = $this->createMock(Lead::class);
+        $contact      = $this->createStub(Lead::class);
 
         $this->statRepo->expects($this->once())
             ->method('findOneBy')
@@ -156,14 +172,14 @@ BODY;
 
         $stat->expects($this->once())
             ->method('addReply')
-            ->with($this->callback(function (EmailReply $emailReply) use ($stat) {
+            ->with($this->callback(function (EmailReply $emailReply) use ($stat): true {
                 $this->assertSame($stat, $emailReply->getStat());
                 $this->assertSame('api-msg1d', $emailReply->getMessageId());
 
                 return true;
             }));
 
-        $this->statRepo->expects($this->once())
+        $this->emailStatModel->expects($this->once())
             ->method('saveEntity')
             ->with($this->isInstanceOf(Stat::class));
 
@@ -182,7 +198,7 @@ BODY;
 
         $this->dispatcher->expects($this->once())
             ->method('dispatch')
-            ->with(EmailEvents::EMAIL_ON_REPLY, $this->isInstanceOf(EmailReplyEvent::class));
+            ->with($this->isInstanceOf(EmailReplyEvent::class), EmailEvents::EMAIL_ON_REPLY);
 
         $this->processor->createReplyByHash($trackingHash, 'api-msg1d');
     }

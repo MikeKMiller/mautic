@@ -1,48 +1,41 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CampaignBundle\Security\Permissions;
 
 use Mautic\CoreBundle\Security\Permissions\AbstractPermissions;
 use Symfony\Component\Form\FormBuilderInterface;
 
-/**
- * Class CampaignPermissions.
- */
 class CampaignPermissions extends AbstractPermissions
 {
     /**
-     * {@inheritdoc}
+     * @param mixed[] $params
      */
-    public function __construct($params)
+    public function __construct(array $params)
     {
         parent::__construct($params);
         $this->addExtendedPermissions('campaigns');
-        $this->addStandardPermissions('categories');
+        $this->addStandardPermissions(['categories']);
+        $this->addStandardPermissions(['imports']);
+        $this->addCustomPermission('export', ['enable' => 1024]);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getName(): string
     {
         return 'campaign';
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function buildForm(FormBuilderInterface &$builder, array $options, array $data)
+    public function buildForm(FormBuilderInterface &$builder, array $options, array $data): void
     {
         $this->addStandardFormFields('campaign', 'categories', $builder, $data);
         $this->addExtendedFormFields('campaign', 'campaigns', $builder, $data);
+        $this->addCustomFormFields(
+            $this->getName(),
+            'export',
+            $builder,
+            'mautic.core.permissions.export',
+            ['mautic.core.permissions.enable' => 'enable'],
+            $data
+        );
+        $this->addStandardFormFields($this->getName(), 'imports', $builder, $data);
     }
 }

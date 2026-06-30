@@ -1,26 +1,18 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\IpAddress;
+use Mautic\PointBundle\Entity\Group;
 
-/**
- * Class PointsChangeLog.
- */
 class PointsChangeLog
 {
+    public const TABLE_NAME = 'lead_points_change_log';
+
     /**
-     * @var int
+     * @var string
      */
     private $id;
 
@@ -30,7 +22,7 @@ class PointsChangeLog
     private $lead;
 
     /**
-     * @var \Mautic\CoreBundle\Entity\IpAddress
+     * @var IpAddress|null
      */
     private $ipAddress;
 
@@ -55,23 +47,25 @@ class PointsChangeLog
     private $delta;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    private ?Group $group = null;
+
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
-        $builder->setTable('lead_points_change_log')
-            ->setCustomRepositoryClass('Mautic\LeadBundle\Entity\PointsChangeLogRepository')
+        $builder->setTable(self::TABLE_NAME)
+            ->setCustomRepositoryClass(PointsChangeLogRepository::class)
             ->addIndex(['date_added'], 'point_date_added');
 
         $builder->addBigIntIdField();
 
         $builder->addLead(false, 'CASCADE', false, 'pointsChangeLog');
 
-        $builder->addIpAddress();
+        $builder->addIpAddress(true);
 
         $builder->createField('type', 'text')
             ->length(50)
@@ -87,27 +81,27 @@ class PointsChangeLog
 
         $builder->addField('delta', 'integer');
 
+        $builder->createManyToOne('group', Group::class)
+            ->addJoinColumn('group_id', 'id', true, false, 'CASCADE')
+            ->build();
+
         $builder->addDateAdded();
     }
 
     /**
      * Get id.
-     *
-     * @return int
      */
-    public function getId()
+    public function getId(): int
     {
-        return $this->id;
+        return (int) $this->id;
     }
 
     /**
      * Set type.
      *
      * @param string $type
-     *
-     * @return PointsChangeLog
      */
-    public function setType($type)
+    public function setType($type): static
     {
         $this->type = $type;
 
@@ -128,10 +122,8 @@ class PointsChangeLog
      * Set eventName.
      *
      * @param string $eventName
-     *
-     * @return PointsChangeLog
      */
-    public function setEventName($eventName)
+    public function setEventName($eventName): static
     {
         $this->eventName = $eventName;
 
@@ -152,10 +144,8 @@ class PointsChangeLog
      * Set actionName.
      *
      * @param string $actionName
-     *
-     * @return PointsChangeLog
      */
-    public function setActionName($actionName)
+    public function setActionName($actionName): static
     {
         $this->actionName = $actionName;
 
@@ -176,10 +166,8 @@ class PointsChangeLog
      * Set delta.
      *
      * @param int $delta
-     *
-     * @return PointsChangeLog
      */
-    public function setDelta($delta)
+    public function setDelta($delta): static
     {
         $this->delta = $delta;
 
@@ -200,10 +188,8 @@ class PointsChangeLog
      * Set dateAdded.
      *
      * @param \DateTime $dateAdded
-     *
-     * @return PointsChangeLog
      */
-    public function setDateAdded($dateAdded)
+    public function setDateAdded($dateAdded): static
     {
         $this->dateAdded = $dateAdded;
 
@@ -213,7 +199,7 @@ class PointsChangeLog
     /**
      * Get dateAdded.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateAdded()
     {
@@ -222,10 +208,8 @@ class PointsChangeLog
 
     /**
      * Set lead.
-     *
-     * @return PointsChangeLog
      */
-    public function setLead(\Mautic\LeadBundle\Entity\Lead $lead)
+    public function setLead(Lead $lead): static
     {
         $this->lead = $lead;
 
@@ -235,19 +219,14 @@ class PointsChangeLog
     /**
      * Get lead.
      *
-     * @return \Mautic\LeadBundle\Entity\Lead
+     * @return Lead
      */
     public function getLead()
     {
         return $this->lead;
     }
 
-    /**
-     * Set ipAddress.
-     *
-     * @return PointsChangeLog
-     */
-    public function setIpAddress(\Mautic\CoreBundle\Entity\IpAddress $ipAddress)
+    public function setIpAddress(IpAddress $ipAddress): static
     {
         $this->ipAddress = $ipAddress;
 
@@ -255,12 +234,20 @@ class PointsChangeLog
     }
 
     /**
-     * Get ipAddress.
-     *
-     * @return \Mautic\CoreBundle\Entity\IpAddress
+     * @return IpAddress|null
      */
     public function getIpAddress()
     {
         return $this->ipAddress;
+    }
+
+    public function getGroup(): ?Group
+    {
+        return $this->group;
+    }
+
+    public function setGroup(Group $group): void
+    {
+        $this->group = $group;
     }
 }

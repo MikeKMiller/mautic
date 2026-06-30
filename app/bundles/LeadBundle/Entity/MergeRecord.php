@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
@@ -27,7 +18,7 @@ class MergeRecord
     private $contact;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
@@ -41,12 +32,12 @@ class MergeRecord
      */
     private $mergedId;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('contact_merge_records')
-            ->setCustomRepositoryClass('Mautic\LeadBundle\Entity\MergeRecordRepository')
+            ->setCustomRepositoryClass(MergeRecordRepository::class)
             ->addIndex(['date_added'], 'contact_merge_date_added')
             ->addIndex(['merged_id'], 'contact_merge_ids');
 
@@ -77,10 +68,7 @@ class MergeRecord
         return $this->contact;
     }
 
-    /**
-     * @return MergeRecord
-     */
-    public function setContact(Lead $contact)
+    public function setContact(Lead $contact): static
     {
         $this->contact = $contact;
 
@@ -88,19 +76,14 @@ class MergeRecord
     }
 
     /**
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateAdded()
     {
         return $this->dateAdded;
     }
 
-    /**
-     * @param \DateTime $dateAdded
-     *
-     * @return MergeRecord
-     */
-    public function setDateAdded(\DateTime $dateAdded = null)
+    public function setDateAdded(?\DateTime $dateAdded = null): static
     {
         if (null === $dateAdded) {
             $dateAdded = new \DateTime();
@@ -121,10 +104,8 @@ class MergeRecord
 
     /**
      * @param string $name
-     *
-     * @return MergeRecord
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->name = $name;
 
@@ -141,10 +122,8 @@ class MergeRecord
 
     /**
      * @param int $mergedId
-     *
-     * @return MergeRecord
      */
-    public function setMergedId($mergedId)
+    public function setMergedId($mergedId): static
     {
         $this->mergedId = (int) $mergedId;
 

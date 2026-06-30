@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\NotificationBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
@@ -23,7 +14,7 @@ class PushID
     private $id;
 
     /**
-     * @var \Mautic\LeadBundle\Entity\Lead
+     * @var Lead|null
      */
     private $lead;
 
@@ -42,15 +33,15 @@ class PushID
      */
     private $mobile;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('push_ids')
-            ->setCustomRepositoryClass('Mautic\NotificationBundle\Entity\PushIDRepository');
+            ->setCustomRepositoryClass(PushIDRepository::class);
 
         $builder->createField('id', 'integer')
-            ->isPrimaryKey()
+            ->makePrimaryKey()
             ->generatedValue()
             ->build();
 
@@ -59,7 +50,7 @@ class PushID
             ->nullable(false)
             ->build();
 
-        $builder->createManyToOne('lead', 'Mautic\LeadBundle\Entity\Lead')
+        $builder->createManyToOne('lead', Lead::class)
             ->addJoinColumn('lead_id', 'id', true, false, 'SET NULL')
             ->inversedBy('pushIds')
             ->build();
@@ -69,7 +60,7 @@ class PushID
     }
 
     /**
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
@@ -78,10 +69,8 @@ class PushID
 
     /**
      * @param int $id
-     *
-     * @return $this
      */
-    public function setId($id)
+    public function setId($id): static
     {
         $this->id = $id;
 
@@ -89,17 +78,14 @@ class PushID
     }
 
     /**
-     * @return \Mautic\LeadBundle\Entity\Lead
+     * @return Lead|null
      */
     public function getLead()
     {
         return $this->lead;
     }
 
-    /**
-     * @return $this
-     */
-    public function setLead(Lead $lead)
+    public function setLead(Lead $lead): static
     {
         $this->lead = $lead;
 
@@ -107,7 +93,7 @@ class PushID
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getPushID()
     {
@@ -116,10 +102,8 @@ class PushID
 
     /**
      * @param string $pushID
-     *
-     * @return $this
      */
-    public function setPushID($pushID)
+    public function setPushID($pushID): static
     {
         $this->pushID = $pushID;
 
@@ -127,19 +111,14 @@ class PushID
     }
 
     /**
-     * @return bool
+     * @return bool|null
      */
     public function isEnabled()
     {
         return $this->enabled;
     }
 
-    /**
-     * @param $enabled
-     *
-     * @return $this
-     */
-    public function setEnabled($enabled)
+    public function setEnabled($enabled): static
     {
         $this->enabled = $enabled;
 
@@ -147,7 +126,7 @@ class PushID
     }
 
     /**
-     * @return bool
+     * @return bool|null
      */
     public function isMobile()
     {
@@ -156,10 +135,8 @@ class PushID
 
     /**
      * @param bool $mobile
-     *
-     * @return $this
      */
-    public function setMobile($mobile)
+    public function setMobile($mobile): static
     {
         $this->mobile = $mobile;
 

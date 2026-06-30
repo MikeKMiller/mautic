@@ -1,98 +1,72 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\Event;
 
+use Mautic\LeadBundle\Entity\Lead;
 use Mautic\PageBundle\Entity\Page;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
-/**
- * Class PageDisplayEvent.
- */
 class PageDisplayEvent extends Event
 {
     /**
-     * @var string
+     * Preferred lead to be used in listeners.
      */
-    private $content;
+    private ?Lead $lead = null;
 
-    /**
-     * @var Page
-     */
-    private $page;
-
-    /**
-     * @var array
-     */
-    private $params;
-
-    /**
-     * PageDisplayEvent constructor.
-     *
-     * @param $content
-     */
-    public function __construct($content, Page $page, array $params = [])
-    {
-        $this->page    = $page;
-        $this->content = $content;
-        $this->params  = $params;
+    public function __construct(
+        private string $content,
+        private readonly Page $page,
+        private array $params = [],
+    ) {
     }
 
     /**
      * Returns the Page entity.
-     *
-     * @return Page
      */
-    public function getPage()
+    public function getPage(): Page
     {
         return $this->page;
     }
 
     /**
      * Get page content.
-     *
-     * @return string
      */
-    public function getContent()
+    public function getContent(): string
     {
         return $this->content;
     }
 
     /**
      * Set page content.
-     *
-     * @param string $content
      */
-    public function setContent($content)
+    public function setContent(string $content): void
     {
         $this->content = $content;
     }
 
     /**
      * Get params.
-     *
-     * @return array
      */
-    public function getParams()
+    public function getParams(): array
     {
         return $this->params;
     }
 
     /**
      * Set params.
-     *
-     * @param array $params
      */
-    public function setParams($params)
+    public function setParams(array $params): void
     {
         $this->params = $params;
+    }
+
+    public function getLead(): ?Lead
+    {
+        return $this->lead;
+    }
+
+    public function setLead(Lead $lead): void
+    {
+        $this->lead = $lead;
     }
 }

@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Tests\MonitoredEmail;
 
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
@@ -16,7 +7,7 @@ use Mautic\CoreBundle\Helper\PathsHelper;
 
 class MailboxTest extends \PHPUnit\Framework\TestCase
 {
-    public function testConstructWithDefaultConfig()
+    public function testConstructWithDefaultConfig(): void
     {
         $expected = [
             'host'            => '',
@@ -27,20 +18,16 @@ class MailboxTest extends \PHPUnit\Framework\TestCase
             'use_attachments' => false,
         ];
 
-        $parametersHelper = $this->getMockBuilder(CoreParametersHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $parametersHelper = $this->createStub(CoreParametersHelper::class);
 
-        $pathsHelper = $this->getMockBuilder(PathsHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pathsHelper = $this->createStub(PathsHelper::class);
 
         $mailbox = new \Mautic\EmailBundle\MonitoredEmail\Mailbox($parametersHelper, $pathsHelper);
 
         $this->assertEquals($expected, $mailbox->getMailboxSettings());
     }
 
-    public function testSettingsForMonitoredEmailWithoutOverride()
+    public function testSettingsForMonitoredEmailWithoutOverride(): void
     {
         $config = [
             'general' => [
@@ -64,19 +51,15 @@ class MailboxTest extends \PHPUnit\Framework\TestCase
             ],
         ];
 
-        $parametersHelper = $this->getMockBuilder(CoreParametersHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $parametersHelper = $this->createMock(CoreParametersHelper::class);
         $parametersHelper->expects($this->once())
             ->method('get')
-            ->will($this->returnValue($config));
+            ->willReturn($config);
 
-        $pathsHelper = $this->getMockBuilder(PathsHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pathsHelper = $this->createMock(PathsHelper::class);
         $pathsHelper->expects($this->once())
             ->method('getSystemPath')
-            ->will($this->returnValue(__DIR__.'/../../../../cache/'));
+            ->willReturn(__DIR__.'/../../../../cache/');
 
         $mailbox = new \Mautic\EmailBundle\MonitoredEmail\Mailbox($parametersHelper, $pathsHelper);
 
@@ -87,7 +70,7 @@ class MailboxTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals('foo@bar.com', $settings['address']);
     }
 
-    public function testSettingsForMonitoredEmailWithOverride()
+    public function testSettingsForMonitoredEmailWithOverride(): void
     {
         $config = [
             'general' => [
@@ -111,19 +94,15 @@ class MailboxTest extends \PHPUnit\Framework\TestCase
             ],
         ];
 
-        $parametersHelper = $this->getMockBuilder(CoreParametersHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $parametersHelper = $this->createMock(CoreParametersHelper::class);
         $parametersHelper->expects($this->once())
             ->method('get')
-            ->will($this->returnValue($config));
+            ->willReturn($config);
 
-        $pathsHelper = $this->getMockBuilder(PathsHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pathsHelper = $this->createMock(PathsHelper::class);
         $pathsHelper->expects($this->once())
             ->method('getSystemPath')
-            ->will($this->returnValue(__DIR__.'/../../../../cache/'));
+            ->willReturn(__DIR__.'/../../../../cache/');
 
         $mailbox = new \Mautic\EmailBundle\MonitoredEmail\Mailbox($parametersHelper, $pathsHelper);
 
@@ -134,7 +113,7 @@ class MailboxTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals('bar@foo.com', $settings['address']);
     }
 
-    public function testUseAttachments()
+    public function testUseAttachments(): void
     {
         // Test undefined $this->settings['use_attachments']
         // will not invoke undefined index error or mkdir error
@@ -149,16 +128,12 @@ class MailboxTest extends \PHPUnit\Framework\TestCase
             ],
         ];
 
-        $parametersHelper = $this->getMockBuilder(CoreParametersHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $parametersHelper = $this->createMock(CoreParametersHelper::class);
         $parametersHelper->expects($this->once())
             ->method('get')
-            ->will($this->returnValue($config));
+            ->willReturn($config);
 
-        $pathsHelper = $this->getMockBuilder(PathsHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pathsHelper = $this->createMock(PathsHelper::class);
 
         new \Mautic\EmailBundle\MonitoredEmail\Mailbox($parametersHelper, $pathsHelper);
 
@@ -176,21 +151,46 @@ class MailboxTest extends \PHPUnit\Framework\TestCase
             ],
         ];
 
-        $parametersHelper = $this->getMockBuilder(CoreParametersHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $parametersHelper = $this->createMock(CoreParametersHelper::class);
         $parametersHelper->expects($this->once())
             ->method('get')
-            ->will($this->returnValue($config));
+            ->willReturn($config);
 
-        $pathsHelper = $this->getMockBuilder(PathsHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $pathsHelper = $this->createMock(PathsHelper::class);
         $pathsHelper->expects($this->once())
             ->method('getSystemPath')
             ->with('tmp', true)
-            ->will($this->returnValue(__DIR__.'/../../../../cache/tmp'));
+            ->willReturn(__DIR__.'/../../../../cache/tmp');
 
         new \Mautic\EmailBundle\MonitoredEmail\Mailbox($parametersHelper, $pathsHelper);
+    }
+
+    public function testIsConnectedReturnsFalseOnValueError(): void
+    {
+        $parametersHelper = $this->createMock(CoreParametersHelper::class);
+        $parametersHelper->method('get')->willReturn(
+            [
+                'general' => [
+                    'host'     => 'localhost',
+                    'port'     => '993',
+                    'user'     => 'test',
+                    'password' => 'test',
+                ],
+            ]
+        );
+
+        $pathsHelper = $this->createStub(PathsHelper::class);
+
+        $mailbox = new \Mautic\EmailBundle\MonitoredEmail\Mailbox($parametersHelper, $pathsHelper);
+
+        $reflection = new \ReflectionClass($mailbox);
+
+        // Set a value that is not an IMAP\Connection resource to trigger ValueError in imap_ping
+        $imapStreamProperty = $reflection->getProperty('imapStream');
+        $imapStreamProperty->setValue($mailbox, new \stdClass());
+
+        $isConnectedMethod = $reflection->getMethod('isConnected');
+
+        $this->assertFalse($isConnectedMethod->invoke($mailbox));
     }
 }

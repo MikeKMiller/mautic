@@ -1,60 +1,87 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\FormBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
+use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 
-/**
- * Class Action.
- */
-class Action
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('form:forms:viewown')"),
+        new Post(security: "is_granted('form:forms:create')"),
+        new Get(security: "is_granted('form:forms:viewown', object)"),
+        new Put(security: "is_granted('form:forms:editown', object)"),
+        new Patch(security: "is_granted('form:forms:editother', object)"),
+        new Delete(security: "is_granted('form:forms:deleteown', object)"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['action:read'],
+        'swagger_definition_name' => 'Read',
+    ],
+    denormalizationContext: [
+        'groups'                  => ['action:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Action implements UuidInterface
 {
+    use UuidTrait;
+
+    public const ENTITY_NAME = 'form_action';
+
     /**
      * @var int
      */
+    #[Groups(['action:read', 'form:read'])]
     private $id;
 
     /**
      * @var string
      */
+    #[Groups(['action:read', 'action:write', 'form:read'])]
     private $name;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['action:read', 'action:write', 'form:read'])]
     private $description;
 
     /**
      * @var string
      */
+    #[Groups(['action:read', 'action:write', 'form:read'])]
     private $type;
 
     /**
      * @var int
      */
+    #[Groups(['action:read', 'action:write', 'form:read'])]
     private $order = 0;
 
     /**
      * @var array
      */
+    #[Groups(['action:read', 'action:write', 'form:read'])]
     private $properties = [];
 
     /**
-     * @var Form
+     * @var Form|null
      */
+    #[Groups(['action:read', 'action:write', 'form:read'])]
     private $form;
 
     /**
@@ -62,21 +89,18 @@ class Action
      */
     private $changes;
 
-    /**
-     * Reset properties on clone.
-     */
     public function __clone()
     {
         $this->id   = null;
         $this->form = null;
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('form_actions')
-            ->setCustomRepositoryClass('Mautic\FormBundle\Entity\ActionRepository')
+            ->setCustomRepositoryClass(ActionRepository::class)
             ->addIndex(['type'], 'form_action_type_search');
 
         $builder->addIdColumns();
@@ -94,15 +118,16 @@ class Action
         $builder->createManyToOne('form', 'Form')
             ->inversedBy('actions')
             ->addJoinColumn('form_id', 'id', false, false, 'CASCADE')
+            ->isOwnershipParent()
             ->build();
+
+        static::addUuidField($builder);
     }
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('form')
             ->addProperties(
@@ -118,7 +143,7 @@ class Action
             ->build();
     }
 
-    public static function loadValidatorMetadata(ClassMetadata $metadata)
+    public static function loadValidatorMetadata(ClassMetadata $metadata): void
     {
         $metadata->addPropertyConstraint('type', new Assert\NotBlank([
             'message' => 'mautic.core.name.required',
@@ -126,11 +151,7 @@ class Action
         ]));
     }
 
-    /**
-     * @param $prop
-     * @param $val
-     */
-    private function isChanged($prop, $val)
+    private function isChanged(string $prop, $val): void
     {
         if ($this->$prop != $val) {
             $this->changes[$prop] = [$this->$prop, $val];
@@ -148,7 +169,7 @@ class Action
     /**
      * Get id.
      *
-     * @return int
+     * @return int|null
      */
     public function getId()
     {
@@ -159,10 +180,8 @@ class Action
      * Set order.
      *
      * @param int $order
-     *
-     * @return Action
      */
-    public function setOrder($order)
+    public function setOrder($order): static
     {
         $this->isChanged('order', $order);
 
@@ -185,10 +204,8 @@ class Action
      * Set properties.
      *
      * @param array $properties
-     *
-     * @return Action
      */
-    public function setProperties($properties)
+    public function setProperties($properties): static
     {
         $this->isChanged('properties', $properties);
 
@@ -209,10 +226,8 @@ class Action
 
     /**
      * Set form.
-     *
-     * @return Action
      */
-    public function setForm(Form $form)
+    public function setForm(Form $form): static
     {
         $this->form = $form;
 
@@ -222,7 +237,7 @@ class Action
     /**
      * Get form.
      *
-     * @return Form
+     * @return Form|null
      */
     public function getForm()
     {
@@ -233,10 +248,8 @@ class Action
      * Set type.
      *
      * @param string $type
-     *
-     * @return Action
      */
-    public function setType($type)
+    public function setType($type): static
     {
         $this->isChanged('type', $type);
         $this->type = $type;
@@ -247,17 +260,14 @@ class Action
     /**
      * Get type.
      *
-     * @return string
+     * @return string|null
      */
     public function getType()
     {
         return $this->type;
     }
 
-    /**
-     * @return array
-     */
-    public function convertToArray()
+    public function convertToArray(): array
     {
         return get_object_vars($this);
     }
@@ -266,10 +276,8 @@ class Action
      * Set description.
      *
      * @param string $description
-     *
-     * @return Action
      */
-    public function setDescription($description)
+    public function setDescription($description): static
     {
         $this->isChanged('description', $description);
         $this->description = $description;
@@ -280,7 +288,7 @@ class Action
     /**
      * Get description.
      *
-     * @return string
+     * @return string|null
      */
     public function getDescription()
     {
@@ -291,10 +299,8 @@ class Action
      * Set name.
      *
      * @param string $name
-     *
-     * @return Action
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->isChanged('name', $name);
         $this->name = $name;
@@ -305,10 +311,15 @@ class Action
     /**
      * Get name.
      *
-     * @return string
+     * @return string|null
      */
     public function getName()
     {
         return $this->name;
+    }
+
+    public function getPermissionUser(): mixed
+    {
+        return $this->getForm()?->getCreatedBy();
     }
 }

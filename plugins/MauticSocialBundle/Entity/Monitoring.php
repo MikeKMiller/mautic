@@ -1,88 +1,118 @@
 <?php
 
-/*
- * @copyright   2016 Mautic, Inc. All rights reserved
- * @author      Mautic, Inc
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticSocialBundle\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\CoreBundle\Entity\FormEntity;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
+use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 
-/**
- * Class Monitoring.
- */
-class Monitoring extends FormEntity
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('mauticSocial:monitoring:view')"),
+        new Post(security: "is_granted('mauticSocial:monitoring:create')"),
+        new Get(security: "is_granted('mauticSocial:monitoring:view')"),
+        new Put(security: "is_granted('mauticSocial:monitoring:edit')"),
+        new Patch(security: "is_granted('mauticSocial:monitoring:edit')"),
+        new Delete(security: "is_granted('mauticSocial:monitoring:delete')"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['monitoring:read'],
+        'swagger_definition_name' => 'Read',
+        'api_included'            => ['category'],
+    ],
+    denormalizationContext: [
+        'groups'                  => ['monitoring:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Monitoring extends FormEntity implements UuidInterface
 {
+    use UuidTrait;
+
     /**
      * @var int
      */
+    #[Groups(['monitoring:read'])]
     private $id;
 
     /**
      * @var string
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $title;
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $description;
 
     /**
-     * @var \Mautic\CategoryBundle\Entity\Category
+     * @var \Mautic\CategoryBundle\Entity\Category|null
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $category;
 
     /**
      * @var array
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $lists = [];
 
     /**
-     * @var string
+     * @var string|null
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $networkType;
 
     /**
      * @var int
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $revision = 1;
 
     /**
      * @var array
      */
+    #[Groups(['monitoring:read'])]
     private $stats = [];
 
     /**
      * @var array
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $properties = [];
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $publishDown;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
+    #[Groups(['monitoring:read', 'monitoring:write'])]
     private $publishUp;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('monitoring')
-            ->setCustomRepositoryClass('MauticPlugin\MauticSocialBundle\Entity\MonitoringRepository')
+            ->setCustomRepositoryClass(MonitoringRepository::class)
             ->addLifecycleEvent('cleanMonitorData', 'preUpdate')
             ->addLifecycleEvent('cleanMonitorData', 'prePersist');
 
@@ -101,12 +131,14 @@ class Monitoring extends FormEntity
         $builder->addNullableField('properties', 'array');
 
         $builder->addPublishDates();
+
+        static::addUuidField($builder);
     }
 
     /**
      * Constraints for required fields.
      */
-    public static function loadValidatorMetadata(ClassMetadata $metadata)
+    public static function loadValidatorMetadata(ClassMetadata $metadata): void
     {
         $metadata->addPropertyConstraint('title', new Assert\NotBlank(
             ['message' => 'mautic.core.title.required']
@@ -208,7 +240,7 @@ class Monitoring extends FormEntity
     /**
      * Get publishDown.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getPublishDown()
     {
@@ -218,7 +250,7 @@ class Monitoring extends FormEntity
     /**
      * Get publishUp.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getPublishUp()
     {
@@ -228,9 +260,9 @@ class Monitoring extends FormEntity
     /**
      * Set the category id.
      *
-     * @param int $category
+     * @param \Mautic\CategoryBundle\Entity\Category|null $category
      */
-    public function setCategory($category)
+    public function setCategory($category): void
     {
         $this->isChanged('category', $category);
         $this->category = $category;
@@ -240,10 +272,8 @@ class Monitoring extends FormEntity
      * Set description.
      *
      * @param string $description
-     *
-     * @return Monitoring
      */
-    public function setDescription($description)
+    public function setDescription($description): static
     {
         $this->isChanged('description', $description);
         $this->description = $description;
@@ -253,12 +283,8 @@ class Monitoring extends FormEntity
 
     /**
      * Set the monitor lists.
-     *
-     * @param $lists
-     *
-     * @return Monitoring
      */
-    public function setLists($lists)
+    public function setLists($lists): static
     {
         $this->isChanged('lists', $lists);
         $this->lists = $lists;
@@ -268,12 +294,8 @@ class Monitoring extends FormEntity
 
     /**
      * Set the network type.
-     *
-     * @param $networkType
-     *
-     * @return Monitoring
      */
-    public function setNetworkType($networkType)
+    public function setNetworkType($networkType): static
     {
         $this->isChanged('networkType', $networkType);
         $this->networkType = $networkType;
@@ -285,10 +307,8 @@ class Monitoring extends FormEntity
      * Set the revision counter.
      *
      * @param int $revision
-     *
-     * @return Monitoring
      */
-    public function setRevision($revision)
+    public function setRevision($revision): static
     {
         $this->isChanged('revision', $revision);
         $this->revision = $revision;
@@ -300,10 +320,8 @@ class Monitoring extends FormEntity
      * Set the statistics.
      *
      * @param array $stats
-     *
-     * @return Monitoring
      */
-    public function setStats($stats)
+    public function setStats($stats): static
     {
         $this->isChanged('stats', $stats);
         $this->stats = $stats;
@@ -315,10 +333,8 @@ class Monitoring extends FormEntity
      * Set name.
      *
      * @param string $title
-     *
-     * @return Monitoring
      */
-    public function setTitle($title)
+    public function setTitle($title): static
     {
         $this->isChanged('title', $title);
         $this->title = $title;
@@ -330,10 +346,8 @@ class Monitoring extends FormEntity
      * Set properties.
      *
      * @param array $properties
-     *
-     * @return Monitoring
      */
-    public function setProperties($properties)
+    public function setProperties($properties): static
     {
         $this->isChanged('properties', $properties);
         $this->properties = $properties;
@@ -345,10 +359,8 @@ class Monitoring extends FormEntity
      * Set publishDown.
      *
      * @param \DateTime $publishDown
-     *
-     * @return Monitoring
      */
-    public function setPublishDown($publishDown)
+    public function setPublishDown($publishDown): static
     {
         $this->isChanged('publishDown', $publishDown);
         $this->publishDown = $publishDown;
@@ -360,10 +372,8 @@ class Monitoring extends FormEntity
      * Set publishUp.
      *
      * @param \DateTime $publishUp
-     *
-     * @return Monitoring
      */
-    public function setPublishUp($publishUp)
+    public function setPublishUp($publishUp): static
     {
         $this->isChanged('publishUp', $publishUp);
         $this->publishUp = $publishUp;
@@ -374,7 +384,7 @@ class Monitoring extends FormEntity
     /**
      * Clear out old properties data.
      */
-    public function cleanMonitorData()
+    public function cleanMonitorData(): void
     {
         $property = $this->getProperties();
 

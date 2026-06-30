@@ -1,22 +1,14 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Entity;
 
-use Mautic\LeadBundle\Entity\CustomFieldRepositoryTrait;
+use Mautic\LeadBundle\Entity\LeadRepository;
 use Mautic\LeadBundle\Tests\StandardImportTestHelper;
 
 class CustomFieldRepositoryTraitTest extends StandardImportTestHelper
 {
-    private $fields = [
+    /** @var array<string, array<string, mixed>> */
+    private array $fields = [
         'firstname' => [
             'id'       => 2,
             'label'    => 'First Name',
@@ -46,49 +38,56 @@ class CustomFieldRepositoryTraitTest extends StandardImportTestHelper
         ],
     ];
 
-    private $fieldValues = [
+    /** @var array<string, string> */
+    private array $fieldValues = [
         'preferred_profile_image' => 'gravatar',
         'firstname'               => 'John',
         'lastname'                => 'Doe',
         'twitter'                 => 'johndoe',
     ];
 
-    protected $fixedFields = [
+    /** @var array<string, string> */
+    protected array $fixedFields = [
         'firstname' => 'firstname',
         'lastname'  => 'lastname',
     ];
 
-    protected $baseColumns = [
+    /** @var array<int, string> */
+    protected array $baseColumns = [
         'preferred_profile_image',
         'firstname',
         'lastname',
     ];
 
-    protected $fieldGroups = [
+    /** @var array<int, string> */
+    protected array $fieldGroups = [
         'core',
         'social',
         'personal',
         'professional',
     ];
 
-    public function testFormatFieldValues()
+    public function testFormatFieldValues(): void
     {
-        $mockTrait = $this->getMockForTrait(CustomFieldRepositoryTrait::class, [], '', false, true, true, ['getCustomFieldList', 'getBaseColumns', 'getClassName', 'getFieldGroups']);
-        $mockTrait->method('getCustomFieldList')
-            ->will($this->returnValue([$this->fields, $this->fixedFields]));
+        $mockWithTrait = $this->getMockBuilder(LeadRepository::class)
+            ->disableOriginalConstructor()
+            ->enableOriginalClone()
+            ->onlyMethods(['getCustomFieldList', 'getBaseColumns', 'getClassName', 'getFieldGroups'])
+            ->getMock();
+        $mockWithTrait->method('getCustomFieldList')
+            ->willReturn([$this->fields, $this->fixedFields]);
 
-        $mockTrait->method('getBaseColumns')
-            ->will($this->returnValue($this->baseColumns));
+        $mockWithTrait->method('getBaseColumns')
+            ->willReturn($this->baseColumns);
 
-        $mockTrait->method('getClassName')
-            ->will($this->returnValue('Mautic\LeadBundle\Entity\Lead'));
+        $mockWithTrait->method('getClassName')
+            ->willReturn(\Mautic\LeadBundle\Entity\Lead::class);
 
-        $mockTrait->method('getFieldGroups')
-            ->will($this->returnValue($this->fieldGroups));
+        $mockWithTrait->method('getFieldGroups')
+            ->willReturn($this->fieldGroups);
 
-        $reflectedMockTrait = new \ReflectionObject($mockTrait);
+        $reflectedMockTrait = new \ReflectionObject($mockWithTrait);
         $method             = $reflectedMockTrait->getMethod('formatFieldValues');
-        $method->setAccessible(true);
 
         $expected = [
             'core' => [
@@ -129,28 +128,32 @@ class CustomFieldRepositoryTraitTest extends StandardImportTestHelper
             'professional' => [],
         ];
 
-        $result = $method->invokeArgs($mockTrait, [$this->fieldValues]);
+        $result = $method->invokeArgs($mockWithTrait, [$this->fieldValues]);
         $this->assertSame($expected, $result);
     }
 
-    public function testFormatFieldValuesWhenAFieldIsUnpublished()
+    public function testFormatFieldValuesWhenAFieldIsUnpublished(): void
     {
-        $mockTrait = $this->getMockForTrait(CustomFieldRepositoryTrait::class, [], '', false, true, true, ['getCustomFieldList', 'getBaseColumns', 'getClassName', 'getFieldGroups']);
-        $mockTrait->method('getCustomFieldList')
-            ->will($this->returnValue([$this->fields, $this->fixedFields]));
+        $mockWithTrait = $this->getMockBuilder(LeadRepository::class)
+            ->disableOriginalConstructor()
+            ->enableOriginalClone()
+            ->onlyMethods(['getCustomFieldList', 'getBaseColumns', 'getClassName', 'getFieldGroups'])
+            ->getMock();
 
-        $mockTrait->method('getBaseColumns')
-            ->will($this->returnValue($this->baseColumns));
+        $mockWithTrait->method('getCustomFieldList')
+            ->willReturn([$this->fields, $this->fixedFields]);
 
-        $mockTrait->method('getClassName')
-            ->will($this->returnValue('Mautic\LeadBundle\Entity\Lead'));
+        $mockWithTrait->method('getBaseColumns')
+            ->willReturn($this->baseColumns);
 
-        $mockTrait->method('getFieldGroups')
-            ->will($this->returnValue($this->fieldGroups));
+        $mockWithTrait->method('getClassName')
+            ->willReturn(\Mautic\LeadBundle\Entity\Lead::class);
 
-        $reflectedMockTrait = new \ReflectionObject($mockTrait);
+        $mockWithTrait->method('getFieldGroups')
+            ->willReturn($this->fieldGroups);
+
+        $reflectedMockTrait = new \ReflectionObject($mockWithTrait);
         $method             = $reflectedMockTrait->getMethod('formatFieldValues');
-        $method->setAccessible(true);
 
         $expected = [
             'core' => [
@@ -196,7 +199,7 @@ class CustomFieldRepositoryTraitTest extends StandardImportTestHelper
         // Simulate unpublished field:
         unset($values['lastname']);
 
-        $result = $method->invokeArgs($mockTrait, [$values]);
+        $result = $method->invokeArgs($mockWithTrait, [$values]);
         $this->assertEquals($expected, $result);
     }
 }

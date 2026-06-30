@@ -1,32 +1,20 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * Class LeadDevice.
- */
 class LeadDevice
 {
     /**
-     * @var int
+     * @var string
      */
     private $id;
 
     /**
-     * @var \Mautic\LeadBundle\Entity\Lead
+     * @var Lead
      */
     private $lead;
 
@@ -36,56 +24,56 @@ class LeadDevice
     private $clientInfo = [];
 
     /**
-     * @var string
+     * @var string|null
      */
     private $device;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $deviceOsName;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $deviceOsShortName;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $deviceOsVersion;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $deviceOsPlatform;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $deviceBrand;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $deviceModel;
 
     /**
-     * @var string
+     * @var string|null
      */
     private $trackingId;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('lead_devices')
-            ->setCustomRepositoryClass('Mautic\LeadBundle\Entity\LeadDeviceRepository')
+            ->setCustomRepositoryClass(LeadDeviceRepository::class)
             ->addIndex(['date_added'], 'date_added_search')
             ->addIndex(['device'], 'device_search')
             ->addIndex(['device_os_name'], 'device_os_name_search')
@@ -147,10 +135,8 @@ class LeadDevice
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('leadDevice')
             ->addProperties(
@@ -170,24 +156,18 @@ class LeadDevice
             ->build();
     }
 
-    /**
-     * @return mixed
-     */
-    public function getId()
+    public function getId(): int
     {
-        return $this->id;
+        return (int) $this->id;
     }
 
-    /**
-     * @return string
-     */
-    public function getSignature()
+    public function getSignature(): string
     {
         return md5(json_encode($this->clientInfo).$this->device.$this->deviceOsName.$this->deviceOsPlatform.$this->deviceBrand.$this->deviceModel);
     }
 
     /**
-     * @return mixed
+     * @return array<mixed>
      */
     public function getClientInfo()
     {
@@ -197,13 +177,13 @@ class LeadDevice
     /**
      * @param mixed $clientInfo
      */
-    public function setClientInfo($clientInfo)
+    public function setClientInfo($clientInfo): void
     {
         $this->clientInfo = $clientInfo;
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getDevice()
     {
@@ -213,26 +193,26 @@ class LeadDevice
     /**
      * @param mixed $device
      */
-    public function setDevice($device)
+    public function setDevice($device): void
     {
         $this->device = $device;
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getDeviceBrand()
     {
         return $this->deviceBrand;
     }
 
-    public function setDeviceBrand($brand)
+    public function setDeviceBrand($brand): void
     {
         $this->deviceBrand = $brand;
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getDeviceModel()
     {
@@ -242,13 +222,13 @@ class LeadDevice
     /**
      * @param mixed $deviceModel
      */
-    public function setDeviceModel($deviceModel)
+    public function setDeviceModel($deviceModel): void
     {
         $this->deviceModel = $deviceModel;
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getDeviceOsName()
     {
@@ -257,10 +237,8 @@ class LeadDevice
 
     /**
      * @param string $deviceOsName
-     *
-     * @return $this
      */
-    public function setDeviceOsName($deviceOsName)
+    public function setDeviceOsName($deviceOsName): static
     {
         $this->deviceOsName = $deviceOsName;
 
@@ -268,7 +246,7 @@ class LeadDevice
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getDeviceOsShortName()
     {
@@ -277,10 +255,8 @@ class LeadDevice
 
     /**
      * @param string $deviceOsShortName
-     *
-     * @return $this
      */
-    public function setDeviceOsShortName($deviceOsShortName)
+    public function setDeviceOsShortName($deviceOsShortName): static
     {
         $this->deviceOsShortName = $deviceOsShortName;
 
@@ -288,7 +264,7 @@ class LeadDevice
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getDeviceOsVersion()
     {
@@ -297,10 +273,8 @@ class LeadDevice
 
     /**
      * @param string $deviceOsVersion
-     *
-     * @return $this
      */
-    public function setDeviceOsVersion($deviceOsVersion)
+    public function setDeviceOsVersion($deviceOsVersion): static
     {
         $this->deviceOsVersion = $deviceOsVersion;
 
@@ -308,7 +282,7 @@ class LeadDevice
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getDeviceOsPlatform()
     {
@@ -317,10 +291,8 @@ class LeadDevice
 
     /**
      * @param string $deviceOsPlatform
-     *
-     * @return $this
      */
-    public function setDeviceOsPlatform($deviceOsPlatform)
+    public function setDeviceOsPlatform($deviceOsPlatform): static
     {
         $this->deviceOsPlatform = $deviceOsPlatform;
 
@@ -338,7 +310,7 @@ class LeadDevice
     /**
      * @param array $deviceOs
      */
-    public function setDeviceOs($deviceOs)
+    public function setDeviceOs($deviceOs): void
     {
         if (isset($deviceOs['name'])) {
             $this->deviceOsName = $deviceOs['name'];
@@ -355,7 +327,7 @@ class LeadDevice
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getTrackingId()
     {
@@ -364,10 +336,8 @@ class LeadDevice
 
     /**
      * @param string $trackingId
-     *
-     * @return self
      */
-    public function setTrackingId($trackingId)
+    public function setTrackingId($trackingId): static
     {
         $this->trackingId = $trackingId;
 
@@ -382,10 +352,7 @@ class LeadDevice
         return $this->lead;
     }
 
-    /**
-     * @return $this
-     */
-    public function setLead(Lead $lead)
+    public function setLead(Lead $lead): static
     {
         $this->lead = $lead;
 
@@ -393,7 +360,7 @@ class LeadDevice
     }
 
     /**
-     * @return mixed
+     * @return \DateTimeInterface|null
      */
     public function getDateAdded()
     {
@@ -403,7 +370,7 @@ class LeadDevice
     /**
      * @param mixed $dateAdded
      */
-    public function setDateAdded($dateAdded)
+    public function setDateAdded($dateAdded): void
     {
         $this->dateAdded = $dateAdded;
     }

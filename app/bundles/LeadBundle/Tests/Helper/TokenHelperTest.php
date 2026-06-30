@@ -1,26 +1,24 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Helper;
 
+use Mautic\CoreBundle\Test\ReflectionHelper;
+use Mautic\LeadBundle\Entity\LeadFieldRepository;
+use Mautic\LeadBundle\Entity\LeadRepository;
 use Mautic\LeadBundle\Helper\TokenHelper;
-use ReflectionProperty;
 
 class TokenHelperTest extends \PHPUnit\Framework\TestCase
 {
-    private $lead = [
+    /**
+     * @var array<string, mixed>
+     */
+    private array $lead = [
         'firstname' => 'Bob',
         'lastname'  => 'Smith',
         'country'   => '',
         'date'      => '2000-05-05 12:45:50',
+        'select'    => 'first',
+        'bool'      => 1,
         'companies' => [
             [
                 'companyzip' => '77008',
@@ -30,17 +28,32 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
 
     protected function setUp(): void
     {
-        $reflectionProperty = new ReflectionProperty(TokenHelper::class, 'parameters');
-        $reflectionProperty->setAccessible(true);
-        $reflectionProperty->setValue([
+        ReflectionHelper::setStaticValue(TokenHelper::class, 'parameters', [
             'date_format_dateonly' => 'F j, Y',
             'date_format_timeonly' => 'g:i a',
         ]);
 
+        $fields = [
+            'select' => [
+                'type'       => 'select',
+                'properties' => 'a:1:{s:4:"list";a:2:{i:0;a:2:{s:5:"label";s:12:"First option";s:5:"value";s:5:"first";}i:1;a:2:{s:5:"label";s:13:"Second option";s:5:"value";s:6:"second";}}}',
+            ],
+            'bool'   => [
+                'type'       => 'boolean',
+                'properties' => 'a:2:{s:2:"no";s:2:"No";s:3:"yes";s:3:"Yes";}',
+            ],
+        ];
+        $leadFieldRepository = $this->createMock(LeadFieldRepository::class);
+        $leadFieldRepository
+            ->method('getFields')
+            ->willReturn($fields);
+
+        ReflectionHelper::setStaticValue(LeadRepository::class, 'leadFieldRepository', $leadFieldRepository);
+
         parent::setUp();
     }
 
-    public function testContactTokensAreReplaced()
+    public function testContactTokensAreReplaced(): void
     {
         $lead = [
             'firstname' => 'Bob',
@@ -52,14 +65,13 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
                 ],
             ],
         ];
-
         $token = '{contactfield=country}';
 
         $tokenList = TokenHelper::findLeadTokens($token, $lead);
         $this->assertEquals([$token => 'USA'], $tokenList);
     }
 
-    public function testCompanyTokensAreReplaced()
+    public function testCompanyTokensAreReplaced(): void
     {
         $leads = [
             [
@@ -67,7 +79,12 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
                 'lastname'  => 'Smith',
                 'companies' => [
                     [
+                        'companyzip' => '77009',
+                        'is_primary' => 0,
+                    ],
+                    [
                         'companyzip' => '77008',
+                        'is_primary' => 1,
                     ],
                 ],
             ],
@@ -94,7 +111,7 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals([$token => ''], $tokenList);
     }
 
-    public function testDefaultValueIsUsed()
+    public function testDefaultValueIsUsed(): void
     {
         $lead = [
             'firstname' => 'Bob',
@@ -113,7 +130,7 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals([$token => 'USA'], $tokenList);
     }
 
-    public function testValueIsUrlEncoded()
+    public function testValueIsUrlEncoded(): void
     {
         $lead = [
             'firstname' => 'Bob',
@@ -132,7 +149,7 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals([$token => 'Somewhere%26Else'], $tokenList);
     }
 
-    public function testGetValueFromTokensWhenSomeValue()
+    public function testGetValueFromTokensWhenSomeValue(): void
     {
         $token  = '{contactfield=website}';
         $tokens = [
@@ -144,7 +161,7 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
         );
     }
 
-    public function testGetValueFromTokensWhenSomeValueWithDefaultValue()
+    public function testGetValueFromTokensWhenSomeValueWithDefaultValue(): void
     {
         $token  = '{contactfield=website|ftp://default.url}';
         $tokens = [
@@ -156,7 +173,7 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
         );
     }
 
-    public function testGetValueFromTokensWhenNoValueWithDefaultValue()
+    public function testGetValueFromTokensWhenNoValueWithDefaultValue(): void
     {
         $token  = '{contactfield=website|ftp://default.url}';
         $tokens = [
@@ -168,7 +185,7 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
         );
     }
 
-    public function testGetValueFromTokensWhenNoValueWithoutDefaultValue()
+    public function testGetValueFromTokensWhenNoValueWithoutDefaultValue(): void
     {
         $token  = '{contactfield=website}';
         $tokens = [
@@ -180,28 +197,28 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
         );
     }
 
-    public function testDateTimeFormatValue()
+    public function testDateTimeFormatValue(): void
     {
         $token     = '{contactfield=date|datetime}';
         $tokenList = TokenHelper::findLeadTokens($token, $this->lead);
         $this->assertNotSame($this->lead['date'], $tokenList[$token]);
     }
 
-    public function testDateFormatValue()
+    public function testDateFormatValue(): void
     {
         $token     = '{contactfield=date|date}';
         $tokenList = TokenHelper::findLeadTokens($token, $this->lead);
         $this->assertNotSame($this->lead['date'], $tokenList[$token]);
     }
 
-    public function testTimeFormatValue()
+    public function testTimeFormatValue(): void
     {
         $token     = '{contactfield=date|time}';
         $tokenList = TokenHelper::findLeadTokens($token, $this->lead);
         $this->assertNotSame($this->lead['date'], $tokenList[$token]);
     }
 
-    public function testDateFormatForEmptyValue()
+    public function testDateFormatForEmptyValue(): void
     {
         $lead         = $this->lead;
         $lead['date'] = '';
@@ -209,5 +226,61 @@ class TokenHelperTest extends \PHPUnit\Framework\TestCase
         $token     = '{contactfield=date|time}';
         $tokenList = TokenHelper::findLeadTokens($token, $lead);
         $this->assertEmpty($tokenList[$token]);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('dataValidateToken')]
+    public function testValidToken(string $content, bool $expected): void
+    {
+        $this->assertSame($expected, TokenHelper::validToken($content));
+    }
+
+    /**
+     * @return iterable<mixed>
+     */
+    public static function dataValidateToken(): iterable
+    {
+        yield ['{contactfield=firstname}', true];
+        yield ['{contactfield=lastname}', true];
+        yield ['{contactfield}', false];
+        yield ['firstname', false];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('dataGetTokenFieldAlias')]
+    public function testGetTokenFieldAlias(string $content, string $expected): void
+    {
+        $this->assertSame($expected, TokenHelper::getTokenFieldAlias($content));
+    }
+
+    /**
+     * @return iterable<string[]>
+     */
+    public static function dataGetTokenFieldAlias(): iterable
+    {
+        yield ['{random}', ''];
+        yield ['{contactfield=firstname}', 'firstname'];
+        yield ['{contact_field=firstname}', ''];
+        yield ['{contactfield=randomField}', 'randomField'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('dataLabelProvider')]
+    public function testLabelFormatForSelect(string $token, string|int $result): void
+    {
+        $lead         = $this->lead;
+        $tokenList    = TokenHelper::findLeadTokens($token, $lead);
+        $this->assertEquals($result, $tokenList[$token]);
+    }
+
+    /**
+     * @return array<int, array<int, int|string>>
+     */
+    public static function dataLabelProvider(): array
+    {
+        return
+            [
+                ['{contactfield=select}', 'first'],
+                ['{contactfield=select|label}', 'First option'],
+                ['{contactfield=bool}', 1],
+                ['{contactfield=bool|label}', 'Yes'],
+            ];
     }
 }

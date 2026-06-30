@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\MonitoredEmail\Processor\Bounce;
 
 class BouncedEmail
@@ -33,10 +24,7 @@ class BouncedEmail
      */
     private $bounceType;
 
-    /**
-     * @var int
-     */
-    private $final = 0;
+    private bool $final = false;
 
     /**
      * @var string|null
@@ -53,10 +41,8 @@ class BouncedEmail
 
     /**
      * @param string $email
-     *
-     * @return BouncedEmail
      */
-    public function setContactEmail($email)
+    public function setContactEmail($email): static
     {
         $this->email = $email;
 
@@ -73,10 +59,8 @@ class BouncedEmail
 
     /**
      * @param string $ruleCategory
-     *
-     * @return BouncedEmail
      */
-    public function setRuleCategory($ruleCategory)
+    public function setRuleCategory($ruleCategory): static
     {
         $this->ruleCategory = $ruleCategory;
 
@@ -93,10 +77,8 @@ class BouncedEmail
 
     /**
      * @param string $ruleNumber
-     *
-     * @return BouncedEmail
      */
-    public function setRuleNumber($ruleNumber)
+    public function setRuleNumber($ruleNumber): static
     {
         $this->ruleNumber = $ruleNumber;
 
@@ -113,30 +95,23 @@ class BouncedEmail
 
     /**
      * @param mixed $bounceType
-     *
-     * @return BouncedEmail
      */
-    public function setType($bounceType)
+    public function setType($bounceType): static
     {
         $this->bounceType = $bounceType;
 
         return $this;
     }
 
-    /**
-     * @return int
-     */
-    public function isFinal()
+    public function isFinal(): bool
     {
         return $this->final;
     }
 
     /**
      * @param bool $final
-     *
-     * @return BouncedEmail
      */
-    public function setIsFinal($final)
+    public function setIsFinal($final): static
     {
         $this->final = (bool) $final;
 
@@ -151,12 +126,7 @@ class BouncedEmail
         return $this->bounceAddress;
     }
 
-    /**
-     * @param string $originalTo
-     *
-     * @return BouncedEmail
-     */
-    public function setBounceAddress($bounceAddress)
+    public function setBounceAddress($bounceAddress): static
     {
         $this->bounceAddress = $bounceAddress;
 

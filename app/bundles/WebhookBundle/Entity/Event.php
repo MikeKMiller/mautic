@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\WebhookBundle\Entity;
 
 use Doctrine\Common\Collections\ArrayCollection;
@@ -29,7 +20,7 @@ class Event
     private $webhook;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int, WebhookQueue>
      */
     private $queues;
 
@@ -43,7 +34,7 @@ class Event
         $this->queues = new ArrayCollection();
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
         $builder->setTable('webhook_events')
@@ -73,10 +64,8 @@ class Event
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('event')
             ->addListProperties(
@@ -88,7 +77,7 @@ class Event
     }
 
     /**
-     * @return mixed
+     * @return int|null
      */
     public function getId()
     {
@@ -96,17 +85,14 @@ class Event
     }
 
     /**
-     * @return Webhook
+     * @return Webhook|null
      */
     public function getWebhook()
     {
         return $this->webhook;
     }
 
-    /**
-     * @return $this
-     */
-    public function setWebhook(Webhook $webhook)
+    public function setWebhook(Webhook $webhook): static
     {
         $this->webhook = $webhook;
 
@@ -114,7 +100,7 @@ class Event
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getEventType()
     {
@@ -124,7 +110,7 @@ class Event
     /**
      * @param mixed $eventType
      */
-    public function setEventType($eventType)
+    public function setEventType($eventType): static
     {
         $this->eventType = $eventType;
 
@@ -133,10 +119,8 @@ class Event
 
     /**
      * @param ArrayCollection $queues
-     *
-     * @return self
      */
-    public function setQueues($queues)
+    public function setQueues($queues): static
     {
         $this->queues = $queues;
 

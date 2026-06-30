@@ -2,15 +2,6 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Tests\Unit\EventListener;
 
 use Doctrine\DBAL\Schema\Schema;
@@ -24,44 +15,48 @@ use Psr\Log\LoggerInterface;
 
 class DoctrineGeneratedColumnsListenerTest extends \PHPUnit\Framework\TestCase
 {
-    private $generatedColumnsProvider;
-    private $logger;
-    private $event;
-    private $schema;
-    private $table;
+    /**
+     * @var \PHPUnit\Framework\MockObject\MockObject&GenerateSchemaEventArgs
+     */
+    private \PHPUnit\Framework\MockObject\MockObject $event;
 
     /**
-     * @var DoctrineGeneratedColumnsListener
+     * @var \PHPUnit\Framework\MockObject\MockObject&Schema
      */
-    private $listener;
+    private \PHPUnit\Framework\MockObject\MockObject $schema;
+
+    /**
+     * @var \PHPUnit\Framework\MockObject\MockObject&Table
+     */
+    private \PHPUnit\Framework\MockObject\MockObject $table;
+
+    private DoctrineGeneratedColumnsListener $listener;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        defined('MAUTIC_TABLE_PREFIX') || define('MAUTIC_TABLE_PREFIX', getenv('MAUTIC_DB_PREFIX') ?: '');
-
-        $this->generatedColumnsProvider = $this->createMock(GeneratedColumnsProviderInterface::class);
-        $this->logger                   = $this->createMock(LoggerInterface::class);
+        $generatedColumnsProvider       = $this->createMock(GeneratedColumnsProviderInterface::class);
+        $logger                         = $this->createMock(LoggerInterface::class);
         $this->event                    = $this->createMock(GenerateSchemaEventArgs::class);
         $this->schema                   = $this->createMock(Schema::class);
         $this->table                    = $this->createMock(Table::class);
-        $this->listener                 = new DoctrineGeneratedColumnsListener($this->generatedColumnsProvider, $this->logger);
+        $this->listener                 = new DoctrineGeneratedColumnsListener($generatedColumnsProvider, $logger);
 
         $generatedColumn  = new GeneratedColumn('page_hits', 'generated_hit_date', 'DATE', 'not important');
         $generatedColumns = new GeneratedColumns();
 
         $generatedColumns->add($generatedColumn);
 
-        $this->generatedColumnsProvider->method('getGeneratedColumns')->willReturn($generatedColumns);
+        $generatedColumnsProvider->method('getGeneratedColumns')->willReturn($generatedColumns);
         $this->event->method('getSchema')->willReturn($this->schema);
     }
 
-    public function testPostGenerateSchemaWhenTableDoesNotExist()
+    public function testPostGenerateSchemaWhenTableDoesNotExist(): void
     {
         $this->schema->expects($this->once())
             ->method('hasTable')
-            ->with('page_hits')
+            ->with(MAUTIC_TABLE_PREFIX.'page_hits')
             ->willReturn(false);
 
         $this->schema->expects($this->never())
@@ -70,16 +65,16 @@ class DoctrineGeneratedColumnsListenerTest extends \PHPUnit\Framework\TestCase
         $this->listener->postGenerateSchema($this->event);
     }
 
-    public function testPostGenerateSchemaWhenColumnExists()
+    public function testPostGenerateSchemaWhenColumnExists(): void
     {
         $this->schema->expects($this->once())
             ->method('hasTable')
-            ->with('page_hits')
+            ->with(MAUTIC_TABLE_PREFIX.'page_hits')
             ->willReturn(true);
 
         $this->schema->expects($this->once())
             ->method('getTable')
-            ->with('page_hits')
+            ->with(MAUTIC_TABLE_PREFIX.'page_hits')
             ->willReturn($this->table);
 
         $this->table->expects($this->once())
@@ -93,16 +88,16 @@ class DoctrineGeneratedColumnsListenerTest extends \PHPUnit\Framework\TestCase
         $this->listener->postGenerateSchema($this->event);
     }
 
-    public function testPostGenerateSchemaWhenColumnDoesNotExist()
+    public function testPostGenerateSchemaWhenColumnDoesNotExist(): void
     {
         $this->schema->expects($this->once())
             ->method('hasTable')
-            ->with('page_hits')
+            ->with(MAUTIC_TABLE_PREFIX.'page_hits')
             ->willReturn(true);
 
         $this->schema->expects($this->once())
             ->method('getTable')
-            ->with('page_hits')
+            ->with(MAUTIC_TABLE_PREFIX.'page_hits')
             ->willReturn($this->table);
 
         $this->table->expects($this->once())

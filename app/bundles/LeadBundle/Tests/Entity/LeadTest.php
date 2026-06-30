@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Tests\Entity;
 
 use Mautic\CoreBundle\Entity\IpAddress;
@@ -16,12 +7,15 @@ use Mautic\CoreBundle\Form\RequestTrait;
 use Mautic\LeadBundle\Entity\DoNotContact;
 use Mautic\LeadBundle\Entity\FrequencyRule;
 use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Entity\LeadEventLog;
+use PHPUnit\Framework\Assert;
+use PHPUnit\Framework\TestCase;
 
-class LeadTest extends \PHPUnit\Framework\TestCase
+class LeadTest extends TestCase
 {
     use RequestTrait;
 
-    public function testPreferredChannels()
+    public function testPreferredChannels(): void
     {
         $frequencyRules = [
             'channel1' => [
@@ -60,7 +54,7 @@ class LeadTest extends \PHPUnit\Framework\TestCase
                 'pauseToDate'      => '',
             ],
             'channel6' => [
-                'frequencyNumber'  => '10',
+                'frequencyNumber'  => 10,
                 'frequencyTime'    => FrequencyRule::TIME_MONTH, // 10
                 'preferredChannel' => 0,
                 'pauseFromDate'    => '',
@@ -72,12 +66,12 @@ class LeadTest extends \PHPUnit\Framework\TestCase
 
         foreach ($frequencyRules as $channel => $rule) {
             $frequencyRule = (new FrequencyRule())
-                ->setPreferredChannel($rule['preferredChannel'])
+                ->setPreferredChannel((bool) $rule['preferredChannel'])
                 ->setFrequencyNumber($rule['frequencyNumber'])
                 ->setFrequencyTime($rule['frequencyTime'])
                 ->setChannel($channel)
                 ->setPauseFromDate(($rule['pauseFromDate']) ? new \DateTime($rule['pauseFromDate']) : null)
-                ->setPauseToDate((($rule['pauseToDate']) ? new \DateTime($rule['pauseToDate']) : null));
+                ->setPauseToDate(($rule['pauseToDate']) ? new \DateTime($rule['pauseToDate']) : null);
 
             $lead->addFrequencyRule($frequencyRule);
         }
@@ -86,10 +80,10 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $lead->addDoNotContactEntry($dnc);
 
         $channelRules = Lead::generateChannelRules($lead->getFrequencyRules()->toArray(), $lead->getDoNotContact()->toArray());
-        $this->assertEquals(['channel2', 'channel3', 'channel5', 'channel6', 'channel1', 'channel4'], array_keys($channelRules));
+        $this->assertSame(['channel2', 'channel3', 'channel5', 'channel6', 'channel1', 'channel4'], array_keys($channelRules));
     }
 
-    public function testAdjustPoints()
+    public function testAdjustPoints(): void
     {
         // new lead
         $this->adjustPointsTest(5, $this->getLeadChangedArray(0, 5), new Lead());
@@ -108,7 +102,7 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $this->adjustPointsTest(10, $this->getLeadChangedArray(150, 15), $lead, 'divide');
     }
 
-    public function testCustomFieldGetterSetters()
+    public function testCustomFieldGetterSetters(): void
     {
         $lead = new Lead();
 
@@ -132,14 +126,14 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $lead->setFields($fields);
 
         // This should not killover with a segmentation fault due to a loop
-        $lead->setNotes('hello');
+        $lead->setNotes('hello'); // @phpstan-ignore method.notFound
 
         // Not using getNotes because it conflicts with an existing method and not sure what to do about that yet
-        $lead->setTest('hello');
-        $this->assertEquals('hello', $lead->getTest());
+        $lead->setTest('hello'); // @phpstan-ignore method.notFound
+        $this->assertEquals('hello', $lead->getTest()); // @phpstan-ignore method.notFound
     }
 
-    public function testDataIsCleanedCorrectly()
+    public function testDataIsCleanedCorrectly(): void
     {
         $fields = [
             'core' => [
@@ -178,11 +172,11 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $testDateObject = new \DateTime('12-12-2017 22:03:59');
 
         $this->assertEquals($testDateObject->format('Y-m-d H:i:s'), $data['dateField']);
-        $this->assertEquals((int) true, $data['boolean']);
+        $this->assertEquals(1, $data['boolean']);
         $this->assertEquals(['a', 'b'], $data['multi']);
     }
 
-    public function testCleanBooleanAndNumberAsNullAreNotConverted()
+    public function testCleanBooleanAndNumberAsNullAreNotConverted(): void
     {
         $fields = [
             'core' => [
@@ -212,16 +206,16 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(null, $data['number']);
     }
 
-    public function testAttributionDateIsAdded()
+    public function testAttributionDateIsAdded(): void
     {
         $lead = new Lead();
         $lead->addUpdatedField('attribution', 100);
         $lead->checkAttributionDate();
-        $this->assertEquals((new \Datetime())->format('Y-m-d'), $lead->getFieldValue('attribution_date'));
+        $this->assertEquals((new \DateTime())->format('Y-m-d'), $lead->getFieldValue('attribution_date'));
         $this->assertNotEmpty($lead->getChanges());
     }
 
-    public function testAttributionDateIsRemoved()
+    public function testAttributionDateIsRemoved(): void
     {
         $lead = new Lead();
         $lead->setFields(
@@ -245,21 +239,21 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $this->assertNotEmpty($lead->getChanges());
     }
 
-    public function testAttributionDateIsNotChangedWhen0ChangedToNull()
+    public function testAttributionDateIsNotChangedWhen0ChangedToNull(): void
     {
         $lead = new Lead();
         $lead->setFields(
             [
                 'core' => [
-                        'attribution_date' => [
-                            'type'  => 'date',
-                            'value' => 0,
-                        ],
-                        'attribution' => [
-                            'type'  => 'int',
-                            'value' => 0,
-                        ],
+                    'attribution_date' => [
+                        'type'  => 'date',
+                        'value' => 0,
                     ],
+                    'attribution' => [
+                        'type'  => 'int',
+                        'value' => 0,
+                    ],
+                ],
             ]
         );
 
@@ -267,7 +261,7 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $this->assertEmpty($lead->getChanges());
     }
 
-    public function testChangingPropertiesHydratesFieldChanges()
+    public function testChangingPropertiesHydratesFieldChanges(): void
     {
         $email = 'foo@bar.com';
         $lead  = new Lead();
@@ -281,7 +275,7 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals($email, $changes['fields']['email'][1]);
     }
 
-    public function testIpAddressChanges()
+    public function testIpAddressChanges(): void
     {
         $ip1 = (new IpAddress())->setIpAddress('1.2.3.4');
         $ip2 = (new IpAddress())->setIpAddress('1.2.3.5');
@@ -291,23 +285,43 @@ class LeadTest extends \PHPUnit\Framework\TestCase
         $this->assertCount(0, $contact->getChanges());
 
         $contact->addIpAddress($ip1);
+
+        /** @var mixed[] $changes */
         $changes = $contact->getChanges();
 
-        $this->assertSame(['1.2.3.4' => $ip1], $contact->getChanges()['ipAddressList']);
+        $this->assertSame(['1.2.3.4' => $ip1], $changes['ipAddressList']);
 
         $contact->addIpAddress($ip2);
 
-        $this->assertSame(['1.2.3.4' => $ip1, '1.2.3.5' => $ip2], $contact->getChanges()['ipAddressList']);
+        /** @var mixed[] $changes */
+        $changes = $contact->getChanges();
+
+        $this->assertSame(['1.2.3.4' => $ip1, '1.2.3.5' => $ip2], $changes['ipAddressList']);
+    }
+
+    public function testGetLastEventLogByAction(): void
+    {
+        $lead = new Lead();
+
+        $lead->addEventLog((new LeadEventLog())->setAction('first')->setDateAdded(new \DateTime('2017-01-01')));
+        $lead->addEventLog((new LeadEventLog())->setAction('first')->setDateAdded(new \DateTime('2018-01-01')));
+        $lead->addEventLog($lastFirst = (new LeadEventLog())->setAction('first')->setDateAdded(new \DateTime('2019-01-01')));
+
+        $lead->addEventLog((new LeadEventLog())->setAction('second')->setDateAdded(new \DateTime('2017-01-01')));
+        $lead->addEventLog((new LeadEventLog())->setAction('second')->setDateAdded(new \DateTime('2018-01-01')));
+        $lead->addEventLog($lastSecond = (new LeadEventLog())->setAction('second')->setDateAdded(new \DateTime('2019-01-01')));
+
+        Assert::assertSame($lastFirst, $lead->getLastEventLogByAction('first'));
+        Assert::assertSame($lastSecond, $lead->getLastEventLogByAction('second'));
+        Assert::assertNull($lead->getLastEventLogByAction('third'));
     }
 
     /**
-     * @param      $points
-     * @param      $expected
-     * @param bool $operator
+     * @param array<string|int, mixed> $expected
      */
-    private function adjustPointsTest($points, $expected, Lead $lead, $operator = false)
+    private function adjustPointsTest(int $points, array $expected, Lead $lead, string|false $operator = false): void
     {
-        if ($operator) {
+        if (false !== $operator) {
             $lead->adjustPoints($points, $operator);
         } else {
             $lead->adjustPoints($points);
@@ -317,12 +331,9 @@ class LeadTest extends \PHPUnit\Framework\TestCase
     }
 
     /**
-     * @param int $oldValue
-     * @param int $newValue
-     *
-     * @return array
+     * @return array{points: array{0: int, 1: int}}
      */
-    private function getLeadChangedArray($oldValue = 0, $newValue = 0)
+    private function getLeadChangedArray(int $oldValue = 0, int $newValue = 0): array
     {
         return [
             'points' => [

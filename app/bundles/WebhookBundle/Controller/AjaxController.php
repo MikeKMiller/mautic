@@ -1,69 +1,96 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\WebhookBundle\Controller;
 
 use Mautic\CoreBundle\Controller\AjaxController as CommonAjaxController;
 use Mautic\CoreBundle\Helper\InputHelper;
+use Mautic\CoreBundle\Helper\PathsHelper;
+use Mautic\WebhookBundle\Exception\PrivateAddressException;
 use Mautic\WebhookBundle\Http\Client;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class AjaxController extends CommonAjaxController
 {
-    protected function sendHookTestAction(Request $request)
+    public function sendHookTestAction(Request $request, Client $client, PathsHelper $pathsHelper): JsonResponse
+    {
+        try {
+            return $this->processWebhookTest($request, $client, $pathsHelper);
+        } catch (PrivateAddressException) {
+            return $this->createErrorResponse(
+                'mautic.webhook.error.private_address'
+            );
+        } catch (\InvalidArgumentException $e) {
+            return $this->createErrorResponse($e->getMessage());
+        } catch (\Exception) {
+            return $this->createErrorResponse(
+                'mautic.webhook.label.warning'
+            );
+        }
+    }
+
+    private function processWebhookTest(Request $request, Client $client, PathsHelper $pathsHelper): JsonResponse
+    {
+        $url = $this->validateUrl($request);
+
+        if (!$url) {
+            throw new \InvalidArgumentException('mautic.webhook.label.no.url');
+        }
+
+        $selectedTypes = InputHelper::cleanArray($request->request->all()['types'] ?? []);
+
+        if (!$selectedTypes) {
+            throw new \InvalidArgumentException('mautic.webhook.label.no.events');
+        }
+
+        $payloadPaths = $this->getPayloadPaths($selectedTypes, $pathsHelper);
+        $payload      = $this->loadPayloads($payloadPaths);
+        $secret       = InputHelper::string($request->request->get('secret'));
+        $response     = $client->post($url, $payload, $secret);
+
+        return $this->createResponseFromStatusCode($response->getStatusCode());
+    }
+
+    private function validateUrl(Request $request): ?string
     {
         $url = InputHelper::url($request->request->get('url'));
 
-        // validate the URL
-        if ('' == $url || !$url) {
-            // default to an error message
-            $dataArray = [
-                'success' => 1,
-                'html'    => '<div class="has-error"><span class="help-block">'
-                    .$this->translator->trans('mautic.webhook.label.no.url')
-                    .'</span></div>',
-            ];
+        return '' !== $url ? $url : null;
+    }
 
-            return $this->sendJsonResponse($dataArray);
-        }
+    private function createResponseFromStatusCode(int $statusCode): JsonResponse
+    {
+        $isSuccess = str_starts_with((string) $statusCode, '2');
+        $message   = $isSuccess
+            ? 'mautic.webhook.label.success'
+            : 'mautic.webhook.label.warning';
 
-        // get the selected types
-        $selectedTypes = InputHelper::cleanArray($request->request->get('types'));
-        $payloadPaths  = $this->getPayloadPaths($selectedTypes);
-        $payloads      = $this->loadPayloads($payloadPaths);
-        $now           = new \DateTime();
+        $cssClass = $isSuccess ? 'has-success' : 'has-error';
 
-        $payloads['timestamp'] = $now->format('c');
+        return $this->createJsonResponse($message, $cssClass);
+    }
 
-        // set the response
-        /** @var Psr\Http\Message\ResponseInterface $response */
-        $response = $this->get('mautic.webhook.http.client')->post($url, $payloads, null, InputHelper::string($request->request->get('secret')));
+    private function createErrorResponse(string $message): JsonResponse
+    {
+        return $this->createJsonResponse($message, 'has-error', Response::HTTP_BAD_REQUEST);
+    }
 
-        // default to an error message
-        $dataArray = [
-            'success' => 1,
-            'html'    => '<div class="has-error"><span class="help-block">'
-                .$this->translator->trans('mautic.webhook.label.warning')
-                .'</span></div>',
-        ];
+    private function createJsonResponse(
+        string $message,
+        string $cssClass,
+        int $status = Response::HTTP_OK,
+    ): JsonResponse {
+        $html = sprintf(
+            '<div class="%s"><span class="help-block">%s</span></div>',
+            $cssClass,
+            $this->translator->trans($message)
+        );
 
-        // if we get a 2xx response convert to success message
-        if (2 == substr($response->getStatusCode(), 0, 1)) {
-            $dataArray['html'] =
-                '<div class="has-success"><span class="help-block">'
-                .$this->translator->trans('mautic.webhook.label.success')
-                .'</span></div>';
-        }
-
-        return $this->sendJsonResponse($dataArray);
+        return $this->sendJsonResponse(
+            ['html' => $html],
+            $status
+        );
     }
 
     /*
@@ -72,7 +99,10 @@ class AjaxController extends CommonAjaxController
      * @param $types array
      * @return array
      */
-    public function getPayloadPaths($types)
+    /**
+     * @return non-falsy-string[]
+     */
+    public function getPayloadPaths($types, PathsHelper $pathsHelper): array
     {
         $payloadPaths = [];
 
@@ -91,17 +121,17 @@ class AjaxController extends CommonAjaxController
             $eventName = implode('_', $typePath);
 
             // default the path to core
-            $payloadPath = $this->factory->getSystemPath('bundles', true);
+            $payloadPath = $pathsHelper->getSystemPath('bundles', true);
 
             // if plugin is in first part of the string this is an addon
             // input is plugin.bundlename or mautic.bundlename
             if (strpos('plugin.', $prefix)) {
-                $payloadPath = $this->factory->getSystemPath('plugins', true);
+                $payloadPath = $pathsHelper->getSystemPath('plugins', true);
             }
 
             $prefixParts = explode('.', $prefix);
 
-            $bundleName = (array_pop($prefixParts));
+            $bundleName = array_pop($prefixParts);
 
             $payloadPath .= '/'.ucfirst($bundleName).'Bundle/Assets/WebhookPayload/'.$bundleName.'_'.$eventName.'.json';
 
@@ -117,7 +147,10 @@ class AjaxController extends CommonAjaxController
      * @param  $paths array
      * @return $payload array
      */
-    public function loadPayloads($paths)
+    /**
+     * @return mixed[]
+     */
+    public function loadPayloads($paths): array
     {
         $payloads = [];
 

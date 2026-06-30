@@ -1,47 +1,23 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Event;
 
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
-/**
- * Class MaintenanceEvent.
- */
 class MaintenanceEvent extends Event
 {
-    /**
-     * @var int
-     */
-    protected $daysOld;
+    protected int $daysOld;
 
-    /**
-     * @var \DateTime
-     */
-    protected $date;
+    protected \DateTimeInterface $date;
 
     /**
      * @var array
      */
     protected $stats = [];
 
-    /**
-     * @var bool
-     */
-    protected $dryRun = false;
+    protected bool $dryRun;
 
-    /**
-     * @var bool
-     */
-    protected $gdpr = false;
+    protected bool $gdpr;
 
     /**
      * @var array
@@ -49,8 +25,6 @@ class MaintenanceEvent extends Event
     protected $debug = [];
 
     /**
-     * MaintenanceEvent constructor.
-     *
      * @param int  $daysOld
      * @param bool $dryRun
      */
@@ -64,20 +38,16 @@ class MaintenanceEvent extends Event
 
     /**
      * Get integer for number of days ago to purge data.
-     *
-     * @return int
      */
-    public function getDays()
+    public function getDays(): int
     {
         return $this->daysOld;
     }
 
     /**
      * Returns a DateTime in UTC for the date to delete records older than the given date.
-     *
-     * @return \DateTime
      */
-    public function getDate()
+    public function getDate(): \DateTimeInterface
     {
         return $this->date;
     }
@@ -88,13 +58,16 @@ class MaintenanceEvent extends Event
      * @param string $key
      * @param int    $recordCount
      */
-    public function setStat($key, $recordCount, $sql = null, $parameters = [])
+    public function setStat($key, $recordCount, $sql = null, $parameters = []): void
     {
         $this->stats[$key] = (int) $recordCount;
 
         if ($sql) {
             foreach ($parameters as $paramKey => $value) {
-                $sql = str_replace(":$paramKey", $value, $sql);
+                if (is_array($value)) {
+                    $value = implode(', ', $value);
+                }
+                $sql = str_replace(":$paramKey", (string) $value, $sql);
             }
             $this->debug[$key] = $sql;
         }
@@ -112,10 +85,8 @@ class MaintenanceEvent extends Event
 
     /**
      * Return if this is to be a dry run.
-     *
-     * @return bool
      */
-    public function isDryRun()
+    public function isDryRun(): bool
     {
         return $this->dryRun;
     }
@@ -128,10 +99,7 @@ class MaintenanceEvent extends Event
         return $this->debug;
     }
 
-    /**
-     * @return bool
-     */
-    public function isGdpr()
+    public function isGdpr(): bool
     {
         return $this->gdpr;
     }

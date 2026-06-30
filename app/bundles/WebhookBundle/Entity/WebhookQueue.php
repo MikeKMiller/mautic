@@ -1,108 +1,85 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace Mautic\WebhookBundle\Entity;
 
-use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * Class WebhookQueue.
- */
 class WebhookQueue
 {
+    public const TABLE_NAME = 'webhook_queue';
+
+    private ?string $id = null;
+
+    private ?Webhook $webhook = null;
+
+    private ?\DateTime $dateAdded = null;
+
+    private ?\DateTimeImmutable $dateModified = null; // @phpstan-ignore-line (BC: plain payload is fetched by ORM)
+
     /**
-     * @var int
+     * @var string|resource|null
      */
-    private $id;
+    private $payloadCompressed;
 
-    /**
-     * @var Webhook
-     */
-    private $webhook;
+    private ?Event $event = null;
 
-    /**
-     * @var \DateTime
-     */
-    private $dateAdded;
+    private int $retries = 0;
 
-    /**
-     * @var string
-     */
-    private $payload;
-
-    /**
-     * @var Event
-     **/
-    private $event;
-
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
-        $builder->setTable('webhook_queue')
+        $builder->setTable(WebhookQueue::TABLE_NAME)
             ->setCustomRepositoryClass(WebhookQueueRepository::class);
-        $builder->addId();
+        $builder->addBigIntIdField();
         $builder->createManyToOne('webhook', 'Webhook')
-            ->inversedBy('queues')
             ->addJoinColumn('webhook_id', 'id', false, false, 'CASCADE')
             ->build();
-        $builder->addNullableField('dateAdded', Type::DATETIME, 'date_added');
-        $builder->addField('payload', Type::TEXT);
+        $builder->addNullableField('dateAdded', Types::DATETIME_MUTABLE, 'date_added');
+        $builder->addNullableField('dateModified', Types::DATETIME_IMMUTABLE, 'date_modified');
+        $builder->createField('payloadCompressed', Types::BLOB)
+            ->columnName('payload_compressed')
+            ->nullable()
+            ->length(MySQLPlatform::LENGTH_LIMIT_MEDIUMBLOB)
+            ->build();
         $builder->createManyToOne('event', 'Event')
             ->inversedBy('queues')
             ->addJoinColumn('event_id', 'id', false, false, 'CASCADE')
             ->build();
+        $builder->createField('retries', Types::SMALLINT)
+            ->columnName('retries')
+            ->option('unsigned', true)
+            ->option('default', 0)
+            ->build();
     }
 
-    /**
-     * Get id.
-     *
-     * @return int
-     */
-    public function getId()
+    public function getId(): ?string
     {
         return $this->id;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getWebhook()
+    public function getWebhook(): ?Webhook
     {
         return $this->webhook;
     }
 
-    /**
-     * @param mixed $webhook
-     */
-    public function setWebhook($webhook)
+    public function setWebhook(?Webhook $webhook): static
     {
         $this->webhook = $webhook;
 
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getDateAdded()
+    public function getDateAdded(): ?\DateTime
     {
         return $this->dateAdded;
     }
 
-    /**
-     * @param mixed $dateAdded
-     */
-    public function setDateAdded($dateAdded)
+    public function setDateAdded(?\DateTime $dateAdded): static
     {
         $this->dateAdded = $dateAdded;
 
@@ -110,37 +87,67 @@ class WebhookQueue
     }
 
     /**
-     * @return mixed
+     * @return string|null
      */
     public function getPayload()
     {
-        return $this->payload;
+        if (null === $this->payloadCompressed) {
+            // no payload is set
+            return null;
+        }
+
+        $payloadCompressed = $this->payloadCompressed;
+
+        if (is_resource($payloadCompressed)) {
+            // compressed payload is fetched by ORM
+            $payloadCompressed = stream_get_contents($this->payloadCompressed);
+        }
+
+        return gzuncompress($payloadCompressed);
     }
 
     /**
-     * @param mixed $payload
+     * @param string $payload
      */
-    public function setPayload($payload)
+    public function setPayload($payload): static
     {
-        $this->payload = $payload;
+        $this->payloadCompressed = gzcompress($payload, 9);
 
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getEvent()
+    public function getEvent(): ?Event
     {
         return $this->event;
     }
 
-    /**
-     * @param mixed $event
-     */
-    public function setEvent($event)
+    public function setEvent(?Event $event): static
     {
         $this->event = $event;
+
+        return $this;
+    }
+
+    public function getRetries(): int
+    {
+        return $this->retries;
+    }
+
+    public function setRetries(int $retries): WebhookQueue
+    {
+        $this->retries = $retries;
+
+        return $this;
+    }
+
+    public function getDateModified(): ?\DateTimeImmutable
+    {
+        return $this->dateModified;
+    }
+
+    public function setDateModified(?\DateTimeImmutable $dateModified): WebhookQueue
+    {
+        $this->dateModified = $dateModified;
 
         return $this;
     }

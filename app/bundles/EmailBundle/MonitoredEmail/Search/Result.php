@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2017 Mautic Contributors. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\MonitoredEmail\Search;
 
 use Mautic\EmailBundle\Entity\Stat;
@@ -16,33 +7,24 @@ use Mautic\LeadBundle\Entity\Lead;
 
 class Result
 {
-    /**
-     * @var Stat
-     */
-    private $stat;
+    private ?Stat $stat = null;
 
     /**
      * @var Lead[]
      */
-    private $contacts = [];
+    private array $contacts = [];
 
     /**
      * @var string
      */
     private $email;
 
-    /**
-     * @return Stat
-     */
-    public function getStat()
+    public function getStat(): ?Stat
     {
         return $this->stat;
     }
 
-    /**
-     * @return Result
-     */
-    public function setStat(Stat $stat)
+    public function setStat(Stat $stat): static
     {
         $this->stat = $stat;
 
@@ -56,15 +38,12 @@ class Result
     /**
      * @return Lead[]
      */
-    public function getContacts()
+    public function getContacts(): array
     {
         return $this->contacts;
     }
 
-    /**
-     * @return Result
-     */
-    public function addContact(Lead $contact)
+    public function addContact(Lead $contact): static
     {
         $this->contacts[] = $contact;
 
@@ -72,9 +51,9 @@ class Result
     }
 
     /**
-     * @return Lead[]
+     * @param Lead[] $contacts
      */
-    public function setContacts(array $contacts)
+    public function setContacts(array $contacts): void
     {
         $this->contacts = $contacts;
     }
@@ -89,10 +68,8 @@ class Result
 
     /**
      * @param mixed $email
-     *
-     * @return Result
      */
-    public function setEmail($email)
+    public function setEmail($email): static
     {
         $this->email = $email;
 

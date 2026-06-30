@@ -1,44 +1,71 @@
 <?php
 
-/*
- * @copyright   2015 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
-use Doctrine\DBAL\Types\Type;
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\CoreBundle\Entity\UuidInterface;
+use Mautic\CoreBundle\Entity\UuidTrait;
 use Mautic\CoreBundle\Helper\InputHelper;
+use Symfony\Component\Serializer\Attribute\Groups;
 
-class Tag
+#[ApiResource(
+    operations: [
+        new GetCollection(security: "is_granted('tagManager:tagManager:view')"),
+        new Post(security: "is_granted('tagManager:tagManager:create')"),
+        new Get(security: "is_granted('tagManager:tagManager:view')"),
+        new Put(security: "is_granted('tagManager:tagManager:edit')"),
+        new Patch(security: "is_granted('tagManager:tagManager:edit')"),
+        new Delete(security: "is_granted('tagManager:tagManager:delete')"),
+    ],
+    normalizationContext: [
+        'groups'                  => ['leadfield:read'],
+        'swagger_definition_name' => 'Read',
+    ],
+    denormalizationContext: [
+        'groups'                  => ['leadfield:write'],
+        'swagger_definition_name' => 'Write',
+    ]
+)]
+class Tag implements UuidInterface
 {
+    use UuidTrait;
+
     /**
      * @var int
      */
+    #[Groups(['leadfield:read'])]
     private $id;
 
     /**
      * @var string
      */
+    #[Groups(['leadfield:read', 'leadfield:write'])]
     private $tag;
 
     /**
-     * @param string $tag
-     * @param bool   $clean
+     * @var string|null
      */
-    public function __construct($tag = null, $clean = true)
+    #[Groups(['leadfield:read', 'leadfield:write'])]
+    private $description;
+
+    public ?int $deletedId = null;
+
+    public function __construct(?string $tag = null, bool $clean = true)
     {
-        $this->tag = $clean ? $this->validateTag($tag) : $tag;
+        $this->tag = $clean && $tag ? $this->validateTag($tag) : $tag;
     }
 
-    public static function loadMetadata(ClassMetadata $metadata)
+    public static function loadMetadata(ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
         $builder->setTable('lead_tags')
@@ -46,23 +73,26 @@ class Tag
             ->addIndex(['tag'], 'lead_tag_search');
 
         $builder->addId();
-        $builder->addField('tag', Type::STRING);
+        $builder->addField('tag', Types::STRING);
+        $builder->addNamedField('description', Types::TEXT, 'description', true);
+        static::addUuidField($builder);
     }
 
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('tag')
             ->addListProperties(
                 [
                     'id',
                     'tag',
+                    'description',
                 ]
             )
             ->build();
     }
 
     /**
-     * @return mixed
+     * @return int|null
      */
     public function getId()
     {
@@ -77,12 +107,7 @@ class Tag
         return $this->tag;
     }
 
-    /**
-     * @param string $tag
-     *
-     * @return Tag
-     */
-    public function setTag($tag)
+    public function setTag(string $tag): static
     {
         $this->tag = $this->validateTag($tag);
 
@@ -90,12 +115,25 @@ class Tag
     }
 
     /**
-     * @param string $tag
-     *
-     * @return Tag
+     * @return string|null
      */
-    protected function validateTag($tag)
+    public function getDescription()
     {
-        return InputHelper::clean($tag);
+        return $this->description;
+    }
+
+    /**
+     * @param string $description
+     */
+    public function setDescription($description): static
+    {
+        $this->description = $description;
+
+        return $this;
+    }
+
+    private function validateTag(string $tag): string
+    {
+        return InputHelper::string(trim((string) $tag));
     }
 }

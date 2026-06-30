@@ -1,82 +1,43 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\UserBundle\Event;
 
 use Mautic\UserBundle\Entity\User;
-use Symfony\Component\EventDispatcher\Event;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Contracts\EventDispatcher\Event;
 
-/**
- * Class LogoutEvent.
- */
 class LogoutEvent extends Event
 {
-    /**
-     * @var User
-     */
-    private $user;
+    private array $session = [];
 
-    /**
-     * @var array
-     */
-    private $session = [];
-
-    /**
-     * @var Request
-     */
-    private $request;
-
-    /**
-     * LogoutEvent constructor.
-     */
-    public function __construct(User $user, Request $request)
-    {
-        $this->user    = $user;
-        $this->request = $request;
+    public function __construct(
+        private readonly User $user,
+        private readonly Request $request,
+    ) {
     }
 
-    /**
-     * @return User
-     */
-    public function getUser()
+    public function getUser(): User
     {
         return $this->user;
     }
 
     /**
      * Add value to session after it's been cleared.
-     *
-     * @param $key
-     * @param $value
      */
-    public function setPostSessionItem($key, $value)
+    public function setPostSessionItem($key, $value): void
     {
         $this->session[$key] = $value;
     }
 
     /**
      * Get session items to be added after session has been cleared.
-     *
-     * @return array
      */
-    public function getPostSessionItems()
+    public function getPostSessionItems(): array
     {
         return $this->session;
     }
 
-    /**
-     * @return Request
-     */
-    public function getRequest()
+    public function getRequest(): Request
     {
         return $this->request;
     }

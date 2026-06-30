@@ -1,162 +1,131 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Security\Permissions;
 
+use Mautic\CoreBundle\Entity\FormEntity;
 use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Exception\PermissionBadFormatException;
 use Mautic\CoreBundle\Security\Exception\PermissionNotFoundException;
 use Mautic\UserBundle\Entity\Permission;
 use Mautic\UserBundle\Entity\User;
-use Symfony\Component\Translation\Translator;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Service\ResetInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-/**
- * Class Security.
- */
-class CorePermissions
+class CorePermissions implements ResetInterface
 {
-    /**
-     * @var Translator
-     */
-    private $translator;
+    private array $permissionClasses = [];
 
-    /**
-     * @var UserHelper
-     */
-    protected $userHelper;
+    private array $permissionObjectsByClass = [];
 
-    /**
-     * @var CoreParametersHelper
-     */
-    private $coreParametersHelper;
+    private array $permissionObjectsByName = [];
 
-    /**
-     * @var array
-     */
-    private $bundles;
+    private array $grantedPermissions = [];
 
-    /**
-     * @var array
-     */
-    private $pluginBundles;
+    private array $checkedPermissions = [];
 
-    /**
-     * @var array
-     */
-    private $permissionClasses = [];
-
-    /**
-     * @var array
-     */
-    private $permissionObjects = [];
-
-    /**
-     * @var array
-     */
-    private $grantedPermissions = [];
-
-    /**
-     * @var array
-     */
-    private $checkedPermissions = [];
+    private bool $permissionObjectsGenerated = false;
 
     public function __construct(
-        UserHelper $userHelper,
-        TranslatorInterface $translator,
-        CoreParametersHelper $coreParametersHelper,
-        array $bundles,
-        array $pluginBundles
+        protected UserHelper $userHelper,
+        private readonly TranslatorInterface $translator,
+        private readonly CoreParametersHelper $coreParametersHelper,
+        private readonly array $bundles,
+        private readonly array $pluginBundles,
     ) {
-        $this->userHelper           = $userHelper;
-        $this->translator           = $translator;
-        $this->coreParametersHelper = $coreParametersHelper;
-        $this->bundles              = $bundles;
-        $this->pluginBundles        = $pluginBundles;
-
         $this->registerPermissionClasses();
     }
 
-    /**
-     * Retrieves each bundles permission objects.
-     *
-     * @return array
-     */
-    public function getPermissionObjects()
+    public function reset(): void
     {
-        $objects = [];
-        foreach ($this->permissionClasses as $key => $class) {
-            if ($object = $this->getPermissionObject($key, false)) {
-                $objects[] = $object;
-            }
-        }
+        $this->permissionObjectsGenerated = false;
+    }
 
-        return $objects;
+    public function setPermissionObject(AbstractPermissions $permissionObject): void
+    {
+        $this->permissionObjectsByClass[$permissionObject::class]     = $permissionObject;
+        $this->permissionObjectsByName[$permissionObject->getName()]  = $permissionObject;
     }
 
     /**
-     * Returns the bundles permission class object.
+     * Retrieves all permission objects.
+     */
+    public function getPermissionObjects(): array
+    {
+        if ($this->permissionObjectsGenerated) {
+            return $this->permissionObjectsByName;
+        }
+
+        foreach ($this->getPermissionClasses() as $class) {
+            try {
+                $this->getPermissionObject($class);
+            } catch (\InvalidArgumentException) {
+            }
+        }
+
+        $this->permissionObjectsGenerated = true;
+
+        return $this->permissionObjectsByName;
+    }
+
+    /**
+     * Returns the permission class object and sets it to global array.
      *
-     * @param string $bundle
+     * @param string $bundle         can be either short bundle name or full path to the permissions class
      * @param bool   $throwException
      *
-     * @return mixed
+     * @return AbstractPermissions
      *
      * @throws \InvalidArgumentException
      */
     public function getPermissionObject($bundle, $throwException = true)
     {
-        if (!empty($bundle)) {
-            if (isset($this->permissionClasses[$bundle])) {
-                if (empty($this->permissionObjects[$bundle])) {
-                    $permissionClass                  = $this->permissionClasses[$bundle];
-                    $this->permissionObjects[$bundle] = new $permissionClass($this->getParams());
-                }
-            } else {
+        if (empty($bundle)) {
+            throw new \InvalidArgumentException("Bundle and permission type must be specified. {$bundle} given.");
+        }
+
+        try {
+            $permissionObject = $this->findPermissionObject($bundle);
+        } catch (\UnexpectedValueException $e) {
+            try {
+                $permissionObject = $this->instantiatePermissionObject($bundle); // @phpstan-ignore method.deprecated
+                $this->setPermissionObject($permissionObject);
+            } catch (\InvalidArgumentException $e) {
                 if ($throwException) {
-                    throw new \InvalidArgumentException("Permission class not found for {$bundle} in permissions classes");
+                    throw $e;
                 }
 
                 return false;
             }
-
-            return $this->permissionObjects[$bundle];
         }
 
-        throw new \InvalidArgumentException("Bundle and permission type must be specified. '$bundle' given.");
+        if ($permissionObject->isEnabled()) {
+            $permissionObject->definePermissions();
+        }
+
+        return $permissionObject;
     }
 
     /**
      * Generates the bit value for the bundle's permission.
      *
-     * @return array
-     *
      * @throws \InvalidArgumentException
      */
-    public function generatePermissions(array $permissions)
+    public function generatePermissions(array $permissions): array
     {
         $entities = [];
 
-        //give bundles an opportunity to analyze and adjust permissions based on others
-        $classes = $this->getPermissionObjects();
+        // give bundles an opportunity to analyze and adjust permissions based on others
+        $objects = $this->getPermissionObjects();
 
-        //bust out permissions into their respective bundles
+        // bust out permissions into their respective bundles
         $bundlePermissions = [];
         foreach ($permissions as $permission => $perms) {
             [$bundle, $level]                   = explode(':', $permission);
             $bundlePermissions[$bundle][$level] = $perms;
         }
 
-        $bundles = array_keys($classes);
+        $bundles = array_keys($objects);
 
         foreach ($bundles as $bundle) {
             if (!isset($bundlePermissions[$bundle])) {
@@ -164,37 +133,37 @@ class CorePermissions
             }
         }
 
-        //do a first round to give bundles a chance to update everything and give an opportunity to require a second round
-        //if the permission it is looking for from another bundle is not configured yet
+        // do a first round to give bundles a chance to update everything and give an opportunity to require a second round
+        // if the permission it is looking for from another bundle is not configured yet
         $secondRound = [];
-        foreach ($classes as $bundle => $class) {
-            $needsRoundTwo = $class->analyzePermissions($bundlePermissions[$bundle], $bundlePermissions);
+        foreach ($objects as $bundle => $object) {
+            $needsRoundTwo = $object->analyzePermissions($bundlePermissions[$bundle], $bundlePermissions);
             if ($needsRoundTwo) {
                 $secondRound[] = $bundle;
             }
         }
 
         foreach ($secondRound as $bundle) {
-            $classes[$bundle]->analyzePermissions($bundlePermissions[$bundle], $bundlePermissions, true);
+            $objects[$bundle]->analyzePermissions($bundlePermissions[$bundle], $bundlePermissions, true);
         }
 
-        //create entities
+        // create entities
         foreach ($bundlePermissions as $bundle => $permissions) {
             foreach ($permissions as $name => $perms) {
                 $entity = new Permission();
                 $entity->setBundle($bundle);
                 $entity->setName($name);
 
-                $bit   = 0;
-                $class = $this->getPermissionObject($bundle);
+                $bit    = 0;
+                $object = $this->getPermissionObject($bundle);
 
                 foreach ($perms as $perm) {
-                    //get the bit for the perm
-                    if (!$class->isSupported($name, $perm)) {
+                    // get the bit for the perm
+                    if (!$object->isSupported($name, $perm)) {
                         throw new \InvalidArgumentException("$perm does not exist for $bundle:$name");
                     }
 
-                    $bit += $class->getValue($name, $perm);
+                    $bit += $object->getValue($name, $perm);
                 }
                 $entity->setBitwise($bit);
                 $entities[] = $entity;
@@ -215,18 +184,21 @@ class CorePermissions
     /**
      * Determines if the user has permission to access the given area.
      *
-     * @param array|string $requestedPermission
-     * @param string       $mode                MATCH_ALL|MATCH_ONE|RETURN_ARRAY
-     * @param User         $userEntity
-     * @param bool         $allowUnknown        If the permission is not recognized, false will be returned.  Otherwise an
-     *                                          exception will be thrown
+     * @param string[]|string $requestedPermission
+     * @param string          $mode                MATCH_ALL|MATCH_ONE|RETURN_ARRAY
+     * @param User            $userEntity
+     * @param bool            $allowUnknown        If the permission is not recognized, false will be returned.  Otherwise an
+     *                                             exception will be thrown
      *
-     * @return mixed
+     * @return ($mode is 'RETURN_ARRAY' ? array<mixed> : bool)
      *
      * @throws \InvalidArgumentException
      */
-    public function isGranted($requestedPermission, $mode = 'MATCH_ALL', $userEntity = null, $allowUnknown = false)
+    public function isGranted($requestedPermission, $mode = 'MATCH_ALL', $userEntity = null, $allowUnknown = false): bool|array
     {
+        // Initialize all permission classes if
+        $this->getPermissionObjects();
+
         if (null === $userEntity) {
             $userEntity = $this->userHelper->getUser();
         }
@@ -248,15 +220,15 @@ class CorePermissions
             }
 
             if ($userEntity->isAdmin()) {
-                //admin user has access to everything
+                // admin user has access to everything
                 $permissions[$permission] = true;
             } else {
                 $activePermissions = ($userEntity instanceof User) ? $userEntity->getActivePermissions() : [];
 
-                //check against bundle permissions class
+                // check against bundle permissions class
                 $permissionObject = $this->getPermissionObject($parts[0]);
 
-                //Is the permission supported?
+                // Is the permission supported?
                 if (!$permissionObject->isSupported($parts[1], $parts[2])) {
                     if ($allowUnknown) {
                         $permissions[$permission] = false;
@@ -264,10 +236,12 @@ class CorePermissions
                         throw new PermissionNotFoundException($this->getTranslator()->trans('mautic.core.permissions.notfound', ['%permission%' => $permission]));
                     }
                 } elseif ('anon.' == $userEntity) {
-                    //anon user or session timeout
+                    // anon user or session timeout
                     $permissions[$permission] = false;
+                } elseif ($permissionObject instanceof VirtualPermissions) {
+                    $permissions[$permission] = $permissionObject->isVirtuallyGranted($parts[1], $parts[2]);
                 } elseif (!isset($activePermissions[$parts[0]])) {
-                    //user does not have implicit access to bundle so deny
+                    // user does not have implicit access to bundle so deny
                     $permissions[$permission] = false;
                 } else {
                     $permissions[$permission] = $permissionObject->isGranted($activePermissions[$parts[0]], $parts[1], $parts[2]);
@@ -278,16 +252,15 @@ class CorePermissions
         }
 
         if ('MATCH_ALL' == $mode) {
-            //deny if any of the permissions are denied
-            return in_array(0, $permissions) ? false : true;
+            // deny if any of the permissions are denied
+            return !in_array(0, $permissions);
         } elseif ('MATCH_ONE' == $mode) {
-            //grant if any of the permissions were granted
-            return in_array(1, $permissions) ? true : false;
+            // grant if any of the permissions were granted
+            return in_array(1, $permissions);
         } elseif ('RETURN_ARRAY' == $mode) {
             return $permissions;
-        } else {
-            throw new PermissionNotFoundException($this->getTranslator()->trans('mautic.core.permissions.mode.notfound', ['%mode%' => $mode]));
         }
+        throw new PermissionNotFoundException($this->getTranslator()->trans('mautic.core.permissions.mode.notfound', ['%mode%' => $mode]));
     }
 
     /**
@@ -299,6 +272,9 @@ class CorePermissions
      */
     public function checkPermissionExists($permission)
     {
+        // Generate all permission objects in case they haven't been already.
+        $this->getPermissionObjects();
+
         $checkPermissions = (!is_array($permission)) ? [$permission] : $permission;
 
         $result = [];
@@ -312,7 +288,7 @@ class CorePermissions
             if (3 != count($parts)) {
                 $result[$p] = false;
             } else {
-                //check against bundle permissions class
+                // check against bundle permissions class
                 $permissionObject = $this->getPermissionObject($parts[0], false);
                 $result[$p]       = $permissionObject && $permissionObject->isSupported($parts[1], $parts[2]);
             }
@@ -321,20 +297,46 @@ class CorePermissions
         return (is_array($permission)) ? $result : $result[$permission];
     }
 
+    public function hasPublishAccessForEntity(FormEntity $entity, string $ownPermission, string $otherPermission): bool
+    {
+        $user = $this->userHelper->getUser();
+
+        if (!$user) {
+            return false;
+        }
+
+        $hasOwnPermission   = $this->isGranted($ownPermission);
+        $hasOtherPermission = $this->isGranted($otherPermission);
+
+        if (!$hasOwnPermission && !$hasOtherPermission) {
+            return false;
+        }
+
+        if ($hasOwnPermission && $entity->isNew()) {
+            return true;
+        }
+
+        $ownerId = method_exists($entity, 'getPermissionUser') ? (int) $entity->getPermissionUser() : (int) $entity->getCreatedBy();
+
+        if ($hasOwnPermission && !$entity->isNew() && $ownerId === (int) $user->getId()) {
+            return true;
+        }
+
+        return $hasOtherPermission && !$entity->isNew() && $ownerId !== (int) $user->getId();
+    }
+
     /**
      * Checks if the user has access to the requested entity.
      *
      * @param string|bool $ownPermission
      * @param string|bool $otherPermission
      * @param User|int    $ownerId
-     *
-     * @return bool
      */
-    public function hasEntityAccess($ownPermission, $otherPermission, $ownerId = 0)
+    public function hasEntityAccess($ownPermission, $otherPermission, $ownerId = 0): bool
     {
         $user = $this->userHelper->getUser();
         if (!is_object($user)) {
-            //user is likely anon. so assume no access and let controller handle via published status
+            // user is likely anon. so assume no access and let controller handle via published status
             return false;
         }
 
@@ -367,32 +369,26 @@ class CorePermissions
         $ownerId = (int) $ownerId;
 
         if (0 === $ownerId) {
-            if ($other) {
-                return true;
-            } else {
-                return false;
-            }
+            return (bool) $other;
         } elseif ($own && (int) $this->userHelper->getUser()->getId() === (int) $ownerId) {
             return true;
         } elseif ($other && (int) $this->userHelper->getUser()->getId() !== (int) $ownerId) {
             return true;
-        } else {
-            return false;
         }
+
+        return false;
     }
 
     /**
      * Retrieves all permissions.
      *
      * @param bool $forJs
-     *
-     * @return array
      */
-    public function getAllPermissions($forJs = false)
+    public function getAllPermissions($forJs = false): array
     {
-        $permissionClasses = $this->getPermissionObjects();
+        $permissionObjects = $this->getPermissionObjects();
         $permissions       = [];
-        foreach ($permissionClasses as $object) {
+        foreach ($permissionObjects as $object) {
             $perms = $object->getPermissions();
             if ($forJs) {
                 foreach ($perms as $level => $perm) {
@@ -408,52 +404,86 @@ class CorePermissions
         return $permissions;
     }
 
-    /**
-     * @return bool
-     */
-    public function isAnonymous()
+    public function isAnonymous(): bool
     {
         $userEntity = $this->userHelper->getUser();
 
         return ($userEntity instanceof User && !$userEntity->isGuest()) ? false : true;
     }
 
-    /**
-     * @return \Symfony\Bundle\FrameworkBundle\Translation\Translator
-     */
-    protected function getTranslator()
+    protected function getTranslator(): TranslatorInterface
     {
         return $this->translator;
     }
 
     /**
-     * @return bool|mixed
+     * @return mixed[]
      */
-    protected function getBundles()
+    protected function getBundles(): array
     {
         return $this->bundles;
     }
 
-    /**
-     * @return array
-     */
-    protected function getPluginBundles()
+    protected function getPluginBundles(): array
     {
         return $this->pluginBundles;
     }
 
-    /**
-     * @return array
-     */
-    protected function getParams()
+    protected function getParams(): array
     {
         return $this->coreParametersHelper->all();
+    }
+
+    protected function getPermissionClasses(): array
+    {
+        if (empty($this->permissionClasses)) {
+            $this->registerPermissionClasses();
+        }
+
+        return $this->permissionClasses;
+    }
+
+    /**
+     * @deprecated To be removed in 4.0.
+     *
+     * It is recommended to define permission objects via DI with tag 'mautic.permissions'.
+     * This is fallback for keeping BC where the permission object is instantiated on the fly.
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function instantiatePermissionObject(string $class): AbstractPermissions
+    {
+        if (empty($this->getPermissionClasses()[$class])) {
+            throw new \InvalidArgumentException("Permission class not found for {$class} in permissions classes");
+        }
+
+        $permissionClass = $this->getPermissionClasses()[$class];
+
+        return new $permissionClass($this->getParams());
+    }
+
+    /**
+     * Search for the permission objects by name or by class name.
+     *
+     * @throws \UnexpectedValueException
+     */
+    private function findPermissionObject(string $bundle): AbstractPermissions
+    {
+        if (isset($this->permissionObjectsByName[$bundle])) {
+            return $this->permissionObjectsByName[$bundle];
+        }
+
+        if (isset($this->permissionObjectsByClass[$bundle])) {
+            return $this->permissionObjectsByClass[$bundle];
+        }
+
+        throw new \UnexpectedValueException("There is no permission object for {$bundle}");
     }
 
     /**
      * Register permission classes.
      */
-    private function registerPermissionClasses()
+    private function registerPermissionClasses(): void
     {
         foreach ($this->getBundles() as $bundle) {
             if (!empty($bundle['permissionClasses'])) {

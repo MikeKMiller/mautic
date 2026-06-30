@@ -1,22 +1,10 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\LeadBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 
-/**
- * Class PointsChangeLog.
- */
 class CompanyChangeLog
 {
     /**
@@ -45,21 +33,21 @@ class CompanyChangeLog
     private $actionName;
 
     /**
-     * @var Company
+     * @var int
      */
     private $company;
 
     /**
-     * @var \DateTime
+     * @var \DateTimeInterface
      */
     private $dateAdded;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
         $builder->setTable('lead_companies_change_log')
-            ->setCustomRepositoryClass('Mautic\LeadBundle\Entity\CompanyChangeLogRepository')
+            ->setCustomRepositoryClass(CompanyChangeLogRepository::class)
             ->addIndex(['date_added'], 'company_date_added');
 
         $builder->addId();
@@ -99,10 +87,8 @@ class CompanyChangeLog
      * Set type.
      *
      * @param string $type
-     *
-     * @return CompanyChangeLog
      */
-    public function setType($type)
+    public function setType($type): static
     {
         $this->type = $type;
 
@@ -123,10 +109,8 @@ class CompanyChangeLog
      * Set eventName.
      *
      * @param string $eventName
-     *
-     * @return CompanyChangeLog
      */
-    public function setEventName($eventName)
+    public function setEventName($eventName): static
     {
         $this->eventName = $eventName;
 
@@ -147,10 +131,8 @@ class CompanyChangeLog
      * Set actionName.
      *
      * @param string $actionName
-     *
-     * @return CompanyChangeLog
      */
-    public function setActionName($actionName)
+    public function setActionName($actionName): static
     {
         $this->actionName = $actionName;
 
@@ -170,11 +152,9 @@ class CompanyChangeLog
     /**
      * Set delta.
      *
-     * @param Company $company
-     *
-     * @return CompanyChangeLog
+     * @param int $company
      */
-    public function setCompany($company)
+    public function setCompany($company): static
     {
         $this->company = $company;
 
@@ -184,7 +164,7 @@ class CompanyChangeLog
     /**
      * Get company.
      *
-     * @return \Mautic\LeadBundle\Entity\Company
+     * @return int
      */
     public function getCompany()
     {
@@ -195,10 +175,8 @@ class CompanyChangeLog
      * Set dateAdded.
      *
      * @param \DateTime $dateAdded
-     *
-     * @return CompanyChangeLog
      */
-    public function setDateAdded($dateAdded)
+    public function setDateAdded($dateAdded): static
     {
         $this->dateAdded = $dateAdded;
 
@@ -208,7 +186,7 @@ class CompanyChangeLog
     /**
      * Get dateAdded.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface
      */
     public function getDateAdded()
     {
@@ -217,10 +195,8 @@ class CompanyChangeLog
 
     /**
      * Set lead.
-     *
-     * @return CompanyChangeLog
      */
-    public function setLead(\Mautic\LeadBundle\Entity\Lead $lead)
+    public function setLead(Lead $lead): static
     {
         $this->lead = $lead;
 
@@ -230,7 +206,7 @@ class CompanyChangeLog
     /**
      * Get lead.
      *
-     * @return \Mautic\LeadBundle\Entity\Lead
+     * @return Lead
      */
     public function getLead()
     {

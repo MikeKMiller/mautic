@@ -1,53 +1,48 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\Model;
 
+use Doctrine\ORM\EntityManagerInterface;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
 use Mautic\CoreBundle\Helper\UrlHelper;
+use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Model\FormModel;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Shortener\Shortener;
+use Mautic\CoreBundle\Translation\Translator;
 use Mautic\PageBundle\Entity\Redirect;
+use Mautic\PageBundle\Entity\RedirectRepository;
 use Mautic\PageBundle\Event\RedirectGenerationEvent;
 use Mautic\PageBundle\PageEvents;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
- * Class RedirectModel.
+ * @extends FormModel<Redirect>
  */
 class RedirectModel extends FormModel
 {
-    /**
-     * @var UrlHelper
-     */
-    protected $urlHelper;
+    public function __construct(
+        EntityManagerInterface $em,
+        CorePermissions $security,
+        EventDispatcherInterface $dispatcher,
+        UrlGeneratorInterface $router,
+        Translator $translator,
+        UserHelper $userHelper,
+        LoggerInterface $mauticLogger,
+        CoreParametersHelper $coreParametersHelper,
+        private readonly Shortener $shortener,
+    ) {
+        parent::__construct($em, $security, $dispatcher, $router, $translator, $userHelper, $mauticLogger, $coreParametersHelper);
+    }
 
-    /**
-     * RedirectModel constructor.
-     */
-    public function __construct(UrlHelper $urlHelper)
+    public function getRepository(): RedirectRepository
     {
-        $this->urlHelper = $urlHelper;
+        return $this->em->getRepository(Redirect::class);
     }
 
     /**
-     * {@inheritdoc}
-     *
-     * @return \Mautic\PageBundle\Entity\RedirectRepository
-     */
-    public function getRepository()
-    {
-        return $this->em->getRepository('MauticPageBundle:Redirect');
-    }
-
-    /**
-     * @param $identifier
-     *
      * @return Redirect|null
      */
     public function getRedirectById($identifier)
@@ -64,11 +59,25 @@ class RedirectModel extends FormModel
      *
      * @return string
      */
-    public function generateRedirectUrl(Redirect $redirect, $clickthrough = [], $shortenUrl = false, $utmTags = [])
-    {
+    public function generateRedirectUrl(
+        Redirect $redirect,
+        $clickthrough = [],
+        $shortenUrl = false,
+        $utmTags = [],
+    ) {
+        if (func_num_args() > 2) {
+            $deprecation = '$shortenUrl is deprecated. Please use \Mautic\PageBundle\Model\RedirectModel::shortenUrl.';
+            trigger_error($deprecation, E_USER_DEPRECATED);
+        }
+
+        if (func_num_args() > 3) {
+            $deprecation = '$utmTags is deprecated. Please use \Mautic\PageBundle\Model\RedirectModel::applyUtmTags.';
+            trigger_error($deprecation, E_USER_DEPRECATED);
+        }
+
         if ($this->dispatcher->hasListeners(PageEvents::ON_REDIRECT_GENERATE)) {
             $event = new RedirectGenerationEvent($redirect, $clickthrough);
-            $this->dispatcher->dispatch(PageEvents::ON_REDIRECT_GENERATE, $event);
+            $this->dispatcher->dispatch($event, PageEvents::ON_REDIRECT_GENERATE);
 
             $clickthrough = $event->getClickthrough();
         }
@@ -77,18 +86,15 @@ class RedirectModel extends FormModel
             'mautic_url_redirect',
             ['redirectId' => $redirect->getRedirectId()],
             true,
-            $clickthrough,
-            $shortenUrl
+            $clickthrough
         );
 
-        if (!empty($utmTags)) {
-            $utmTags         = $this->getUtmTagsForUrl($utmTags);
-            $appendUtmString = http_build_query($utmTags, '', '&');
-            $url             = UrlHelper::appendQueryToUrl($url, $appendUtmString);
+        if ([] !== $utmTags) {
+            $url = $this->applyUtmTags($url, $utmTags);
         }
 
         if ($shortenUrl) {
-            $url = $this->urlHelper->buildShortUrl($url);
+            $url = $this->shortenUrl($url);
         }
 
         return $url;
@@ -96,10 +102,8 @@ class RedirectModel extends FormModel
 
     /**
      * Generate UTMs params for url.
-     *
-     * @return array
      */
-    public function getUtmTagsForUrl($rawUtmTags)
+    public function getUtmTagsForUrl($rawUtmTags): array
     {
         $utmTags = [];
         foreach ($rawUtmTags as $utmTag => $value) {
@@ -114,16 +118,12 @@ class RedirectModel extends FormModel
      *
      * Use Mautic\PageBundle\Model\TrackableModel::getTrackableByUrl() if associated with a channel
      *
-     * @param  $url
-     *
      * @return Redirect|null
      */
     public function getRedirectByUrl($url)
     {
         // Ensure the URL saved to the database does not have encoded ampersands
-        while (false !== strpos($url, '&amp;')) {
-            $url = str_replace('&amp;', '&', $url);
-        }
+        $url = UrlHelper::decodeAmpersands($url);
 
         $repo     = $this->getRepository();
         $redirect = $repo->findOneBy(['url' => $url]);
@@ -138,14 +138,19 @@ class RedirectModel extends FormModel
     /**
      * Get Redirect entities by an array of URLs.
      *
-     * @return array
+     * @return array<Redirect>
      */
     public function getRedirectsByUrls(array $urls)
     {
+        /** @var array<Redirect> $redirects */
         $redirects   = $this->getRepository()->findByUrls(array_values($urls));
         $newEntities = [];
-        $return      = [];
-        $byUrl       = [];
+
+        /** @var array<string, Redirect> $return */
+        $return = [];
+
+        /** @var array<string, Redirect> $byUrl */
+        $byUrl = [];
 
         foreach ($redirects as $redirect) {
             $byUrl[$redirect->getUrl()] = $redirect;
@@ -177,12 +182,8 @@ class RedirectModel extends FormModel
 
     /**
      * Create a Redirect entity for URL.
-     *
-     * @param $url
-     *
-     * @return Redirect
      */
-    public function createRedirectEntity($url)
+    public function createRedirectEntity($url): Redirect
     {
         $redirect = new Redirect();
         $redirect->setUrl($url);
@@ -191,5 +192,25 @@ class RedirectModel extends FormModel
         $this->setTimestamps($redirect, true);
 
         return $redirect;
+    }
+
+    /**
+     * @param array<mixed> $utmTags
+     */
+    public function applyUtmTags(string $url, array $utmTags): string
+    {
+        if ([] === $utmTags) {
+            return $url;
+        }
+
+        $utmTags         = $this->getUtmTagsForUrl($utmTags);
+        $appendUtmString = http_build_query($utmTags, '', '&');
+
+        return UrlHelper::appendQueryToUrl($url, $appendUtmString);
+    }
+
+    public function shortenUrl(string $url): string
+    {
+        return $this->shortener->shortenUrl($url);
     }
 }

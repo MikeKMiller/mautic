@@ -2,20 +2,12 @@
 
 declare(strict_types=1);
 
-/*
- * @copyright   2018 Mautic Inc. All rights reserved
- * @author      Mautic, Inc.
- *
- * @link        https://www.mautic.com
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\IntegrationsBundle\Sync\SyncDataExchange\Internal\ReportBuilder;
 
 use Mautic\IntegrationsBundle\Entity\FieldChangeRepository;
 use Mautic\IntegrationsBundle\Event\InternalObjectFindEvent;
 use Mautic\IntegrationsBundle\IntegrationEvents;
+use Mautic\IntegrationsBundle\Sync\DAO\Sync\Report\FieldDAO;
 use Mautic\IntegrationsBundle\Sync\DAO\Sync\Report\ObjectDAO as ReportObjectDAO;
 use Mautic\IntegrationsBundle\Sync\DAO\Sync\Report\ReportDAO;
 use Mautic\IntegrationsBundle\Sync\DAO\Sync\Request\ObjectDAO as RequestObjectDAO;
@@ -25,73 +17,30 @@ use Mautic\IntegrationsBundle\Sync\Exception\ObjectNotFoundException;
 use Mautic\IntegrationsBundle\Sync\Logger\DebugLogger;
 use Mautic\IntegrationsBundle\Sync\SyncDataExchange\Helper\FieldHelper;
 use Mautic\IntegrationsBundle\Sync\SyncDataExchange\Internal\ObjectProvider;
-use Mautic\IntegrationsBundle\Sync\SyncDataExchange\MauticSyncDataExchange;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 class PartialObjectReportBuilder
 {
-    /**
-     * @var FieldChangeRepository
-     */
-    private $fieldChangeRepository;
+    private array $reportObjects = [];
 
-    /**
-     * @var FieldHelper
-     */
-    private $fieldHelper;
+    private array $lastProcessedTrackedId = [];
 
-    /**
-     * @var FieldBuilder
-     */
-    private $fieldBuilder;
+    private array $objectsWithMissingFields = [];
 
-    /**
-     * @var array
-     */
-    private $reportObjects = [];
-
-    /**
-     * @var array
-     */
-    private $lastProcessedTrackedId = [];
-
-    /**
-     * @var array
-     */
-    private $objectsWithMissingFields = [];
-
-    /**
-     * @var ReportDAO
-     */
-    private $syncReport;
-
-    /**
-     * @var ObjectProvider
-     */
-    private $objectProvider;
-
-    /**
-     * @var EventDispatcherInterface
-     */
-    private $dispatcher;
+    private ?ReportDAO $syncReport = null;
 
     public function __construct(
-        FieldChangeRepository $fieldChangeRepository,
-        FieldHelper $fieldHelper,
-        FieldBuilder $fieldBuilder,
-        ObjectProvider $objectProvider,
-        EventDispatcherInterface $dispatcher
+        private readonly FieldChangeRepository $fieldChangeRepository,
+        private readonly FieldHelper $fieldHelper,
+        private readonly FieldBuilder $fieldBuilder,
+        private readonly ObjectProvider $objectProvider,
+        private readonly EventDispatcherInterface $dispatcher,
     ) {
-        $this->fieldChangeRepository = $fieldChangeRepository;
-        $this->fieldHelper           = $fieldHelper;
-        $this->fieldBuilder          = $fieldBuilder;
-        $this->objectProvider        = $objectProvider;
-        $this->dispatcher            = $dispatcher;
     }
 
     public function buildReport(RequestDAO $requestDAO): ReportDAO
     {
-        $this->syncReport = new ReportDAO(MauticSyncDataExchange::NAME);
+        $this->syncReport = new ReportDAO($requestDAO->getSyncToIntegration());
         $requestedObjects = $requestDAO->getObjects();
 
         foreach ($requestedObjects as $objectDAO) {
@@ -118,16 +67,16 @@ class PartialObjectReportBuilder
                 } catch (ObjectNotFoundException $exception) {
                     // Process the others
                     DebugLogger::log(
-                        MauticSyncDataExchange::NAME,
+                        $requestDAO->getSyncToIntegration(),
                         $exception->getMessage(),
-                        __CLASS__.':'.__FUNCTION__
+                        self::class.':'.__FUNCTION__
                     );
                 }
             } catch (ObjectNotFoundException $exception) {
                 DebugLogger::log(
-                    MauticSyncDataExchange::NAME,
+                    $requestDAO->getSyncToIntegration(),
                     $exception->getMessage(),
-                    __CLASS__.':'.__FUNCTION__
+                    self::class.':'.__FUNCTION__
                 );
             }
         }
@@ -190,7 +139,7 @@ class PartialObjectReportBuilder
             foreach ($fields as $field) {
                 try {
                     $syncObject->getField($field);
-                } catch (FieldNotFoundException $exception) {
+                } catch (FieldNotFoundException) {
                     $missingFields[] = $field;
                 }
             }
@@ -206,7 +155,7 @@ class PartialObjectReportBuilder
 
         $event = new InternalObjectFindEvent($this->objectProvider->getObjectByName($objectName));
         $event->setIds(array_keys($this->objectsWithMissingFields));
-        $this->dispatcher->dispatch(IntegrationEvents::INTEGRATION_FIND_INTERNAL_RECORDS, $event);
+        $this->dispatcher->dispatch($event, IntegrationEvents::INTEGRATION_FIND_INTERNAL_RECORDS);
 
         return $event->getFoundObjects();
     }
@@ -223,15 +172,16 @@ class PartialObjectReportBuilder
                         $field,
                         $incompleteObject,
                         $requestObjectDAO,
-                        $this->syncReport->getIntegration()
+                        $this->syncReport->getIntegration(),
+                        FieldDAO::FIELD_UNCHANGED
                     );
                     $reportObjectDAO->addField($reportFieldDAO);
                 } catch (FieldNotFoundException $exception) {
                     // Field is not supported so keep going
                     DebugLogger::log(
-                        MauticSyncDataExchange::NAME,
+                        $this->syncReport->getIntegration(),
                         $exception->getMessage(),
-                        __CLASS__.':'.__FUNCTION__
+                        self::class.':'.__FUNCTION__
                     );
                 }
             }

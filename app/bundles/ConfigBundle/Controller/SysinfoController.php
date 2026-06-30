@@ -1,48 +1,57 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ConfigBundle\Controller;
 
+use Doctrine\Persistence\ManagerRegistry;
+use Mautic\ConfigBundle\Model\SysinfoModel;
 use Mautic\CoreBundle\Controller\FormController;
-use Symfony\Component\HttpFoundation\JsonResponse;
+use Mautic\CoreBundle\Factory\ModelFactory;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Helper\UserHelper;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Service\FlashBag;
+use Mautic\CoreBundle\Translation\Translator;
+use Mautic\FormBundle\Helper\FormFieldHelper;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Form\FormFactoryInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 
-/**
- * Class SysinfoController.
- */
 class SysinfoController extends FormController
 {
-    /**
-     * @param int $page
-     *
-     * @return JsonResponse|\Symfony\Component\HttpFoundation\Response
-     */
-    public function indexAction($page = 1)
+    public function __construct(
+        FormFactoryInterface $formFactory,
+        FormFieldHelper $fieldHelper,
+        private readonly SysinfoModel $sysinfoModel,
+        ManagerRegistry $doctrine,
+        ModelFactory $modelFactory,
+        UserHelper $userHelper,
+        CoreParametersHelper $coreParametersHelper,
+        EventDispatcherInterface $dispatcher,
+        Translator $translator,
+        FlashBag $flashBag,
+        RequestStack $requestStack,
+        CorePermissions $security,
+    ) {
+        // @phpstan-ignore-next-line Ignore as AbstractStandardFormController is deprecated
+        parent::__construct($formFactory, $fieldHelper, $doctrine, $modelFactory, $userHelper, $coreParametersHelper, $dispatcher, $translator, $flashBag, $requestStack, $security);
+    }
+
+    public function indexAction(): \Symfony\Component\HttpFoundation\Response
     {
         if (!$this->user->isAdmin() || $this->coreParametersHelper->get('sysinfo_disabled')) {
-            return $this->accessDenied();
+            $this->throwAccessDenied();
         }
-
-        /** @var \Mautic\ConfigBundle\Model\SysinfoModel $model */
-        $model   = $this->getModel('config.sysinfo');
-        $phpInfo = $model->getPhpInfo();
-        $folders = $model->getFolders();
-        $log     = $model->getLogTail(40);
 
         return $this->delegateView([
             'viewParameters' => [
-                'phpInfo' => $phpInfo,
-                'folders' => $folders,
-                'log'     => $log,
+                'phpInfo'         => $this->sysinfoModel->getPhpInfo(),
+                'requirements'    => $this->sysinfoModel->getRequirements(),
+                'recommendations' => $this->sysinfoModel->getRecommendations(),
+                'folders'         => $this->sysinfoModel->getFolders(),
+                'log'             => $this->sysinfoModel->getLogTail(200),
+                'dbInfo'          => $this->sysinfoModel->getDbInfo(),
             ],
-            'contentTemplate' => 'MauticConfigBundle:Sysinfo:index.html.php',
+            'contentTemplate' => '@MauticConfig/Sysinfo/index.html.twig',
             'passthroughVars' => [
                 'activeLink'    => '#mautic_sysinfo_index',
                 'mauticContent' => 'sysinfo',

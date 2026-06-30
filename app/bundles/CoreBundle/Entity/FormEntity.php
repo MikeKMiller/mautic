@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
@@ -16,17 +7,56 @@ use Mautic\ApiBundle\Serializer\Driver\ApiMetadataDriver;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
 use Mautic\CoreBundle\Helper\DateTimeHelper;
 use Mautic\UserBundle\Entity\User;
+use Symfony\Component\Serializer\Attribute\Groups;
 
 class FormEntity extends CommonEntity
 {
     /**
      * @var bool
      */
+    #[Groups([
+        'category:read', 'category:write',
+        'notification:read', 'notification:write',
+        'company:read', 'company:write',
+        'leadfield:read', 'leadfield:write',
+        'page:read', 'page:write',
+        'campaign:read', 'campaign:write',
+        'point:read', 'point:write',
+        'trigger:read', 'trigger:write',
+        'message:read', 'message:write',
+        'focus:read', 'focus:write',
+        'sms:read', 'sms:write',
+        'asset:read', 'asset:write',
+        'dynamicContent:read', 'dynamicContent:write',
+        'form:read', 'form:write',
+        'stage:read', 'stage:write',
+        'segment:read', 'segment:write',
+        'email:read', 'email:write',
+    ])]
     private $isPublished = true;
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
+    #[Groups([
+        'category:read', 'category:write',
+        'notification:read', 'notification:write',
+        'company:read', 'company:write',
+        'leadfield:read', 'leadfield:write',
+        'page:read', 'page:write',
+        'campaign:read', 'campaign:write',
+        'point:read', 'point:write',
+        'trigger:read', 'trigger:write',
+        'message:read', 'message:write',
+        'focus:read', 'focus:write',
+        'asset:read', 'asset:write',
+        'sms:read', 'sms:write',
+        'segment:read', 'segment:write',
+        'email:read', 'email:write',
+        'dynamicContent:read', 'dynamicContent:write',
+        'form:read', 'form:write',
+        'stage:read', 'stage:write',
+    ])]
     private $dateAdded;
 
     /**
@@ -40,12 +70,29 @@ class FormEntity extends CommonEntity
     private $createdByUser;
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
+    #[Groups([
+        'category:read', 'category:write',
+        'notification:read', 'notification:write',
+        'company:read', 'company:write',
+        'leadfield:read', 'leadfield:write',
+        'page:read', 'page:write',
+        'campaign:read', 'campaign:write',
+        'point:read', 'point:write',
+        'trigger:read', 'trigger:write',
+        'message:read', 'message:write',
+        'focus:read', 'focus:write',
+        'dynamicContent:read', 'dynamicContent:write',
+        'form:read', 'form:write',
+        'stage:read', 'stage:write',
+        'segment:read', 'segment:write',
+        'asset:read', 'asset:write',
+    ])]
     private $dateModified;
 
     /**
-     * var null|int.
+     * @var int|null
      */
     private $modifiedBy;
 
@@ -55,7 +102,7 @@ class FormEntity extends CommonEntity
     private $modifiedByUser;
 
     /**
-     * @var \DateTime|null
+     * @var \DateTimeInterface|null
      */
     private $checkedOut;
 
@@ -84,7 +131,7 @@ class FormEntity extends CommonEntity
      */
     public $deletedId;
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
@@ -139,10 +186,8 @@ class FormEntity extends CommonEntity
 
     /**
      * Prepares the metadata for API usage.
-     *
-     * @param $metadata
      */
-    public static function loadApiMetadata(ApiMetadataDriver $metadata)
+    public static function loadApiMetadata(ApiMetadataDriver $metadata): void
     {
         $metadata->setGroupPrefix('publish')
             ->addListProperties(
@@ -170,9 +215,10 @@ class FormEntity extends CommonEntity
     public function __clone()
     {
         $this->dateAdded    = null;
-        $this->dateModified = null;
+        $this->dateModified = new \DateTime();
         $this->checkedOut   = null;
         $this->isPublished  = false;
+        $this->createdBy    = null;
         $this->changes      = [];
     }
 
@@ -189,7 +235,7 @@ class FormEntity extends CommonEntity
         if ($checkPublishStatus && method_exists($this, 'getPublishUp')) {
             $status = $this->getPublishStatus();
             if ('published' == $status) {
-                //check to see if there is a category to check
+                // check to see if there is a category to check
                 if ($checkCategoryStatus && method_exists($this, 'getCategory')) {
                     $category = $this->getCategory();
                     if (null !== $category && !$category->isPublished()) {
@@ -198,7 +244,7 @@ class FormEntity extends CommonEntity
                 }
             }
 
-            return ('published' == $status) ? true : false;
+            return 'published' === $status;
         }
 
         return $this->getIsPublished();
@@ -208,10 +254,8 @@ class FormEntity extends CommonEntity
      * Set dateAdded.
      *
      * @param \DateTime $dateAdded
-     *
-     * @return $this
      */
-    public function setDateAdded($dateAdded)
+    public function setDateAdded($dateAdded): static
     {
         $this->dateAdded = $dateAdded;
 
@@ -221,7 +265,7 @@ class FormEntity extends CommonEntity
     /**
      * Get dateAdded.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getDateAdded()
     {
@@ -232,10 +276,8 @@ class FormEntity extends CommonEntity
      * Set dateModified.
      *
      * @param \DateTime $dateModified
-     *
-     * @return $this
      */
-    public function setDateModified($dateModified)
+    public function setDateModified($dateModified): static
     {
         $this->isChanged('dateModified', $dateModified);
         $this->dateModified = $dateModified;
@@ -246,7 +288,7 @@ class FormEntity extends CommonEntity
     /**
      * Get dateModified.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getDateModified()
     {
@@ -257,10 +299,8 @@ class FormEntity extends CommonEntity
      * Set checkedOut.
      *
      * @param \DateTime $checkedOut
-     *
-     * @return $this
      */
-    public function setCheckedOut($checkedOut)
+    public function setCheckedOut($checkedOut): static
     {
         $this->checkedOut = $checkedOut;
 
@@ -270,7 +310,7 @@ class FormEntity extends CommonEntity
     /**
      * Get checkedOut.
      *
-     * @return \DateTime
+     * @return \DateTimeInterface|null
      */
     public function getCheckedOut()
     {
@@ -278,13 +318,9 @@ class FormEntity extends CommonEntity
     }
 
     /**
-     * Set createdBy.
-     *
-     * @param User $createdBy
-     *
-     * @return $this
+     * @param User|int|null $createdBy
      */
-    public function setCreatedBy($createdBy = null)
+    public function setCreatedBy($createdBy = null): static
     {
         if (null != $createdBy && !$createdBy instanceof User) {
             $this->createdBy = $createdBy;
@@ -301,7 +337,7 @@ class FormEntity extends CommonEntity
     /**
      * Get createdBy.
      *
-     * @return int
+     * @return int|null
      */
     public function getCreatedBy()
     {
@@ -311,11 +347,9 @@ class FormEntity extends CommonEntity
     /**
      * Set modifiedBy.
      *
-     * @param User $modifiedBy
-     *
-     * @return mixed
+     * @param User|int|null $modifiedBy
      */
-    public function setModifiedBy($modifiedBy = null)
+    public function setModifiedBy($modifiedBy = null): static
     {
         if (null != $modifiedBy && !$modifiedBy instanceof User) {
             $this->modifiedBy = $modifiedBy;
@@ -333,7 +367,7 @@ class FormEntity extends CommonEntity
     /**
      * Get modifiedBy.
      *
-     * @return User
+     * @return int|null
      */
     public function getModifiedBy()
     {
@@ -344,10 +378,8 @@ class FormEntity extends CommonEntity
      * Set checkedOutBy.
      *
      * @param User $checkedOutBy
-     *
-     * @return mixed
      */
-    public function setCheckedOutBy($checkedOutBy = null)
+    public function setCheckedOutBy($checkedOutBy = null): static
     {
         if (null != $checkedOutBy && !$checkedOutBy instanceof User) {
             $this->checkedOutBy = $checkedOutBy;
@@ -365,7 +397,7 @@ class FormEntity extends CommonEntity
     /**
      * Get checkedOutBy.
      *
-     * @return User
+     * @return int|null
      */
     public function getCheckedOutBy()
     {
@@ -376,10 +408,8 @@ class FormEntity extends CommonEntity
      * Set isPublished.
      *
      * @param bool $isPublished
-     *
-     * @return $this
      */
-    public function setIsPublished($isPublished)
+    public function setIsPublished($isPublished): static
     {
         $this->isChanged('isPublished', (bool) $isPublished);
 
@@ -449,13 +479,13 @@ class FormEntity extends CommonEntity
     /**
      * Set this entity as new in case it has to be saved prior to the events.
      */
-    public function setNew()
+    public function setNew(): void
     {
         $this->new = true;
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getCheckedOutByUser()
     {
@@ -463,7 +493,7 @@ class FormEntity extends CommonEntity
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getCreatedByUser()
     {
@@ -471,7 +501,7 @@ class FormEntity extends CommonEntity
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getModifiedByUser()
     {
@@ -480,10 +510,8 @@ class FormEntity extends CommonEntity
 
     /**
      * @param mixed $createdByUser
-     *
-     * @return $this
      */
-    public function setCreatedByUser($createdByUser)
+    public function setCreatedByUser($createdByUser): static
     {
         $this->createdByUser = $createdByUser;
 
@@ -492,10 +520,8 @@ class FormEntity extends CommonEntity
 
     /**
      * @param mixed $modifiedByUser
-     *
-     * @return $this
      */
-    public function setModifiedByUser($modifiedByUser)
+    public function setModifiedByUser($modifiedByUser): static
     {
         $this->modifiedByUser = $modifiedByUser;
 
@@ -504,10 +530,8 @@ class FormEntity extends CommonEntity
 
     /**
      * @param mixed $checkedOutByUser
-     *
-     * @return $this
      */
-    public function setCheckedOutByUser($checkedOutByUser)
+    public function setCheckedOutByUser($checkedOutByUser): static
     {
         $this->checkedOutByUser = $checkedOutByUser;
 

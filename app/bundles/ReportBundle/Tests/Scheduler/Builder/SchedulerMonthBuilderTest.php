@@ -11,7 +11,7 @@ use Recurr\Rule;
 
 class SchedulerMonthBuilderTest extends \PHPUnit\Framework\TestCase
 {
-    public function testBuilEvent()
+    public function testBuilEvent(): void
     {
         $schedulerDailyBuilder = new SchedulerMonthBuilder();
 
@@ -28,15 +28,13 @@ class SchedulerMonthBuilderTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(['1MO'], $rule->getByDay());
     }
 
-    public function testBuilEventFails()
+    public function testBuilEventFails(): void
     {
         $schedulerDailyBuilder = new SchedulerMonthBuilder();
 
         $schedulerEntity = new SchedulerEntity(true, SchedulerEnum::UNIT_DAILY, null, null);
 
-        $rule = $this->getMockBuilder(Rule::class)
-            ->disableOriginalConstructor()
-            ->getMock();
+        $rule = $this->createMock(Rule::class);
 
         $rule->expects($this->once())
             ->method('setFreq')

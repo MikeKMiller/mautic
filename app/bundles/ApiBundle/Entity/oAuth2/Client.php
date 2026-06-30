@@ -1,21 +1,12 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ApiBundle\Entity\oAuth2;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Mapping as ORM;
 use FOS\OAuthServerBundle\Model\Client as BaseClient;
-use Mautic\ApiBundle\Entity\oAuth2\ClientRepository;
 use Mautic\CoreBundle\Doctrine\Mapping\ClassMetadataBuilder;
+use Mautic\UserBundle\Entity\Role;
 use Mautic\UserBundle\Entity\User;
 use OAuth2\OAuth2;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -34,7 +25,7 @@ class Client extends BaseClient
     protected $name;
 
     /**
-     * @var ArrayCollection
+     * @var ArrayCollection<int, User>
      */
     protected $users;
 
@@ -43,25 +34,21 @@ class Client extends BaseClient
      */
     protected $authCodes;
 
-    /**
-     * @var string
-     */
-    protected $randomId;
+    protected ?string $randomId = null;
+
+    protected ?string $secret = null;
 
     /**
-     * @var string
+     * @var array<string>
      */
-    protected $secret;
+    protected array $redirectUris = [];
 
     /**
-     * @var array
+     * @var array<string>
      */
-    protected $redirectUris = [];
+    protected array $allowedGrantTypes;
 
-    /**
-     * @var array
-     */
-    protected $allowedGrantTypes;
+    protected ?Role $role = null;
 
     public function __construct()
     {
@@ -76,7 +63,7 @@ class Client extends BaseClient
         $this->authCodes = new ArrayCollection();
     }
 
-    public static function loadMetadata(ORM\ClassMetadata $metadata)
+    public static function loadMetadata(ORM\ClassMetadata $metadata): void
     {
         $builder = new ClassMetadataBuilder($metadata);
 
@@ -106,9 +93,14 @@ class Client extends BaseClient
         $builder->createField('allowedGrantTypes', 'array')
             ->columnName('allowed_grant_types')
             ->build();
+
+        $builder->createManyToOne('role', Role::class)
+            ->addJoinColumn('role_id', 'id', true, false)
+            ->cascadePersist()
+            ->build();
     }
 
-    public static function loadValidatorMetadata(ClassMetadata $metadata)
+    public static function loadValidatorMetadata(ClassMetadata $metadata): void
     {
         $metadata->addPropertyConstraint('name', new Assert\NotBlank(
             ['message' => 'mautic.core.name.required']
@@ -124,10 +116,6 @@ class Client extends BaseClient
      */
     protected $changes;
 
-    /**
-     * @param $prop
-     * @param $val
-     */
     protected function isChanged($prop, $val)
     {
         $getter  = 'get'.ucfirst($prop);
@@ -155,10 +143,8 @@ class Client extends BaseClient
 
     /**
      * @param string $name
-     *
-     * @return Client
      */
-    public function setName($name)
+    public function setName($name): static
     {
         $this->isChanged('name', $name);
 
@@ -175,33 +161,27 @@ class Client extends BaseClient
         return $this->name;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setRedirectUris(array $redirectUris)
+    public function setRedirectUris(array $redirectUris): void
     {
         $this->isChanged('redirectUris', $redirectUris);
 
         $this->redirectUris = $redirectUris;
     }
 
-    /**
-     * @return Client
-     */
-    public function addAuthCode(AuthCode $authCodes)
+    public function addAuthCode(AuthCode $authCodes): static
     {
         $this->authCodes[] = $authCodes;
 
         return $this;
     }
 
-    public function removeAuthCode(AuthCode $authCodes)
+    public function removeAuthCode(AuthCode $authCodes): void
     {
         $this->authCodes->removeElement($authCodes);
     }
 
     /**
-     * @return \Doctrine\Common\Collections\Collection
+     * @return ArrayCollection
      */
     public function getAuthCodes()
     {
@@ -220,26 +200,43 @@ class Client extends BaseClient
         return $users->contains($user);
     }
 
-    /**
-     * @return Client
-     */
-    public function addUser(User $users)
+    public function addUser(User $users): static
     {
         $this->users[] = $users;
 
         return $this;
     }
 
-    public function removeUser(User $users)
+    public function removeUser(User $users): void
     {
         $this->users->removeElement($users);
     }
 
     /**
-     * @return \Doctrine\Common\Collections\Collection
+     * @return ArrayCollection<int, User>
      */
     public function getUsers()
     {
         return $this->users;
+    }
+
+    /**
+     * Add Authorization Grant Type.
+     */
+    public function addGrantType(string $grantType): Client
+    {
+        $this->allowedGrantTypes[] = $grantType;
+
+        return $this;
+    }
+
+    public function getRole(): Role
+    {
+        return $this->role;
+    }
+
+    public function setRole(Role $role): void
+    {
+        $this->role = $role;
     }
 }

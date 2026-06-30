@@ -1,54 +1,39 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\ConfigBundle\Event;
 
 use Mautic\CoreBundle\Helper\BundleHelper;
-use Symfony\Component\EventDispatcher\Event;
+use Symfony\Contracts\EventDispatcher\Event;
 
 class ConfigBuilderEvent extends Event
 {
     /**
-     * @var array
+     * @var mixed[]
      */
-    private $forms = [];
+    private array $forms = [];
 
     /**
-     * @var array
+     * @var string[]
      */
-    private $formThemes = [
-        'MauticConfigBundle:FormTheme',
+    private array $formThemes = [
+        '@MauticConfig/FormTheme/_config_file_row.html.twig',
+        '@MauticConfig/FormTheme/dsn_row.html.twig',
     ];
 
     /**
-     * @var BundleHelper
+     * @var string[]
      */
-    private $bundleHelper;
+    protected array $encodedFields = [];
 
-    /**
-     * @var array
-     */
-    protected $encodedFields = [];
-
-    public function __construct(BundleHelper $bundleHelper)
-    {
-        $this->bundleHelper = $bundleHelper;
+    public function __construct(
+        private readonly BundleHelper $bundleHelper,
+    ) {
     }
 
     /**
      * Set new form to the forms array.
-     *
-     * @return $this
      */
-    public function addForm(array $form)
+    public function addForm(array $form): static
     {
         if (isset($form['formTheme'])) {
             $this->formThemes[] = $form['formTheme'];
@@ -63,10 +48,8 @@ class ConfigBuilderEvent extends Event
      * Remove a form to the forms array.
      *
      * @param string $formAlias
-     *
-     * @return bool
      */
-    public function removeForm($formAlias)
+    public function removeForm($formAlias): bool
     {
         if (isset($this->forms[$formAlias])) {
             unset($this->forms[$formAlias]);
@@ -79,28 +62,22 @@ class ConfigBuilderEvent extends Event
 
     /**
      * Returns the forms array.
-     *
-     * @return array
      */
-    public function getForms()
+    public function getForms(): array
     {
         return $this->forms;
     }
 
     /**
      * Returns the formThemes array.
-     *
-     * @return array
      */
-    public function getFormThemes()
+    public function getFormThemes(): array
     {
         return $this->formThemes;
     }
 
     /**
      * Get default parameters from config defined in bundles.
-     *
-     * @param $bundle
      *
      * @return array
      */
@@ -114,27 +91,19 @@ class ConfigBuilderEvent extends Event
 
         if (isset($allBundles[$bundle]) && $allBundles[$bundle]['config']['parameters']) {
             return $allBundles[$bundle]['config']['parameters'];
-        } else {
-            return [];
         }
+
+        return [];
     }
 
-    /**
-     * @param $fields
-     *
-     * @return $this
-     */
-    public function addFileFields($fields)
+    public function addFileFields($fields): static
     {
         $this->encodedFields = array_merge($this->encodedFields, (array) $fields);
 
         return $this;
     }
 
-    /**
-     * @return array
-     */
-    public function getFileFields()
+    public function getFileFields(): array
     {
         return $this->encodedFields;
     }

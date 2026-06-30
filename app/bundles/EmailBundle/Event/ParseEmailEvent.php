@@ -1,82 +1,57 @@
 <?php
 
-/*
- * @copyright   2015 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\EmailBundle\Event;
 
-use Symfony\Component\EventDispatcher\Event;
+use Mautic\EmailBundle\MonitoredEmail\Message;
+use Symfony\Contracts\EventDispatcher\Event;
 
 class ParseEmailEvent extends Event
 {
     /**
-     * @var array
+     * @var mixed[]
      */
-    private $messages;
+    private array $criteriaRequests = [];
 
     /**
-     * @var array
+     * @var mixed[]
      */
-    private $keys;
+    private array $markAsSeen = [];
 
     /**
-     * @var array
+     * @param mixed[] $keys
      */
-    private $criteriaRequests = [];
-
-    /**
-     * @var array
-     */
-    private $markAsSeen = [];
-
-    public function __construct(array $messages = [], array $applicableKeys = [])
-    {
-        $this->messages = $messages;
-        $this->keys     = $applicableKeys;
+    public function __construct(
+        private array $messages = [],
+        private array $keys = [],
+    ) {
     }
 
     /**
      * Get the array of messages.
      *
-     * @return \Mautic\EmailBundle\MonitoredEmail\Message[]
+     * @return Message[]
      */
-    public function getMessages()
+    public function getMessages(): array
     {
         return $this->messages;
     }
 
     /**
-     * @param $messages
-     *
-     * @return $this
+     * @param Message[] $messages
      */
-    public function setMessages($messages)
+    public function setMessages(array $messages): static
     {
         $this->messages = $messages;
 
         return $this;
     }
 
-    /**
-     * @return array
-     */
-    public function getKeys()
+    public function getKeys(): array
     {
         return $this->keys;
     }
 
-    /**
-     * @param array $keys
-     *
-     * @return $this
-     */
-    public function setKeys($keys)
+    public function setKeys(array $keys): static
     {
         $this->keys = $keys;
 
@@ -85,13 +60,8 @@ class ParseEmailEvent extends Event
 
     /**
      * Check if the set of messages is applicable and should be processed by the listener.
-     *
-     * @param $bundleKey
-     * @param $folderKeys
-     *
-     * @return bool
      */
-    public function isApplicable($bundleKey, $folderKeys)
+    public function isApplicable($bundleKey, $folderKeys): bool
     {
         if (!is_array($folderKeys)) {
             $folderKeys = [$folderKeys];
@@ -116,7 +86,7 @@ class ParseEmailEvent extends Event
      * @param string $criteria   Should be a string using combinations of Mautic\EmailBundle\MonitoredEmail\Mailbox::CRITERIA_* constants
      * @param bool   $markAsSeen Mark the message as read after being processed
      */
-    public function setCriteriaRequest($bundleKey, $folderKeys, $criteria, $markAsSeen = true)
+    public function setCriteriaRequest($bundleKey, $folderKeys, $criteria, $markAsSeen = true): void
     {
         if (!is_array($folderKeys)) {
             $folderKeys = [$folderKeys];
@@ -130,18 +100,12 @@ class ParseEmailEvent extends Event
         }
     }
 
-    /**
-     * @return array
-     */
-    public function getCriteriaRequests()
+    public function getCriteriaRequests(): array
     {
         return $this->criteriaRequests;
     }
 
-    /**
-     * @return array
-     */
-    public function getMarkAsSeenInstructions()
+    public function getMarkAsSeenInstructions(): array
     {
         return $this->markAsSeen;
     }

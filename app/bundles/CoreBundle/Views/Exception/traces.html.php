@@ -1,14 +1,6 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-$formatArgs = function ($args) use (&$formatArgs) {
+$formatArgs = function ($args) use (&$formatArgs): string {
     $result = [];
     foreach ($args as $key => $item) {
         if (is_array($item) && isset($item[0]) && is_string($item[0]) && 2 === count($item)) {
@@ -30,7 +22,7 @@ $formatArgs = function ($args) use (&$formatArgs) {
                 $formattedValue = str_replace("\n", '', var_export(htmlspecialchars((string) $item[1]), true));
             }
         } elseif (is_object($item)) {
-            $formattedValue = get_class($item);
+            $formattedValue = $item::class;
         } elseif (is_string($item)) {
             $formattedValue = '<em>'.htmlspecialchars($item).'</em>';
         } elseif (is_array($item)) {

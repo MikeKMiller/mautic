@@ -1,10 +1,15 @@
 //set global Chart defaults
 if (typeof Chart != 'undefined') {
     // configure global Chart options
-    Chart.defaults.global.elements.line.borderWidth = 1;
-    Chart.defaults.global.elements.point.radius = 2;
+    Chart.defaults.global.elements.line.borderWidth = 2;
+    Chart.defaults.global.elements.point.radius = 0;
     Chart.defaults.global.legend.labels.boxWidth = 12;
     Chart.defaults.global.maintainAspectRatio = false;
+    Chart.defaults.scale.ticks.padding = 10;
+    Chart.defaults.global.elements.point.hoverRadius = 6;
+    Chart.defaults.global.elements.point.hitRadius = 20;
+    Chart.defaults.global.legend.labels.usePointStyle = true;
+    Chart.defaults.global.legend.labels.pointStyle = 'circle';
 }
 
 /**
@@ -40,6 +45,8 @@ Mautic.renderCharts = function(scope) {
                     Mautic.renderSimpleBarChart(canvas)
                 } else if (canvas.hasClass('horizontal-bar-chart')) {
                     Mautic.renderHorizontalBarChart(canvas)
+                } else if (canvas.hasClass('hour-chart')) {
+                    Mautic.renderHourChart(canvas)
                 }
             }
             canvas.addClass('chart-rendered');
@@ -61,10 +68,50 @@ Mautic.renderLineChart = function(canvas) {
         options: {
             lineTension : 0.2,
             borderWidth: 1,
+            tooltips: {
+                mode: 'index',
+                intersect: false
+            },
             scales: {
-                yAxes: [{
+                xAxes: [{
+                    gridLines: {
+                        display: false
+                    },
                     ticks: {
-                        beginAtZero: true
+                        maxRotation: 0,
+                        callback: function(value, index, values) {
+                            if (index === 0 || index === values.length - 1) {
+                                return value;
+                            }
+                            return '';
+                        }
+                    }
+                }],
+                yAxes: [{
+                    afterBuildTicks: function(scale) {
+                        scale.ticks = [];
+                        scale.ticks.push(scale.min);
+                        scale.ticks.push((scale.max - scale.min) / 2);
+                        scale.ticks.push(scale.max);
+                    },
+                    gridLines: {
+                        drawBorder: false,
+                    },
+                    ticks: {
+                        beginAtZero: true,
+                        callback: function(value, index, values) {
+                            if (index === 0 || index === values.length - 1) {
+                                return value;
+                            }
+                            if (/^\d+\.5$/.test(value.toString())) {
+                                return '';
+                            }
+                            if (index === Math.floor(values.length / 2)) {
+                                return value !== 0.5 ? value : '';
+                            }
+                            return '';
+                        }
+                        
                     }
                 }]
             }
@@ -72,6 +119,45 @@ Mautic.renderLineChart = function(canvas) {
     });
     Mautic.chartObjects.push(chart);
 };
+
+Mautic.renderHourChart = function(canvas) {
+    const data = JSON.parse(canvas.text());
+    const chart = new Chart(canvas, {
+        type: 'line',
+        data,
+        options: {
+            tooltips: { mode: 'index', intersect: false },
+            scales: {
+                xAxes: [{
+                    gridLines: { display: false },
+                    ticks: {
+                        autoSkip: true,
+                        maxTicksLimit: 6,
+                        maxRotation: 0,
+                        callback: value => value.split(' - ')[0]
+                    }
+                }],
+                yAxes: [{
+                    afterBuildTicks: scale => {
+                        scale.ticks = [scale.min, (scale.max - scale.min) / 2, scale.max];
+                    },
+                    gridLines: { drawBorder: false },
+                    ticks: {
+                        beginAtZero: true,
+                        callback: (value, index, values) => {
+                            if (index === 0 || index === values.length - 1) return value;
+                            if (/^\d+\.5$/.test(value.toString())) return '';
+                            if (index === Math.floor(values.length / 2)) return value !== 0.5 ? value : '';
+                            return '';
+                        }
+                    }
+                }]
+            }
+        }
+    });
+    Mautic.chartObjects.push(chart);
+};
+
 
 /**
  * Render the chart.js pie chart
@@ -226,125 +312,6 @@ Mautic.renderHorizontalBarChart = function(canvas) {
 };
 
 /**
- * Render vector maps
- *
- * @param mQuery element scope
- */
-Mautic.renderMaps = function(scope) {
-    var maps = [];
-
-    if (mQuery.type(scope) === 'string') {
-        maps = mQuery(scope).find('.vector-map');
-    } else if (scope) {
-        maps = scope.find('.vector-map');
-    } else {
-        maps = mQuery('.vector-map');
-    }
-
-    if (maps.length) {
-        maps.each(function(index, element) {
-            Mautic.renderMap(mQuery(element));
-        });
-    }
-};
-
-/**
- *
- * @param wrapper
- * @returns {*}
- */
-Mautic.renderMap = function(wrapper) {
-    // Map render causes a JS error on FF when the element is hidden
-    if (wrapper.is(':visible')) {
-        if (!Mautic.mapObjects) Mautic.mapObjects = [];
-        var data = wrapper.data('map-data');
-        if (typeof data === 'undefined' || !data.length) {
-            try {
-                data = JSON.parse(wrapper.text());
-                wrapper.data('map-data', data);
-            } catch (error) {
-
-                return;
-            }
-        }
-
-        // Markers have numerical indexes
-        var firstKey = Object.keys(data)[0];
-
-        // Check type of data
-        if (firstKey == "0") {
-            // Markers
-            var markersData = data,
-                regionsData = {};
-        } else {
-            // Regions
-            var markersData = {},
-                regionsData = data;
-        }
-
-        wrapper.text('');
-        wrapper.vectorMap({
-            backgroundColor: 'transparent',
-            zoomOnScroll: false,
-            markers: markersData,
-            markerStyle: {
-                initial: {
-                    fill: '#40C7B5'
-                },
-                selected: {
-                    fill: '#40C7B5'
-                }
-            },
-            regionStyle: {
-                initial: {
-                    "fill": '#dce0e5',
-                    "fill-opacity": 1,
-                    "stroke": 'none',
-                    "stroke-width": 0,
-                    "stroke-opacity": 1
-                },
-                hover: {
-                    "fill-opacity": 0.7,
-                    "cursor": 'pointer'
-                }
-            },
-            map: 'world_mill_en',
-            series: {
-                regions: [{
-                    values: regionsData,
-                    scale: ['#dce0e5', '#40C7B5'],
-                    normalizeFunction: 'polynomial'
-                }]
-            },
-            onRegionTipShow: function (event, label, index) {
-                if (data[index] > 0) {
-                    label.html(
-                        '<b>'+label.html()+'</b></br>'+
-                        data[index]+' Leads'
-                    );
-                }
-            }
-        });
-        wrapper.addClass('map-rendered');
-        Mautic.mapObjects.push(wrapper);
-        return wrapper;
-    }
-};
-
-/**
- * Destroy a jVector map
- */
-Mautic.destroyMap = function(wrapper) {
-    if (wrapper.hasClass('map-rendered')) {
-        var map = wrapper.vectorMap('get', 'mapObject');
-        map.removeAllMarkers();
-        map.remove();
-        wrapper.empty();
-        wrapper.removeClass('map-rendered');
-    }
-};
-
-/**
  * Initialize graph date range selectors
  */
 Mautic.initDateRangePicker = function (fromId, toId) {
@@ -378,6 +345,85 @@ Mautic.initDateRangePicker = function (fromId, toId) {
         });
     }
 };
+
+Mautic.setDateRange = (option) => {
+  const today = new Date();
+  const dayInMilliseconds = 24 * 60 * 60 * 1000;
+  let fromDate;
+  let toDate;
+
+  switch (option) {
+    case 'today':
+      fromDate = today;
+      toDate = today;
+      break;
+    case 'yesterday':
+      fromDate = new Date(today.getTime() - dayInMilliseconds);
+      toDate = fromDate;
+      break;
+    default:
+      if (typeof option !== 'number') {
+        console.error('Invalid date range option.');
+
+        return;
+      }
+
+      fromDate = new Date(today.getTime() - (option * dayInMilliseconds));
+      toDate = today;
+  }
+
+  const dateFromInput = document.getElementById('daterange_date_from');
+  const dateToInput = document.getElementById('daterange_date_to');
+  const applyButton = document.getElementById('daterange_apply');
+
+  if (!dateFromInput || !dateToInput || !applyButton) {
+    console.error('Date range inputs are missing.');
+
+    return;
+  }
+
+  dateFromInput.value = Mautic.formatDate(fromDate);
+  dateToInput.value = Mautic.formatDate(toDate);
+  applyButton.click();
+};
+
+Mautic.formatDate = (date) => {
+  const monthNames = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ];
+
+  return `${monthNames[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+};
+
+document.addEventListener('click', (event) => {
+  if (!(event.target instanceof Element)) {
+    return;
+  }
+
+  const dateRangeTrigger = event.target.closest('[data-date-range-option]');
+
+  if (!dateRangeTrigger) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const option = dateRangeTrigger.dataset.dateRangeOption;
+  const dateRangeOption = /^\d+$/.test(option) ? Number(option) : option;
+
+  Mautic.setDateRange(dateRangeOption);
+});
 
 /**
  * Helper function to timeframe based graphs

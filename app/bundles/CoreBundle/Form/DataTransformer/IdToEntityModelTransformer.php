@@ -1,63 +1,30 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Form\DataTransformer;
 
-use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\PersistentCollection;
 use Symfony\Component\Form\DataTransformerInterface;
 use Symfony\Component\Form\Exception\TransformationFailedException;
 
 /**
- * Class IdToEntityModelTransformer.
+ * @implements DataTransformerInterface<array<mixed>|int|string, array<mixed>|int|string>
  */
 class IdToEntityModelTransformer implements DataTransformerInterface
 {
     /**
-     * @var EntityManager
+     * @param class-string $repository
      */
-    private $em;
-
-    /**
-     * @var string
-     */
-    private $repository;
-
-    /**
-     * @var string
-     */
-    private $id;
-
-    /**
-     * @var bool
-     */
-    private $isArray;
-
-    /**
-     * @param string $repo
-     * @param string $identifier
-     * @param bool   $isArray
-     */
-    public function __construct(EntityManager $em, $repo = '', $identifier = 'id', $isArray = false)
+    public function __construct(private readonly EntityManagerInterface $em, private string $repository, private string $id = 'id', private readonly bool $isArray = false)
     {
-        $this->em         = $em;
-        $this->repository = $repo;
-        $this->id         = $identifier;
-        $this->isArray    = $isArray;
     }
 
     /**
-     * {@inheritdoc}
+     * @param array<mixed>|object|null $entity
+     *
+     * @return array<mixed>|int|string
      */
-    public function transform($entity)
+    public function transform(mixed $entity): mixed
     {
         $func = 'get'.ucfirst($this->id);
 
@@ -69,7 +36,7 @@ class IdToEntityModelTransformer implements DataTransformerInterface
             return $entity->$func();
         }
 
-        if (is_null($entity) && !is_array($entity) && !$entity instanceof PersistentCollection) {
+        if (!is_array($entity) && !$entity instanceof PersistentCollection) {
             return [];
         }
 
@@ -82,11 +49,11 @@ class IdToEntityModelTransformer implements DataTransformerInterface
     }
 
     /**
-     * {@inheritdoc}
+     * @param array<mixed>|int|string $id
      *
-     * @throws TransformationFailedException if object is not found
+     * @return array<mixed>|object|null
      */
-    public function reverseTransform($id)
+    public function reverseTransform(mixed $id): mixed
     {
         if (!$this->isArray) {
             if (!$id) {
@@ -95,8 +62,7 @@ class IdToEntityModelTransformer implements DataTransformerInterface
 
             $entity = $this->em
                 ->getRepository($this->repository)
-                ->findOneBy([$this->id => $id])
-            ;
+                ->findOneBy([$this->id => $id]);
 
             if (null === $entity) {
                 throw new TransformationFailedException(sprintf('An entity with a/an '.$this->id.' of "%s" does not exist!', $id));
@@ -126,7 +92,7 @@ class IdToEntityModelTransformer implements DataTransformerInterface
         ]);
 
         if (!count($entities)) {
-            throw new TransformationFailedException(sprintf('Entities with a/an '.$this->id.' of "%s" does not exist!', $id));
+            throw new TransformationFailedException(sprintf('Entities with a/an '.$this->id.' of "%s" does not exist!', json_encode($id)));
         }
 
         return $entities;
@@ -134,20 +100,16 @@ class IdToEntityModelTransformer implements DataTransformerInterface
 
     /**
      * Set the repository to use.
-     *
-     * @param string $repo
      */
-    public function setRepository($repo)
+    public function setRepository(string $repo): void
     {
         $this->repository = $repo;
     }
 
     /**
      * Set the identifier to use.
-     *
-     * @param string $id
      */
-    public function setIdentifier($id)
+    public function setIdentifier(string $id): void
     {
         $this->id = $id;
     }

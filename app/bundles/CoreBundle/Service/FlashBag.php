@@ -1,60 +1,30 @@
 <?php
 
-/*
- * @copyright   2018 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\CoreBundle\Service;
 
 use Mautic\CoreBundle\Model\NotificationModel;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\Session;
-use Symfony\Component\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 /**
  * Provides translated flash messages.
  */
 class FlashBag
 {
-    const LEVEL_ERROR     = 'error';
-    const LEVEL_WARNING   = 'warning';
-    const LEVEL_NOTICE    = 'notice';
+    public const LEVEL_ERROR     = 'error';
 
-    /**
-     * @var Session
-     */
-    private $session;
+    public const LEVEL_WARNING   = 'warning';
 
-    /**
-     * @var TranslatorInterface
-     */
-    private $translator;
+    public const LEVEL_NOTICE    = 'notice';
 
-    /**
-     * @var NotificationModel
-     */
-    private $notificationModel;
-
-    /**
-     * @var RequestStack
-     */
-    private $requestStack;
+    public const LEVEL_SUCCESS   = 'success';
 
     public function __construct(
-        Session $session,
-        TranslatorInterface $translator,
-        RequestStack $requestStack,
-        NotificationModel $notificationModel
+        private readonly TranslatorInterface $translator,
+        private readonly RequestStack $requestStack,
+        private readonly NotificationModel $notificationModel,
     ) {
-        $this->session           = $session;
-        $this->translator        = $translator;
-        $this->requestStack      = $requestStack;
-        $this->notificationModel = $notificationModel;
     }
 
     /**
@@ -64,35 +34,33 @@ class FlashBag
      * @param string     $domain
      * @param bool       $addNotification
      */
-    public function add($message, $messageVars = [], $level = self::LEVEL_NOTICE, $domain = 'flashes', $addNotification = false)
+    public function add($message, $messageVars = [], $level = self::LEVEL_NOTICE, $domain = 'flashes', $addNotification = false): void
     {
         if (false === $domain) {
-            //message is already translated
+            // message is already translated
             $translatedMessage = $message;
         } else {
-            if (isset($messageVars['pluralCount'])) {
-                $translatedMessage = $this->translator->transChoice($message, $messageVars['pluralCount'], $messageVars, $domain);
-            } else {
-                $translatedMessage = $this->translator->trans($message, $messageVars, $domain);
+            if (isset($messageVars['pluralCount']) && empty($messageVars['%count%'])) {
+                $messageVars['%count%'] = $messageVars['pluralCount'];
             }
+
+            $translatedMessage = $this->translator->trans($message, $messageVars, $domain);
         }
 
-        $this->session->getFlashBag()->add($level, $translatedMessage);
+        $session = $this->requestStack->getSession();
+        if ($session instanceof Session) {
+            $session->getFlashBag()->add($level, $translatedMessage);
+        }
 
         if (!defined('MAUTIC_INSTALLER') && $addNotification) {
-            switch ($level) {
-                case self::LEVEL_WARNING:
-                    $iconClass = 'text-warning fa-exclamation-triangle';
-                    break;
-                case self::LEVEL_ERROR:
-                    $iconClass = 'text-danger fa-exclamation-circle';
-                    break;
-                default:
-                    $iconClass = 'fa-info-circle';
-                    break;
-            }
+            $iconClass = match ($level) {
+                self::LEVEL_WARNING => 'text-warning ri-alert-line',
+                self::LEVEL_ERROR   => 'text-danger ri-error-warning-line',
+                self::LEVEL_SUCCESS => 'text-success ri-check-line',
+                default             => 'ri-information-2-line',
+            };
 
-            //If the user has not interacted with the browser for the last 30 seconds, consider the message unread
+            // If the user has not interacted with the browser for the last 30 seconds, consider the message unread
             $lastActive = $this->requestStack->getCurrentRequest()->get('mauticUserLastActive', 0);
             $isRead     = $lastActive > 30 ? 0 : 1;
 

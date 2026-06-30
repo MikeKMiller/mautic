@@ -11,34 +11,54 @@ Mautic.backgroundedModal = '';
  * @returns {boolean}
  */
 Mautic.ajaxifyModal = function (el, event) {
-    if (mQuery(el).hasClass('disabled')) {
-        return false;
-    }
+    let element = mQuery(el);
 
-    var target = mQuery(el).attr('data-target');
-
-    var route = (mQuery(el).attr('data-href')) ? mQuery(el).attr('data-href') : mQuery(el).attr('href');
-    if (route.indexOf('javascript') >= 0) {
+    if (element.hasClass('disabled')) {
         return false;
     }
 
     mQuery('body').addClass('noscroll');
 
-    var method = mQuery(el).attr('data-method');
-    if (!method) {
-        method = 'GET'
+    let target = element.attr('data-target');
+    let route = element.attr('data-href') ? element.attr('data-href') : element.attr('href');
+
+    if (route.indexOf('javascript') >= 0) {
+        return false;
     }
 
-    var header = mQuery(el).attr('data-header');
-    var footer = mQuery(el).attr('data-footer');
+    let method = element.attr('data-method') ? element.attr('data-method') : 'GET';
+    let header = element.attr('data-header');
+    let footer = element.attr('data-footer');
+    let modalOpenCallback = element.attr('data-modal-open-callback') ? element.attr('data-modal-open-callback') : null;
+    let modalCloseCallback = element.attr('data-modal-close-callback') ? element.attr('data-modal-close-callback') : null;
+    let preventDismissal = element.attr('data-prevent-dismiss');
+    let formData = element.data('form-data') ? element.data('form-data') : {};
 
-    var preventDismissal = mQuery(el).attr('data-prevent-dismiss');
     if (preventDismissal) {
         // Reset
-        mQuery(el).removeAttr('data-prevent-dismiss');
+        element.removeAttr('data-prevent-dismiss');
     }
 
-    Mautic.loadAjaxModal(target, route, method, header, footer, preventDismissal);
+    /*
+     * If we have an onLoadCallback, proxy it through this function so that
+     * we can pass the element to the callback. The callback must exist on
+     * the window.Mautic object.
+     */
+    let modalOpenCallbackReal = null;
+    if (modalOpenCallback && window["Mautic"].hasOwnProperty(modalOpenCallback)) {
+        modalOpenCallbackReal = function() {
+            Mautic[modalOpenCallback](el);
+        };
+    }
+
+    let modalCloseCallbackReal = null;
+    if (modalCloseCallback && window["Mautic"].hasOwnProperty(modalOpenCallback)) {
+        modalCloseCallbackReal = function() {
+            Mautic[modalCloseCallback](el);
+        };
+    }
+
+    Mautic.loadAjaxModal(target, route, method, header, footer, preventDismissal, modalOpenCallbackReal, modalCloseCallbackReal, formData);
 };
 
 /**
@@ -48,34 +68,45 @@ Mautic.ajaxifyModal = function (el, event) {
  * @param method
  * @param header
  * @param footer
+ * @param preventDismissal
+ * @param modalOpenCallback
+ * @param modalCloseCallback
+ * @param formData
  */
-Mautic.loadAjaxModal = function (target, route, method, header, footer, preventDismissal) {
-    if (mQuery(target + ' .loading-placeholder').length) {
-        mQuery(target + ' .loading-placeholder').removeClass('hide');
-        mQuery(target + ' .modal-body-content').addClass('hide');
+Mautic.loadAjaxModal = function (target, route, method, header, footer, preventDismissal, modalOpenCallback, modalCloseCallback, formData = {}) {
+    let element = mQuery(target);
 
-        if (mQuery(target + ' .modal-loading-bar').length) {
-            mQuery(target + ' .modal-loading-bar').addClass('active');
+    if (element.find('.loading-placeholder').length) {
+        element.find('.loading-placeholder').removeClass('hide');
+        element.find('.modal-body-content').addClass('hide');
+
+        if (element.find('.modal-loading-bar').length) {
+            element.find('.modal-loading-bar').addClass('active');
         }
     }
 
     if (footer == 'false') {
-        mQuery(target + " .modal-footer").addClass('hide');
+        element.find(".modal-footer").addClass('hide');
     }
 
     //move the modal to the body tag to get around positioned div issues
-    mQuery(target).one('show.bs.modal', function () {
+    element.one('show.bs.modal', function () {
         if (header) {
-            mQuery(target + " .modal-title").html(header);
+            // use text instead of html method to prevent XSS
+            element.find(".modal-title").text(header);
         }
 
         if (footer && footer != 'false') {
-            mQuery(target + " .modal-footer").html(header);
+            element.find(".modal-footer").html(header);
+        }
+
+        if (modalOpenCallback) {
+            modalOpenCallback();
         }
     });
 
     //clean slate upon close
-    mQuery(target).one('hidden.bs.modal', function () {
+    element.one('hidden.bs.modal', function () {
         if (typeof Mautic.modalContentXhr[target] != 'undefined') {
             Mautic.modalContentXhr[target].abort();
             delete Mautic.modalContentXhr[target];
@@ -83,10 +114,14 @@ Mautic.loadAjaxModal = function (target, route, method, header, footer, preventD
 
         mQuery('body').removeClass('noscroll');
 
-        var response = {};
+        let response = {};
         if (Mautic.modalMauticContent) {
             response.mauticContent = Mautic.modalMauticContent;
             delete Mautic.modalMauticContent;
+        }
+
+        if (modalCloseCallback) {
+            modalCloseCallback();
         }
 
         //unload
@@ -96,22 +131,22 @@ Mautic.loadAjaxModal = function (target, route, method, header, footer, preventD
     });
 
     // Check if dismissal is allowed
-    if (typeof mQuery(target).data('bs.modal') !== 'undefined' && typeof mQuery(target).data('bs.modal').options !== 'undefined') {
+    if (typeof element.data('bs.modal') !== 'undefined' && typeof element.data('bs.modal').options !== 'undefined') {
         if (preventDismissal) {
-            mQuery(target).data('bs.modal').options.keyboard = false;
-            mQuery(target).data('bs.modal').options.backdrop = 'static';
+            element.data('bs.modal').options.keyboard = false;
+            element.data('bs.modal').options.backdrop = 'static';
         } else {
-            mQuery(target).data('bs.modal').options.keyboard = true;
-            mQuery(target).data('bs.modal').options.backdrop = true;
+            element.data('bs.modal').options.keyboard = true;
+            element.data('bs.modal').options.backdrop = true;
         }
     } else {
         if (preventDismissal) {
-            mQuery(target).modal({
+            element.modal({
                 backdrop: 'static',
                 keyboard: false
             });
         } else {
-            mQuery(target).modal({
+            element.modal({
                 backdrop: true,
                 keyboard: true
             });
@@ -130,6 +165,7 @@ Mautic.loadAjaxModal = function (target, route, method, header, footer, preventD
         url: route,
         type: method,
         dataType: "json",
+        data: formData,
         success: function (response) {
             if (response) {
                 Mautic.processModalContent(response, target);
@@ -137,7 +173,7 @@ Mautic.loadAjaxModal = function (target, route, method, header, footer, preventD
             Mautic.stopIconSpinPostEvent();
         },
         error: function (request, textStatus, errorThrown) {
-            Mautic.processAjaxError(request, textStatus, errorThrown);
+            Mautic.processAjaxError(request, textStatus, errorThrown, null, target);
             Mautic.stopIconSpinPostEvent();
         },
         complete: function () {
@@ -205,10 +241,6 @@ Mautic.processModalContent = function (response, target) {
             Mautic.setNotifications(response.notifications);
         }
 
-        if (response.browserNotifications) {
-            Mautic.setBrowserNotifications(response.browserNotifications);
-        }
-
         if (response.callback) {
             window["Mautic"][response.callback].apply('window', [response]);
             return;
@@ -250,7 +282,7 @@ Mautic.processModalContent = function (response, target) {
 /**
  * Display confirmation modal
  */
-Mautic.showConfirmation = function (el) {
+Mautic.showConfirmation = function (el, customMessage) {
     var precheck = mQuery(el).data('precheck');
 
     if (precheck) {
@@ -265,12 +297,14 @@ Mautic.showConfirmation = function (el) {
         }
     }
 
-    var message = mQuery(el).data('message');
+    var message = customMessage ?? mQuery(el).data('message');
     var confirmText = mQuery(el).data('confirm-text');
     var confirmAction = mQuery(el).attr('href');
     var confirmCallback = mQuery(el).data('confirm-callback');
     var cancelText = mQuery(el).data('cancel-text');
     var cancelCallback = mQuery(el).data('cancel-callback');
+    const confirmBtnClass = mQuery(el).data('confirm-btn-class')
+        ? mQuery(el).data('confirm-btn-class') : 'btn btn-danger';
 
     var confirmContainer = mQuery("<div />").attr({"class": "modal fade confirmation-modal"});
     var confirmDialogDiv = mQuery("<div />").attr({"class": "modal-dialog"});
@@ -279,7 +313,8 @@ Mautic.showConfirmation = function (el) {
     var confirmHeaderDiv = mQuery("<div />").attr({"class": "modal-header"});
     confirmHeaderDiv.append(mQuery('<h4 />').attr({"class": "modal-title"}).text(message));
     var confirmButton = mQuery('<button type="button" />')
-        .addClass("btn btn-danger")
+        .attr("id", "confirm")
+        .addClass(confirmBtnClass)
         .css("marginRight", "5px")
         .css("marginLeft", "5px")
         .click(function () {
@@ -293,7 +328,7 @@ Mautic.showConfirmation = function (el) {
             .addClass("btn btn-primary")
             .click(function () {
                 if (cancelCallback && typeof Mautic[cancelCallback] === "function") {
-                    window["Mautic"][cancelCallback].apply('window', []);
+                    window["Mautic"][cancelCallback].apply('window', [el]);
                 } else {
                     Mautic.dismissConfirmation();
                 }
@@ -305,7 +340,9 @@ Mautic.showConfirmation = function (el) {
         confirmFooterDiv.append(cancelButton);
     }
 
-    confirmFooterDiv.append(confirmButton);
+    if (confirmText) {
+        confirmFooterDiv.append(confirmButton);
+    }
 
     confirmContentDiv.append(confirmHeaderDiv);
     confirmContentDiv.append(confirmFooterDiv);

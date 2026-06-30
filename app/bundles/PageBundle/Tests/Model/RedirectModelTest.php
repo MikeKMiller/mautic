@@ -1,28 +1,25 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace Mautic\PageBundle\Tests\Model;
 
-use Mautic\CoreBundle\Helper\UrlHelper;
+use Doctrine\ORM\EntityManagerInterface;
+use Mautic\CoreBundle\Helper\CoreParametersHelper;
+use Mautic\CoreBundle\Helper\UserHelper;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\CoreBundle\Shortener\Shortener;
+use Mautic\CoreBundle\Translation\Translator;
 use Mautic\PageBundle\Entity\Redirect;
 use Mautic\PageBundle\Event\RedirectGenerationEvent;
 use Mautic\PageBundle\Model\RedirectModel;
 use Mautic\PageBundle\PageEvents;
 use Mautic\PageBundle\Tests\PageTestAbstract;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Routing\Router;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
 class RedirectModelTest extends PageTestAbstract
 {
-    public function testCreateRedirectEntity_WhenCalled_ReturnsRedirect()
+    public function testCreateRedirectEntityWhenCalledReturnsRedirect(): void
     {
         $redirectModel = $this->getRedirectModel();
         $entity        = $redirectModel->createRedirectEntity('http://some-url.com');
@@ -30,7 +27,7 @@ class RedirectModelTest extends PageTestAbstract
         $this->assertInstanceOf(Redirect::class, $entity);
     }
 
-    public function testGenerateRedirectUrl_WhenCalled_ReturnsValidUrl()
+    public function testGenerateRedirectUrlWhenCalledReturnsValidUrl(): void
     {
         $redirect = new Redirect();
         $redirect->setUrl('http://some-url.com');
@@ -39,20 +36,14 @@ class RedirectModelTest extends PageTestAbstract
         $redirectModel = $this->getRedirectModel();
         $url           = $redirectModel->generateRedirectUrl($redirect);
 
-        $this->assertStringContainsString($url, 'http://some-url.com');
+        $this->assertStringContainsString('http://some-url.com', $url);
     }
 
-    public function testRedirectGenerationEvent()
+    public function testRedirectGenerationEvent(): void
     {
-        $urlHelper = $this
-            ->getMockBuilder(UrlHelper::class)
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $model = new RedirectModel($urlHelper);
+        $shortener = $this->createStub(Shortener::class);
 
         $dispatcher = new EventDispatcher();
-        $model->setDispatcher($dispatcher);
 
         $url          = 'https://mautic.org';
         $clickthrough = ['foo' => 'bar'];
@@ -61,7 +52,18 @@ class RedirectModelTest extends PageTestAbstract
         $router->expects($this->exactly(2))
             ->method('generate')
             ->willReturn($url);
-        $model->setRouter($router);
+
+        $model = new RedirectModel(
+            $this->createStub(EntityManagerInterface::class),
+            $this->createStub(CorePermissions::class),
+            $dispatcher,
+            $router,
+            $this->createStub(Translator::class),
+            $this->createStub(UserHelper::class),
+            $this->createStub(LoggerInterface::class),
+            $this->createStub(CoreParametersHelper::class),
+            $shortener
+        );
 
         $redirect = new Redirect();
         $redirect->setUrl($url);
@@ -73,7 +75,7 @@ class RedirectModelTest extends PageTestAbstract
         // Add the listener to append something else to the CT
         $dispatcher->addListener(
             PageEvents::ON_REDIRECT_GENERATE,
-            function (RedirectGenerationEvent $event) {
+            function (RedirectGenerationEvent $event): void {
                 $event->setInClickthrough('bar', 'foo');
             }
         );
